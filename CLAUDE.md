@@ -68,7 +68,7 @@ eval/results/                 committed eval outputs
 ## How to work (every task)
 
 1. **Load context.** Read the task in the backlog and its slice doc. Restate the goal and "done when" in 2–3 lines.
-2. **Plan.** List the files to touch, the approach, the tests, and the risks. **Wait for approval** if the task is tagged `core`, touches the schema, or hits a stop-and-ask trigger. For `commodity` tasks, proceed after stating the plan.
+2. **Plan.** List the files to touch, the approach, the tests, and the risks. **Wait for approval** if the task is tagged `core`, touches the schema, or hits a stop-and-ask trigger. For `commodity` tasks, state the plan, then wait for the developer's "go" before editing.
 3. **Tests first for deterministic logic:** hashing, normalization, validity windows, chunking, RRF, scoring, metrics.
 4. **Implement** the smallest change that meets "done when".
 5. **Verify.** Run `make check`, plus `make test-int` if the DB or integration paths changed. Report the actual result. Never claim a check passed without running it.
