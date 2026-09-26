@@ -1,7 +1,7 @@
 # ADR-004: Development toolchain
 
-- **Status:** Proposed. Accepting it is task S01-T1.
-- **Date:** 2026-09-22
+- **Status:** Accepted
+- **Date:** 2026-09-26
 - **Blueprint refs:** §9, §23.3, §26; readiness gaps #9, #10
 
 ## Context
@@ -22,7 +22,8 @@ The agent needs a fixed, boring toolchain so it doesn't pick tools per task. The
 | Types | **mypy `--strict`** on `src/` | Most widely known; strict mode catches contract drift early | pyright: faster, but less common in Python backend interviews |
 | Tests | **pytest** with `tests/unit` and `tests/integration` (marker-separated) | Standard | — |
 | Config | **pydantic-settings** + `.env` (gitignored), `.env.example` committed | Typed config; maps to SSM Parameter Store later | Hand-rolled `os.environ` parsing |
-| DB (local) | Docker Compose, **pinned** `pgvector/pgvector` image. Pin the Postgres major version to one RDS supports with pgvector. | Local and cloud stay the same | Floating `latest` tag: non-reproducible |
+| DB (local) | Docker Compose, **pinned** `pgvector/pgvector:0.8.1-pg18` image (Postgres 18, pgvector 0.8.1) | Matches RDS PostgreSQL 18, which ships pgvector 0.8.1 (AWS's RDS PostgreSQL 18 announcement), so local and cloud stay the same | Floating `latest` tag: non-reproducible |
+| Dev environment | macOS/Linux, or **WSL2 (Ubuntu)** on Windows. Native Windows is unsupported. | Parity with CI (`ubuntu-latest`) and EC2; one Makefile and one shell | Native Windows: needs cross-platform Make recipes; CRLF line-ending issues |
 | Migrations | **Alembic** | Standard; versioned schema; runs in CI | Hand-written SQL files: no ordering or downgrade discipline |
 | API | FastAPI (blueprint) | — | — |
 | Task runner | **make** | Available everywhere, readable by agents and in CI | just / nox: an extra install |
@@ -30,10 +31,12 @@ The agent needs a fixed, boring toolchain so it doesn't pick tools per task. The
 | CI | GitHub Actions: a `check` job, plus an `integration` job with a pgvector service container | Same commands locally and in CI | — |
 | Tracing | Langfuse **Cloud** (free tier) | Self-hosted Langfuse needs extra infrastructure that doesn't fit locally or on the cheap EC2 box. Final confirmation in ADR-006. | Self-hosting in Compose |
 
+**Note on the DB pin:** we pin by tag, not by digest, so that rebuilt images pick up Postgres minor (patch) releases. The cost: a tag can be moved to a newer image, so two pulls are not guaranteed to be byte-identical; the recorded digest shows exactly which image was tested. Tested locally: PostgreSQL 18.2, digest `sha256:508c5290cda481d4f5f846446a26e9c1b804766828a394a5861de1b348a18b4c`. Recheck the pgvector version on the real RDS instance in S15.
+
 Deliberately **not** chosen yet: the data-access library (ADR-005), the LLM/embedding clients beyond Voyage (ADR-006), and the reranker (ADR-008).
 
 ## Consequences
 
 - `make check` is the single local and CI gate. CI calls the Make targets rather than duplicating commands.
 - Adding any tool outside this table requires amending this ADR.
-- Before pinning, check the exact image tag and the Postgres version supported by RDS with pgvector. Record the pinned values here when accepting.
+- Pinned values: image `pgvector/pgvector:0.8.1-pg18`; Postgres major version 18; Python 3.12.

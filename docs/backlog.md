@@ -26,10 +26,10 @@ This is the ordered list of slices and tasks. It is the single source for **what
 
 Tasks:
 
-- [ ] **S01-T1 `[human]` Accept ADR-004 (toolchain).**
+- [x] **S01-T1 `[human]` Accept ADR-004 (toolchain).**
   - Done when: ADR-004 status is Accepted, or amended and accepted.
 - [ ] **S01-T2 `[commodity]` Project scaffold.**
-  - Contents: uv project, `src/orgknow/`, `pyproject.toml` (ruff, mypy strict, pytest), `.gitignore`, `.env.example`, one smoke unit test.
+  - Contents: uv project, `src/orgknow/`, `pyproject.toml` (ruff, mypy strict, pytest), `.gitignore`, `.gitattributes`, `.python-version` (3.12), `.env.example`, one smoke unit test.
   - Done when: `uv run pytest` passes and `import orgknow` works.
   - Deps: T1.
 - [ ] **S01-T3 `[commodity]` Makefile + pre-commit.**

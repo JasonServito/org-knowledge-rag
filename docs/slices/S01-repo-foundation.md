@@ -41,7 +41,7 @@ n/a (foundation).
 
 ### S01-T2: Project scaffold `[commodity]`
 
-- **Goal:** uv project; package `orgknow` under `src/`; `pyproject.toml` with ruff, mypy strict and pytest config; `.gitignore` (including `.env` and the corpus cache); `.env.example`.
+- **Goal:** uv project; package `orgknow` under `src/`; `pyproject.toml` with ruff, mypy strict and pytest config; `.gitignore` (including `.env` and the corpus cache); `.gitattributes` with `* text=auto eol=lf`; `.python-version` pinned to 3.12; `.env.example`.
 - **Done when:** `uv run pytest` passes one smoke test, and `uv run mypy src` is clean.
 - **Notes:** the package name `orgknow` is a placeholder. Rename it now or never.
 
@@ -75,7 +75,7 @@ n/a (foundation).
 
 ### S01-T8: Docs + license `[human]`
 
-- **Goal:** README quickstart verified from a fresh clone; `LICENSE` chosen (MIT or Apache-2.0; this covers your code, not the corpus); `docs/architecture.md` stub describing the current state; `docs/learning/S01-repo-foundation.md`.
+- **Goal:** README quickstart verified from a fresh clone, including the WSL2 prerequisite; `LICENSE` chosen (MIT or Apache-2.0; this covers your code, not the corpus); `docs/architecture.md` stub describing the current state; `docs/learning/S01-repo-foundation.md`.
 - **Done when:** someone else could clone the repo and run it.
 
 ## Risks & unknowns
