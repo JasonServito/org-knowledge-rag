@@ -44,7 +44,7 @@ Tasks:
   - Migration `0001` enables the `vector` extension. No domain tables yet.
   - Done when: `make migrate` is idempotent, and an integration test asserts the extension exists.
   - Deps: T4.
-- [ ] **S01-T6 `[commodity]` FastAPI skeleton.**
+- [x] **S01-T6 `[commodity]` FastAPI skeleton.**
   - App factory, `GET /health` (liveness), `GET /ready` (DB ping).
   - Done when: integration tests cover both endpoints, and `/ready` returns 503 when the DB is down.
   - Deps: T5.
@@ -267,3 +267,4 @@ ADRs are decided when their slice starts, not earlier.
 ## Proposed additions (triage by the developer)
 
 *(Agents append items here with a one-line reason. They are not scheduled until moved into a slice.)*
+- Switch the `TestClient` dev dependency from `httpx` to `httpx2`: Starlette 1.7 deprecates `httpx` there and warns on every test run (found in S01-T6). Needs an ADR-004 amendment.

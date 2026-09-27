@@ -47,3 +47,4 @@ S01-T5 and S01-T6 need libraries that the table above implies but doesn't name. 
 
 - **`psycopg[binary]`** (psycopg 3, runtime): the Postgres driver, used by Alembic and by the `/ready` database ping. The `binary` extra bundles libpq, so no system package is needed. Rejected: psycopg2, the older driver, now in maintenance mode.
 - **SQLAlchemy** (transitive, via Alembic): imported only in `src/orgknow/db/migrations/env.py`, because Alembic runs migrations through a SQLAlchemy engine. This is **not** a data-access decision; ADR-005 makes that choice in S03.
+- **`httpx`** (dev only): required by FastAPI's `TestClient`, which the API tests use. Note: Starlette 1.7 deprecates `httpx` for `TestClient` in favour of `httpx2` (a warning on each test run); switching is a proposed backlog item, not part of this amendment.
