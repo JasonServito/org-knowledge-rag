@@ -32,7 +32,7 @@ Tasks:
   - Contents: uv project, `src/orgknow/`, `pyproject.toml` (ruff, mypy strict, pytest), `.gitignore`, `.gitattributes`, `.python-version` (3.12), `.env.example`, one smoke unit test.
   - Done when: `uv run pytest` passes and `import orgknow` works.
   - Deps: T1.
-- [ ] **S01-T3 `[commodity]` Makefile + pre-commit.**
+- [x] **S01-T3 `[commodity]` Makefile + pre-commit.**
   - Targets: `fmt`, `check`, `test-int`, `up`, `down`, `migrate`. Pre-commit runs ruff.
   - Done when: `make check` is green.
   - Deps: T2.

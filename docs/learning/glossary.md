@@ -49,4 +49,6 @@ One line per term; alphabetical within each section. The agent appends a term th
 | **Liveness vs. readiness** | Liveness means "the process is up". Readiness means "it can serve traffic, because its dependencies are reachable". |
 | **Lockfile** | A file (`uv.lock`) recording the exact version of every dependency, including indirect ones, so every machine installs the same set. |
 | **Migration** | A versioned, ordered schema change applied by a tool (Alembic), so every environment has the same schema. |
+| **Pre-commit hook** | A script git runs before each commit. If it fails or modifies files, the commit stops so you can review. Here it runs ruff only. |
+| **pytest marker** | A label on a test (e.g. `integration`). `pytest -m <expr>` selects or excludes tests by label. |
 | **src layout** | Package code lives under `src/<package>/`, so tests import the *installed* package and catch packaging mistakes a root-level package would hide. |

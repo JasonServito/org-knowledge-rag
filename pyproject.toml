@@ -16,6 +16,8 @@ build-backend = "uv_build"
 target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
+# Ruff also formats code blocks inside Markdown by default; docs and ADRs stay hand-written.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 # E/W: pycodestyle, F: pyflakes, I: import sorting, B: bugbear,
