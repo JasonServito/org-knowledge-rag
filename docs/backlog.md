@@ -267,4 +267,3 @@ ADRs are decided when their slice starts, not earlier.
 ## Proposed additions (triage by the developer)
 
 *(Agents append items here with a one-line reason. They are not scheduled until moved into a slice.)*
-- Switch the `TestClient` dev dependency from `httpx` to `httpx2`: Starlette 1.7 deprecates `httpx` there and warns on every test run (found in S01-T6). Needs an ADR-004 amendment.
