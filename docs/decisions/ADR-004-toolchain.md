@@ -48,3 +48,9 @@ S01-T5 and S01-T6 need libraries that the table above implies but doesn't name. 
 - **`psycopg[binary]`** (psycopg 3, runtime): the Postgres driver, used by Alembic and by the `/ready` database ping. The `binary` extra bundles libpq, so no system package is needed. Rejected: psycopg2, the older driver, now in maintenance mode.
 - **SQLAlchemy** (transitive, via Alembic): imported only in `src/orgknow/db/migrations/env.py`, because Alembic runs migrations through a SQLAlchemy engine. This is **not** a data-access decision; ADR-005 makes that choice in S03.
 - **`httpx2`** (dev only): the HTTP client behind FastAPI's `TestClient`, which the API tests use. Starlette's `TestClient` prefers `httpx2` and deprecates the `httpx` fallback (Starlette PR #3291).
+
+## Amendment 2026-09-27
+
+S01-T8 makes the README quickstart work from a fresh clone. Added with the developer's approval:
+
+- **`pre-commit`** (dev only): the hook runner already chosen in the table above, now pinned in `uv.lock` so `uv run pre-commit install` works right after `uv sync`. Before this, it had to be installed globally, and a fresh clone would fail at that step. Rejected: a global `uv tool install pre-commit` prerequisite, because it's one more machine-level step and leaves the version unpinned.
