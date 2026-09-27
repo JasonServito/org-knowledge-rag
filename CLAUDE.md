@@ -106,6 +106,7 @@ Size guideline: about 300 changed lines of hand-written code per task at most. I
 - **Language and typing:** Python 3.12. Full type hints; `mypy --strict` on `src/`. Ruff for lint and format.
 - **Contracts:** Pydantic models for cross-module contracts and API I/O.
 - **Configuration:** all config comes from settings/env. Never hardcode secrets, URLs, model names, weights, or thresholds.
+- **Settings instances:** no module-level `Settings()`; pass settings in (e.g. `create_app(settings=None)` builds one only when none is given). Unit tests use `Settings(_env_file=None)` so a local `.env` can't leak in.
 - **External services:** external APIs (embeddings, LLM) sit behind small interfaces with test fakes. Don't add an interface where only one implementation exists and no ADR requires swapping.
 - **Determinism:** pin SHAs, fix seeds, and use no network in unit tests.
 - **Naming:** use the ADR vocabulary (`canonical_id`, release window, `claimed_status`, `effective_stage`, authority tier).
