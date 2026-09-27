@@ -1,9 +1,9 @@
 # S01: Repo foundation
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** 1
-- **Started:**
-- **Finished:**
+- **Started:** 2026-09-26
+- **Finished:** 2026-09-27
 
 ## Outcome
 
@@ -15,11 +15,11 @@ Every later slice depends on a fast, trustworthy verification loop. Setting it u
 
 ## Exit checks
 
-- [ ] Fresh clone + README quickstart works end to end, on your machine.
-- [ ] `make check` ≤ 1 min; `make test-int` green.
-- [ ] CI `check` and `integration` jobs green on a PR.
-- [ ] `/ready` returns 200 with the DB up and 503 with it down.
-- [ ] ADR-004 Accepted; code license chosen; learning note S01 written.
+- [x] Fresh clone + README quickstart works end to end, on your machine.
+- [x] `make check` ≤ 1 min; `make test-int` green.
+- [x] CI `check` and `integration` jobs green on a PR.
+- [x] `/ready` returns 200 with the DB up and 503 with it down.
+- [x] ADR-004 Accepted; code license chosen; learning note S01 written.
 
 ## Scope
 

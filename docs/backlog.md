@@ -19,7 +19,7 @@ This is the ordered list of slices and tasks. It is the single source for **what
 
 ## Milestone M0: Foundation
 
-### 🟨 S01 Repo foundation *(Stage 1)*
+### ✅ S01 Repo foundation *(Stage 1)*
 
 - **Outcome:** a fresh clone runs `make up && make migrate && make check && make test-int` green locally and in CI.
 - **Slice doc:** `docs/slices/S01-repo-foundation.md`
@@ -57,7 +57,7 @@ Tasks:
   - Done when: a fresh clone following the README works.
   - Deps: T7.
 
-### ⬜ S02 Corpus spike *(validates ADR-002 and ADR-003)*
+### 🟨 S02 Corpus spike *(validates ADR-002 and ADR-003)*
 
 - **Outcome:** measured corpus numbers, with ADR-002 and ADR-003 accepted or amended on evidence.
 - **Slice doc:** `docs/slices/S02-corpus-spike.md`
@@ -255,7 +255,7 @@ ADRs are decided when their slice starts, not earlier.
 
 | ADR | Topic | Slice |
 |---|---|---|
-| 004 | Toolchain | S01 (draft exists) |
+| 004 | Toolchain | S01 (Accepted) |
 | 005 | Data access approach | S03 |
 | 006 | Generation model, structured output, tracing | S04 |
 | 007 | Golden-set schema and labeling | S06 |
