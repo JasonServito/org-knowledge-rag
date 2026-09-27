@@ -1,0 +1,27 @@
+# Local development database. ADR-004 pins the image; CI uses the same tag as a service container.
+name: orgknow
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.1-pg18
+    environment:
+      # Local-only credentials for a container bound to localhost; not a real secret.
+      POSTGRES_USER: orgknow
+      POSTGRES_PASSWORD: orgknow
+      POSTGRES_DB: orgknow
+    ports:
+      # Host port 5433 avoids clashing with another Postgres already on 5432.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # Postgres 18 images keep data under /var/lib/postgresql/<major>/, so mount the parent.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      # TCP (-h), not the Unix socket: during first-start init Postgres listens only on the
+      # socket, so a socket check could report healthy before the real server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U orgknow -d orgknow"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  pgdata:

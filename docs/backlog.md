@@ -36,7 +36,7 @@ Tasks:
   - Targets: `fmt`, `check`, `test-int`, `up`, `down`, `migrate`. Pre-commit runs ruff.
   - Done when: `make check` is green.
   - Deps: T2.
-- [ ] **S01-T4 `[commodity]` Local Postgres.**
+- [x] **S01-T4 `[commodity]` Local Postgres.**
   - Docker Compose with a pinned pgvector image, healthcheck, and named volume. Settings module reads the DB URL from env.
   - Done when: `make up` reports healthy.
   - Deps: T3.
