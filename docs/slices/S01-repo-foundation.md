@@ -90,6 +90,25 @@ ADR-004 (accept).
 ## Retro (fill in at the end)
 
 - **Shipped:**
+  - All 8 tasks, in 4 PRs: #1 (T1), #2 (T2), #3 (T3–T7 batched; 427 added lines excluding the lockfile and docs), #4 (T8).
+  - A `make` interface (`fmt`, `check`, `test-int`, `up`, `down`, `migrate`) that CI calls unchanged.
+  - Compose Postgres 18 + pgvector 0.8.1 on `127.0.0.1:5433`.
+  - Alembic with one migration (`0001`, the `vector` extension). CI runs it twice to prove idempotency.
+  - A FastAPI factory with `/health` and `/ready`.
+  - CI `check` and `integration` jobs. The `protect-main` ruleset requires both, with the branch up to date.
+  - MIT license, a README quickstart, and `docs/architecture.md`.
+  - ADR-004 Accepted, with two dated amendments: 2026-09-26 (psycopg, SQLAlchemy inside Alembic only, httpx2) and 2026-09-27 (pre-commit).
+  - Numbers: 7 unit + 3 integration tests; 262 lines of Python in `src/` + `tests/`; `make check` about 1.5–2.3 s (target ≤ 1 min); CI `check` 19–21 s and `integration` 24–28 s; 4 runtime + 5 dev direct dependencies; no paid API calls.
 - **Surprises:**
+  - Two verification steps could pass for the wrong reason:
+    - **The README's clone defaulted to `main`.** `git clone` checks out the default branch, so following the quickstart word for word before merging tests `main`, not the PR under review. The quickstart was verified on an explicit clone of `s01-t8-close`.
+    - **A global pre-commit masked a missing dev dependency.** `uv run pre-commit install` succeeded because `uv run` falls back to `PATH`, where a global `uv tool install pre-commit` lived. pre-commit wasn't a project dependency, so a fresh machine would have failed. Fixed by pinning it in the dev group (ADR-004 amendment 2026-09-27), then verified with the global install removed: `uv sync` installed it from the lockfile.
+  - Smaller findings, recorded as code comments:
+    - The Postgres 18 image keeps data under `/var/lib/postgresql/<major>/`, so the volume mounts the parent directory.
+    - The healthcheck must use TCP, because during first-start init Postgres listens only on the socket.
+    - SQLAlchemy reads a bare `postgresql://` URL as psycopg2, so Alembic needs the `+psycopg` driver name.
+    - Starlette's `TestClient` prefers `httpx2`.
 - **Do differently:**
-- **Learning note:**
+  - Verify a quickstart from a state that can't borrow from the machine: clone the branch under review explicitly (`git clone --branch <branch>`), and remove global tools that the project should provide.
+  - When a check passes, ask what else could have made it pass before counting it as evidence.
+- **Learning note:** [`docs/learning/S01-repo-foundation.md`](../learning/S01-repo-foundation.md). The AI drafted it at the developer's request and the developer reviewed it, as its header states.
