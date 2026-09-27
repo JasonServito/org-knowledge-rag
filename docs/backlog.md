@@ -40,7 +40,7 @@ Tasks:
   - Docker Compose with a pinned pgvector image, healthcheck, and named volume. Settings module reads the DB URL from env.
   - Done when: `make up` reports healthy.
   - Deps: T3.
-- [ ] **S01-T5 `[commodity]` Alembic.**
+- [x] **S01-T5 `[commodity]` Alembic.**
   - Migration `0001` enables the `vector` extension. No domain tables yet.
   - Done when: `make migrate` is idempotent, and an integration test asserts the extension exists.
   - Deps: T4.

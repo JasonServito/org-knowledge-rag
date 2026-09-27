@@ -44,6 +44,7 @@ One line per term; alphabetical within each section. The agent appends a term th
 | Term | Meaning |
 |---|---|
 | **ADR** | Architecture Decision Record: a short document capturing one decision, its context, and its consequences. |
+| **Database driver** | The library that speaks Postgres's network protocol (here psycopg 3). Alembic and SQLAlchemy sit on top of it. |
 | **Editable install** | Installing a package as a link to its source directory, so code edits take effect without reinstalling. `uv sync` does this for the project. |
 | **Healthcheck** | A command Docker runs repeatedly inside a container to decide whether it is healthy (here, `pg_isready`). `docker compose up --wait` blocks on it. |
 | **Idempotent** | Running an operation twice has the same effect as running it once. This is required for ingestion and queue workers. |

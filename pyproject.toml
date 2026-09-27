@@ -7,6 +7,8 @@ authors = [{ name = "Jason Servito" }]
 # ADR-004 pins Python 3.12. Moving to 3.13 means amending the ADR first.
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.20.0",
+    "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
 ]
 
@@ -30,6 +32,12 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 python_version = "3.12"
 strict = true
 files = ["src"]
+# Ships with pydantic. Lets mypy know Settings() fills its fields from env vars.
+plugins = ["pydantic.mypy"]
+
+[tool.alembic]
+# The database URL is not configured here: env.py reads it from Settings.
+script_location = "%(here)s/src/orgknow/db/migrations"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

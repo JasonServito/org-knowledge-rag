@@ -1,5 +1,5 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down
+.PHONY: fmt check test-int up down migrate
 
 # Apply ruff's safe lint fixes (including import sorting), then format.
 fmt:
@@ -24,3 +24,7 @@ up:
 # Stop the container. The named volume (the data) is kept.
 down:
 	docker compose down
+
+# Apply all pending Alembic migrations. Safe to re-run: applied revisions are skipped.
+migrate:
+	uv run alembic upgrade head
