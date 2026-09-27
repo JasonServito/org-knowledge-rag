@@ -52,7 +52,7 @@ Tasks:
   - GitHub Actions: `check` job, plus an `integration` job with a pgvector service container.
   - Done when: both jobs are green on a PR.
   - Deps: T6.
-- [ ] **S01-T8 `[human]` Docs + license.**
+- [x] **S01-T8 `[human]` Docs + license.**
   - README quickstart verified from a fresh clone; pick the code license (MIT or Apache-2.0); stub `docs/architecture.md` describing the current state; write learning note S01.
   - Done when: a fresh clone following the README works.
   - Deps: T7.
