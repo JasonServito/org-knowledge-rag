@@ -1,2 +1,20 @@
+# Secrets: keep real env files out of git, but commit the template.
 .env
+.env.*
+!.env.example
+
+# Python and tool caches
+__pycache__/
+*.py[cod]
 .venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Corpus cache: CORPUS_CACHE_DIR should live outside the repo; this guards against pointing it here.
+/corpus_cache/
