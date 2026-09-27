@@ -28,7 +28,7 @@ Tasks:
 
 - [x] **S01-T1 `[human]` Accept ADR-004 (toolchain).**
   - Done when: ADR-004 status is Accepted, or amended and accepted.
-- [ ] **S01-T2 `[commodity]` Project scaffold.**
+- [x] **S01-T2 `[commodity]` Project scaffold.**
   - Contents: uv project, `src/orgknow/`, `pyproject.toml` (ruff, mypy strict, pytest), `.gitignore`, `.gitattributes`, `.python-version` (3.12), `.env.example`, one smoke unit test.
   - Done when: `uv run pytest` passes and `import orgknow` works.
   - Deps: T1.

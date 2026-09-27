@@ -44,6 +44,9 @@ One line per term; alphabetical within each section. The agent appends a term th
 | Term | Meaning |
 |---|---|
 | **ADR** | Architecture Decision Record: a short document capturing one decision, its context, and its consequences. |
+| **Editable install** | Installing a package as a link to its source directory, so code edits take effect without reinstalling. `uv sync` does this for the project. |
 | **Idempotent** | Running an operation twice has the same effect as running it once. This is required for ingestion and queue workers. |
 | **Liveness vs. readiness** | Liveness means "the process is up". Readiness means "it can serve traffic, because its dependencies are reachable". |
+| **Lockfile** | A file (`uv.lock`) recording the exact version of every dependency, including indirect ones, so every machine installs the same set. |
 | **Migration** | A versioned, ordered schema change applied by a tool (Alembic), so every environment has the same schema. |
+| **src layout** | Package code lives under `src/<package>/`, so tests import the *installed* package and catch packaging mistakes a root-level package would hide. |
