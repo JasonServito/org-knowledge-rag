@@ -54,4 +54,5 @@ One line per term; alphabetical within each section. The agent appends a term th
 | **Named volume** | Docker-managed storage that outlives the container, so `make down` / `make up` keep the database's data. |
 | **Pre-commit hook** | A script git runs before each commit. If it fails or modifies files, the commit stops so you can review. Here it runs ruff only. |
 | **pytest marker** | A label on a test (e.g. `integration`). `pytest -m <expr>` selects or excludes tests by label. |
+| **Service container** | A Docker container GitHub Actions starts next to a CI job (here Postgres) and waits on until healthy. CI's equivalent of `make up`. |
 | **src layout** | Package code lives under `src/<package>/`, so tests import the *installed* package and catch packaging mistakes a root-level package would hide. |

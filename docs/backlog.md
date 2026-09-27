@@ -48,7 +48,7 @@ Tasks:
   - App factory, `GET /health` (liveness), `GET /ready` (DB ping).
   - Done when: integration tests cover both endpoints, and `/ready` returns 503 when the DB is down.
   - Deps: T5.
-- [ ] **S01-T7 `[commodity]` CI.**
+- [x] **S01-T7 `[commodity]` CI.**
   - GitHub Actions: `check` job, plus an `integration` job with a pgvector service container.
   - Done when: both jobs are green on a PR.
   - Deps: T6.
