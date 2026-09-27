@@ -267,3 +267,10 @@ ADRs are decided when their slice starts, not earlier.
 ## Proposed additions (triage by the developer)
 
 *(Agents append items here with a one-line reason. They are not scheduled until moved into a slice.)*
+
+- **Evaluate Jev (TypeSafe) as a query-mode router (ADR-009) and evidence grader (S11); candidate only.** Reason: a fast typed-decision model might beat rules at mode routing and an LLM at sufficiency grading. Adopt only on ablation evidence. (Researched 2026-09-27; Jev is early access, v1.13.)
+  - **S06 prerequisites:** the ADR-007 golden-set schema includes a human-labeled `expected_mode` per question; add false-refusal rate to the metrics in `docs/evaluation.md`.
+  - **S09:** ADR-009 compares rules / LLM / Jev. Build rules first; try Jev only if rules miss the router-accuracy threshold.
+  - **S11:** compare an LLM grader with a Jev Noul grader on AC3 and false-refusal rate.
+  - **If adopted:** new ADR (dependency); small interface + test fake; pinned version (never `jev-latest`); threshold in config.
+  - **Out of bounds:** citation validation (AC2 stays deterministic), date/release resolution, "needs retrieval?" routing.
