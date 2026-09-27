@@ -32,23 +32,23 @@ Tasks:
   - Contents: uv project, `src/orgknow/`, `pyproject.toml` (ruff, mypy strict, pytest), `.gitignore`, `.gitattributes`, `.python-version` (3.12), `.env.example`, one smoke unit test.
   - Done when: `uv run pytest` passes and `import orgknow` works.
   - Deps: T1.
-- [ ] **S01-T3 `[commodity]` Makefile + pre-commit.**
+- [x] **S01-T3 `[commodity]` Makefile + pre-commit.**
   - Targets: `fmt`, `check`, `test-int`, `up`, `down`, `migrate`. Pre-commit runs ruff.
   - Done when: `make check` is green.
   - Deps: T2.
-- [ ] **S01-T4 `[commodity]` Local Postgres.**
+- [x] **S01-T4 `[commodity]` Local Postgres.**
   - Docker Compose with a pinned pgvector image, healthcheck, and named volume. Settings module reads the DB URL from env.
   - Done when: `make up` reports healthy.
   - Deps: T3.
-- [ ] **S01-T5 `[commodity]` Alembic.**
+- [x] **S01-T5 `[commodity]` Alembic.**
   - Migration `0001` enables the `vector` extension. No domain tables yet.
   - Done when: `make migrate` is idempotent, and an integration test asserts the extension exists.
   - Deps: T4.
-- [ ] **S01-T6 `[commodity]` FastAPI skeleton.**
+- [x] **S01-T6 `[commodity]` FastAPI skeleton.**
   - App factory, `GET /health` (liveness), `GET /ready` (DB ping).
   - Done when: integration tests cover both endpoints, and `/ready` returns 503 when the DB is down.
   - Deps: T5.
-- [ ] **S01-T7 `[commodity]` CI.**
+- [x] **S01-T7 `[commodity]` CI.**
   - GitHub Actions: `check` job, plus an `integration` job with a pgvector service container.
   - Done when: both jobs are green on a PR.
   - Deps: T6.

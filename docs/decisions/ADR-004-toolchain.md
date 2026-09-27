@@ -40,3 +40,11 @@ Deliberately **not** chosen yet: the data-access library (ADR-005), the LLM/embe
 - `make check` is the single local and CI gate. CI calls the Make targets rather than duplicating commands.
 - Adding any tool outside this table requires amending this ADR.
 - Pinned values: image `pgvector/pgvector:0.8.1-pg18`; Postgres major version 18; Python 3.12.
+
+## Amendment 2026-09-26
+
+S01-T5 and S01-T6 need libraries that the table above implies but doesn't name. Added with the developer's approval:
+
+- **`psycopg[binary]`** (psycopg 3, runtime): the Postgres driver, used by Alembic and by the `/ready` database ping. The `binary` extra bundles libpq, so no system package is needed. Rejected: psycopg2, the older driver, now in maintenance mode.
+- **SQLAlchemy** (transitive, via Alembic): imported only in `src/orgknow/db/migrations/env.py`, because Alembic runs migrations through a SQLAlchemy engine. This is **not** a data-access decision; ADR-005 makes that choice in S03.
+- **`httpx2`** (dev only): the HTTP client behind FastAPI's `TestClient`, which the API tests use. Starlette's `TestClient` prefers `httpx2` and deprecates the `httpx` fallback (Starlette PR #3291).
