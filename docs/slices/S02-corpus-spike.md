@@ -1,8 +1,8 @@
 # S02: Corpus spike
 
-- **Status:** ⬜
+- **Status:** 🟨
 - **Blueprint stage:** pre-Stage 2 (validates ADR-002 and ADR-003)
-- **Started:**
+- **Started:** 2026-09-27
 - **Finished:**
 
 ## Outcome

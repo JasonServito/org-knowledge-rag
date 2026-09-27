@@ -17,6 +17,7 @@ The queue of upcoming ADRs is in `docs/backlog.md`.
 
 - **When to write one:** new dependency or service; schema shape; a retrieval or eval method; anything that is hard to reverse; anything you'd be asked "why?" about.
 - **Statuses:** Proposed → Accepted → (Superseded by ADR-NNN). Never edit an accepted decision silently. Write a new ADR that supersedes it.
+- **Amendments:** an accepted ADR may get a dated `## Amendment YYYY-MM-DD` section at the end, for clarifications that add no new decision (e.g. naming a library the decision already implies). Each bullet says what, why, and the alternative rejected. The original text stays unchanged. A changed decision still needs a superseding ADR.
 - **Keep it short:** about one page. If it needs more, the decision is probably two decisions.
 - **Who writes it:** the agent may draft an ADR. Only the developer sets the status to **Accepted**.
 
