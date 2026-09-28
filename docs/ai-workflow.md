@@ -10,20 +10,20 @@ This is how the project is built with AI assistance. `CLAUDE.md` holds the agent
 2. **Scope-disciplined.** The backlog decides what's next. New ideas go to "Proposed additions", never straight into the active slice.
 3. **Verify, don't trust.** Nothing is done until a check you can see has passed.
 4. **Small units.** One task is one PR of about 300 hand-written lines at most, reviewable in 15 minutes.
-5. **You own the thinking.** The AI drafts; you decide, review, and can explain.
+5. **You own the thinking.** The AI drafts and opens PRs; you decide, review, and merge.
 
 ## 2. Roles
 
 | Who | Does | Doesn't |
 |---|---|---|
-| **You** | Pick and approve plans; own acceptance criteria, golden-set labels and ADR acceptance; review core code; write learning notes | Rubber-stamp diffs you can't explain |
-| **Chat assistant** (Claude project) | Architecture and trade-off discussion, slice docs, ADR drafts, debugging your reasoning, teaching, reviewing your learning notes | Write large amounts of code |
-| **Coding agent** (Claude Code) | Implement one bounded task, run checks, write the explanation block and PR description, tick the backlog | Make decisions, add dependencies, touch the golden set, change scope |
+| **You** | Approve plans for `core` tasks, schema changes and stop-and-ask triggers; own acceptance criteria, golden-set labels and ADR acceptance; review PRs and merge them once CI is green; approve slice status changes by merging the retro PR | Rubber-stamp diffs you can't explain; re-run checks that CI already ran |
+| **Chat assistant** (Claude project) | Architecture and trade-off discussion, slice docs, ADR drafts, debugging your reasoning, teaching, follow-up questions on slice briefs | Write large amounts of code |
+| **Coding agent** (Claude Code) | Implement one bounded task per branch; run checks; commit, push and open the PR with the brief; tick the backlog; write the slice brief and open the retro PR, including the slice status flip | Merge PRs, push to `main`, make decisions, add dependencies, touch the golden set, change scope |
 
 ## 3. The slice loop (days)
 
 ```
-Define ─► Decompose ─► Task loop ×N ─► Verify slice ─► Retro + learn
+Define ─► Decompose ─► Task loop ×N ─► Verify slice ─► Retro PR
 ```
 
 1. **Define (in chat).** Turn the backlog entry into `docs/slices/SNN-*.md` using `_template.md`. It should state:
@@ -34,21 +34,28 @@ Define ─► Decompose ─► Task loop ×N ─► Verify slice ─► Retro + 
 2. **Decompose.** Split the slice into 3–8 tasks, each with a "done when". Mirror them in the backlog.
 3. **Task loop** (section 4), once per task.
 4. **Verify the slice.** Run the exit checks. From S06 onward, run the eval and record the ablation row, including when the technique didn't help. A negative result is still a result.
-5. **Retro and learn.** Run `/slice-retro`, then write `docs/learning/SNN-*.md` **in your own words**. Update the ADR statuses and `docs/architecture.md`. Mark the slice ✅ and the next one 🟨.
+5. **Retro.** Run `/slice-retro`. The agent checks the exit criteria, writes the slice brief `docs/learning/SNN-*.md`, updates `docs/architecture.md` if needed, flips the slice to ✅ and the next one to 🟨 in the backlog, and opens the retro PR. It proposes ADR status changes; you accept ADRs. Read the brief, then merge the PR to approve the status change. Then sync the claude.ai project (section 9).
 
 ## 4. The task loop (hours)
 
 ```
-Context ─► Plan ─► (Tests) ─► Implement ─► Verify ─► Explain + review ─► Merge
+Context ─► Plan ─► Branch ─► (Tests) ─► Implement ─► Verify ─► PR ─► CI green ─► You merge
 ```
 
 1. **Start a fresh agent session per task.** Long sessions drift and accumulate stale context.
 2. Run `/start-task S0X-TY`. The agent restates the goal and proposes a plan.
-3. **Review the plan against the spec, ADRs and non-goals.** Push back here; it's the cheapest point to correct course. Plans are mandatory to approve for `core` tasks.
+3. **Review the plan against the spec, ADRs and non-goals.** Push back here; it's the cheapest point to correct course. The agent waits for your approval on `core` tasks, schema changes and stop-and-ask triggers. On `commodity` tasks it proceeds once it has stated the plan, so interrupt if the plan is wrong. Before its first edit, it creates the branch `s0X-tY-<name>` from `main`.
 4. **For deterministic logic, tests come first.** Read the tests before the implementation, and ask whether they check the "done when" or just mirror the code.
-5. The agent implements, then runs `/finish-task`: checks, Explanation block, PR draft, backlog tick.
-6. **Review the diff.** For `core` tasks, do the explain-back (prompt below) before merging.
-7. Merge. Commit messages follow `S0X-TY: <what>`.
+5. The agent implements, then runs `/finish-task`: `make check` (plus `make test-int` if the DB or integration paths changed), PR brief, backlog tick, commit `S0X-TY: <what>`, push, and `gh pr create` with the check output pasted in.
+6. **Review the PR:** the brief first, then the diff. The required CI checks (`check`, `integration`) replace re-running anything locally.
+7. **You merge** once CI is green. The agent never merges, never pushes to `main`, and changes slice status only in the retro PR.
+
+### 4.1 Batch mode
+
+Say "work through S0X" to run a slice's tasks in backlog order, one task per branch and PR.
+
+- The agent still stops at every `core` plan, every stop-and-ask trigger, and every `human` task.
+- After opening each PR it stops. Merge the PR, then tell it to continue. It confirms the merge and branches the next task from the updated `main`.
 
 ## 5. Core vs. commodity: what you must own
 
@@ -61,10 +68,7 @@ Context ─► Plan ─► (Tests) ─► Implement ─► Verify ─► Explain
 | Conflict detection | Terraform (medium: learn the AWS concepts) |
 | Eval metrics and harness; LangGraph design; output schema | |
 
-For core code, one of these must hold before merging:
-
-- you wrote or co-wrote the tests, or
-- you pass the explain-back.
+For core code, read the brief's decisions and `Key code` line, then the tests, before merging. `/explain` is available if you want more depth; it's optional.
 
 **Golden-set rule:** the AI may *propose* questions. You verify every expected answer and source against the corpus yourself. If the model grades against labels it wrote, the eval is circular. This is the same reason the blueprint rejected a synthetic corpus.
 
@@ -79,17 +83,17 @@ For core code, one of these must hold before merging:
 
 If a loop gets slower than its budget, fix that before adding features.
 
-## 7. Learning system (so you can explain everything)
+## 7. Learning system
 
 | Where | What | Who writes it |
 |---|---|---|
 | Chat, as you go | Trade-offs and concepts behind each decision | Chat assistant (see the project instructions below) |
-| PR description / Explanation block | What, why, trade-offs, concepts, verification, interview question, per task | Coding agent |
-| `docs/learning/glossary.md` | Every term introduced, one line each | Agent appends; you edit |
-| `docs/learning/SNN-*.md` | Per slice: your explanation, decisions table, interview Q&A | **You.** The AI critiques your answers but doesn't write them. |
+| PR brief, per task | What changed, decisions (choice → alternative rejected → why), how verified, interview-relevant points; `Key code` for core tasks | Coding agent |
+| `docs/learning/glossary.md` | Terms an interviewer would plausibly use, one line each | Agent appends; you edit |
+| `docs/learning/SNN-*.md` (slice brief) | Per slice: what was built, decisions table, interview Q&A with answers, numbers to remember | Coding agent, via `/slice-retro`; you read it before merging the retro PR |
 | `docs/decisions/` | The "why" for each decision | Agent drafts, you accept |
 
-The learning notes are your interview prep. If you can't write the "In my own words" section, the slice isn't really done.
+The slice briefs are your interview prep. For anything still unclear, ask in chat or run `/explain`.
 
 ## 8. Prompts
 
@@ -119,6 +123,12 @@ Challenge anything that looks like scope creep.
 /start-task S0X-TY
 ```
 
+Or, for a whole slice (batch mode, section 4.1):
+
+```
+Work through S0X.
+```
+
 ### 8.4 Review a diff (Claude Code or chat)
 
 ```
@@ -127,16 +137,7 @@ CLAUDE.md rules, and ADRs. List: correctness risks, missing tests, scope
 violations, simpler alternatives. Don't rewrite. Just list findings by severity.
 ```
 
-### 8.5 Explain-back (core tasks)
-
-```
-I'll explain how <module/function> works and why it's designed this way.
-Grade my explanation: what's wrong, what's missing, what an interviewer would
-probe next. Then ask me one follow-up question.
-<your explanation>
-```
-
-### 8.6 Slice retro
+### 8.5 Slice retro
 
 ```
 /slice-retro SNN
@@ -144,10 +145,11 @@ probe next. Then ask me one follow-up question.
 
 ## 9. Session hygiene
 
-- One task per agent session. Clear or restart between tasks.
+- One task per agent session. Clear or restart between tasks. Batch mode is the exception: one session per slice.
 - Point the agent at the specific files; don't say "read the docs".
 - When the agent goes off-plan, stop it and re-plan. Don't let it "fix forward" through scope creep.
-- Commit after every green task. Small commits make reverting cheap.
+- One task per PR. Small PRs make reverting cheap.
+- Sync the claude.ai project files only at slice boundaries or before starting a new chat.
 
 ## 10. Anti-patterns to catch early
 
@@ -159,14 +161,13 @@ probe next. Then ask me one follow-up question.
 | Speculative scaffolding | Empty modules or interfaces "for later" | Delete; build only when a slice needs it |
 | Silent decisions | A new library or pattern appears in a diff | Stop-and-ask trigger; write an ADR |
 | AI-labelled eval | Golden answers written by the model | The golden set is human-owned |
-| Explanation debt | Merged core code you can't explain | Explain-back before merge |
 
 ## 11. Which doc to update when
 
 | Event | Update |
 |---|---|
 | A decision is made | New ADR (draft → you accept) |
-| A task is finished | Backlog checkbox, PR description, glossary if new terms appear |
-| A slice starts or ends | Slice doc, backlog status, learning note, `architecture.md` |
+| A task is finished | Backlog checkbox and PR brief, in the task's PR; glossary if an interview-relevant term appears |
+| A slice starts or ends | Slice doc; at the end, the retro PR (slice brief, backlog status flip, `architecture.md`); then sync the claude.ai project |
 | Behavior or contracts change | The relevant doc (`domain-model.md`, `interfaces.md`, `evaluation.md`) |
 | Scope question | Product spec (non-goals) or backlog "Proposed additions" |

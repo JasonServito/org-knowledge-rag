@@ -38,7 +38,7 @@ Create directories only when a task needs them. Don't pre-scaffold empty modules
 
 ```
 config/corpus_manifest.yaml   corpus scope; the manifest defines the subset, not code
-docs/                         spec, ADRs, backlog, slices, learning notes, research
+docs/                         spec, ADRs, backlog, slices, slice briefs, research
 src/orgknow/
   settings.py                 env-based config (pydantic-settings)
   db/                         migrations + data access; the ONLY place with SQL
@@ -68,14 +68,29 @@ eval/results/                 committed eval outputs
 ## How to work (every task)
 
 1. **Load context.** Read the task in the backlog and its slice doc. Restate the goal and "done when" in 2–3 lines.
-2. **Plan.** List the files to touch, the approach, the tests, and the risks. **Wait for approval** if the task is tagged `core`, touches the schema, or hits a stop-and-ask trigger. For `commodity` tasks, state the plan, then wait for the developer's "go" before editing.
-3. **Tests first for deterministic logic:** hashing, normalization, validity windows, chunking, RRF, scoring, metrics.
-4. **Implement** the smallest change that meets "done when".
-5. **Verify.** Run `make check`, plus `make test-int` if the DB or integration paths changed. Report the actual result. Never claim a check passed without running it.
-6. **Explain.** Write the Explanation block (below) and draft the PR description from `.github/pull_request_template.md`.
-7. **Update the backlog.** Tick the task's checkbox in `docs/backlog.md` in the same change. Never change a slice's status; the developer does that.
+2. **Plan.** List the files to touch, the approach, the tests, and the risks. **Wait for approval** if the task is tagged `core`, touches the schema, or hits a stop-and-ask trigger. For `commodity` tasks, state the plan, then proceed.
+3. **Branch.** Create the task branch from an up-to-date `main` before the first edit (see Git and PRs).
+4. **Tests first for deterministic logic:** hashing, normalization, validity windows, chunking, RRF, scoring, metrics.
+5. **Implement** the smallest change that meets "done when".
+6. **Verify before pushing.** Run `make check`, plus `make test-int` if the DB or integration paths changed. Report the actual result and paste the output in the PR. Never claim a check passed without running it.
+7. **Brief and backlog.** Write the PR brief (below) and tick the task's checkbox in `docs/backlog.md` in the same change.
+8. **Ship.** Commit, push, and open the PR with `gh`. Then stop; the developer merges.
 
 Size guideline: about 300 changed lines of hand-written code per task at most. If a task needs more, propose a split before starting.
+
+## Git and PRs
+
+- One task per branch and per PR. Branch: `s0X-tY-<short-name>`. Commit: `S0X-TY: <what>`.
+- Claude Code creates the branch, commits, pushes (`git push -u origin <branch>`), and opens the PR with `gh pr create`, using `.github/pull_request_template.md` for the body.
+- Claude Code **never** merges a PR and never pushes to `main`. The developer merges after the required CI checks (`check`, `integration`) are green.
+- Slice status changes only in the retro PR (`/slice-retro`). The developer approves them by merging that PR.
+
+## Batch mode
+
+"Work through S0X" means: do the slice's tasks in backlog order, one task per branch and PR.
+
+- Stop for approval at every `core` plan and every stop-and-ask trigger. At a `human` task, stop and hand over.
+- After opening a PR, stop. Start the next task only after the previous PR is merged (confirm with `gh pr view <number> --json state`), branching from the updated `main`.
 
 ## Stop and ask before…
 
@@ -98,7 +113,7 @@ Size guideline: about 300 changed lines of hand-written code per task at most. I
 - **Core** (the developer must understand it deeply): versioning/validity/identity, chunking, retrieval SQL, fusion, scoring, conflict logic, eval metrics, agent graph, output schema.
   - Prefer plain, readable code over clever abstractions.
   - Put pure functions in the logic modules and keep I/O at the edges.
-  - Explain in depth.
+  - Name the key functions in the PR brief's `Key code` line.
 - **Commodity:** Docker, CI, Makefile, settings, logging, Alembic boilerplate, FastAPI plumbing, Streamlit, CLI. Keep it conventional and boring.
 
 ## Code conventions
@@ -112,29 +127,30 @@ Size guideline: about 300 changed lines of hand-written code per task at most. I
 - **Naming:** use the ADR vocabulary (`canonical_id`, release window, `claimed_status`, `effective_stage`, authority tier).
 - **TODOs:** none without a backlog entry.
 
-## Explanation protocol (required at the end of every task)
+## PR brief (required for every task)
 
-The developer is a new-grad SWE who must explain this project in interviews. Teach; don't impress. Use plain language and define jargon on first use. End every task with a section headed **Explanation**, 15 lines or fewer:
+The **Brief** section of the PR description: 8 lines or fewer, in plain language, with jargon defined on first use.
 
 - **What changed:** 1–2 lines.
-- **Why this approach:** the reason, and the main alternative rejected.
-- **Trade-offs:** what we gave up or deferred.
-- **Concepts to know:** 1–3 terms, each with a one-line definition. Skip terms already in `docs/learning/glossary.md`, and add new ones there in the same change.
-- **How verified:** the commands run and their results.
-- **Interview question:** one question this code invites, with a 1–2 line answer sketch.
-- **Read before merging** (`core` tasks only): pointers to the 2–4 most important functions (`file:function`).
+- **Decisions:** choice → alternative rejected → why, or "none".
+- **How verified:** the commands run and their results. The full output goes below the brief.
+- **Interview-relevant:** 0–2 bullets, or "none".
+- **Key code** (`core` tasks only, optional, one line): `file:function`, …
+
+Add a term to `docs/learning/glossary.md` only if an interviewer would plausibly use it.
 
 ## Definition of done (task)
 
 - [ ] "Done when" criteria met; scope limited to the task.
-- [ ] `make check` green (and `make test-int` where relevant), with the output reported.
+- [ ] `make check` green (and `make test-int` where relevant) before pushing, with the output pasted in the PR.
 - [ ] New logic has tests.
-- [ ] Explanation block and PR description written.
-- [ ] Backlog checkbox ticked. Docs updated if behavior or architecture changed. An ADR drafted if a decision was made.
+- [ ] PR brief written; backlog checkbox ticked.
+- [ ] Docs updated if behavior or architecture changed. An ADR drafted if a decision was made.
+- [ ] Branch pushed and PR opened with `gh`; not merged.
 
 ## Skills (workflow shortcuts in `.claude/skills/`)
 
-- `/start-task`: load context and propose a plan.
-- `/finish-task`: verify, explain, and draft the PR.
-- `/explain`: teach a file or concept.
-- `/slice-retro`: close a slice.
+- `/start-task`: load context, propose a plan, and create the branch.
+- `/finish-task`: verify, write the PR brief, commit, push, and open the PR.
+- `/explain`: teach a file or concept (optional).
+- `/slice-retro`: close a slice: verify exit checks, write the slice brief, and open the retro PR.

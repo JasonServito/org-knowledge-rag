@@ -1,6 +1,6 @@
 # Glossary
 
-One line per term; alphabetical within each section. The agent appends a term the first time it's introduced (see the explanation protocol in `CLAUDE.md`). Edit any definition you'd phrase differently.
+One line per term; alphabetical within each section. The agent appends a term only if an interviewer would plausibly use it (see the PR brief rules in `CLAUDE.md`). Edit any definition you'd phrase differently.
 
 ## Project-specific
 

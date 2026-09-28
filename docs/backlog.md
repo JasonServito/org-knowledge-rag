@@ -6,12 +6,14 @@ This is the ordered list of slices and tasks. It is the single source for **what
 
 | Rule | Detail |
 |---|---|
-| Slice status | ⬜ todo · 🟨 active · ✅ done. **Only the developer changes slice status.** Exactly one slice is 🟨 at a time. |
+| Slice status | ⬜ todo · 🟨 active · ✅ done. **Only the developer approves slice status changes (by merging the retro PR).** Exactly one slice is 🟨 at a time. |
 | Task selection | The agent works on the first unchecked task in the 🟨 slice whose dependencies are done. The agent ticks `[x]` in the same PR that completes the task. |
-| Task tags | `[core]`: the developer must deeply understand it, and the plan needs approval. `[commodity]`: boilerplate. `[human]`: the developer does or decides it. |
+| Task tags | `[core]`: the developer must deeply understand it, and the plan needs approval. `[commodity]`: boilerplate; the agent proceeds once it has stated the plan. `[human]`: the developer does or decides it. |
+| Git and PRs | One task per branch and PR. The agent creates the branch (`s0X-tY-name`), commits (`S0X-TY: <what>`), pushes, and opens the PR with `gh`. The developer merges after the required CI checks are green; the agent never merges or pushes to `main`. |
+| Batch mode | "Work through S0X" runs the slice's tasks in order, one PR each. The agent stops at every `core` plan, stop-and-ask trigger and `[human]` task, and waits for each PR to be merged before starting the next task. |
 | Detail level | Slices S01–S04 are detailed. Later slices have outcomes, exit criteria, and candidate tasks; they are refined into a slice doc (`docs/slices/`) when they become 🟨. |
 | New work | Discovered work goes to **Proposed additions** at the bottom. The developer triages it; it never goes straight into the active slice. |
-| Exit criteria | Every slice ends with its exit criteria met, a retro (`/slice-retro`), and a learning note. |
+| Exit criteria | Every slice ends with its exit criteria met and a retro PR (`/slice-retro`) containing the slice brief and the status flip. |
 
 **Stage mapping:** blueprint §29 stages are noted per slice. Stage 2 is split across S04 and S05, and Stage 3 happens in S06.
 
@@ -232,7 +234,7 @@ Tasks:
   - Streamlit dev UI
   - README ablation table and results narrative
   - `docs/architecture.md` update
-  - learning-note consolidation
+  - slice-brief consolidation
 
 ---
 
