@@ -281,3 +281,4 @@ ADRs are decided when their slice starts, not earlier.
   - **If adopted:** new ADR (dependency); small interface + test fake; pinned version (never `jev-latest`); threshold in config.
   - **Out of bounds:** citation validation (AC2 stays deterministic), date/release resolution, "needs retrieval?" routing.
 - **Community SIG annual reports as WHY-evidence source (deferred).** Reason: `community/sig-{release,auth,network}/annual-report-*.md` (2020–2025) explain SIG priorities and rationale; left out of manifest v0 to keep governance scope to README/charter. (Found in S02-T1.)
+- **Ingestion never drops a file silently; parse failures are recorded with a reason in the ingestion report (S04-T2/S05).** Handle BOM, CRLF, leading blank line. Example: blog `2024/validating-admission-policy-ga` (front matter opens with `------`). (Found in S02-T3a.)

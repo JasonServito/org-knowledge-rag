@@ -88,6 +88,7 @@ The website `main` head is also the 1.37 docs snapshot, because 1.37 has no `rel
 ### Reading the numbers
 
 - **3,862 versions across 1,745 documents.** Of these, 3,281 would be embedded. The other 581 are `kep.yaml` and PRR (production readiness review) versions: metadata that carries the `claimed_status` history, not embedded (ADR-003 D1).
+- **Blog posts: 417 here, 413 in T1 (PR #8).** 417 = 413 − 1 + 5: T3a also counts 5 in-range posts deleted before the head (T1 counted the head only), and it can't parse `2024/validating-admission-policy-ga` (finding 3), which T1 counted. No posts were lost to a byte-order mark or CRLF.
 - **Normalization removes 209 of 4,071 raw versions (5%).** Most version churn is real content change, not reviewer lists or whitespace.
 - **Unique content hashes (3,548) are fewer than versions (3,862).** The same content appears at more than one path, mostly the 1.32 feature-gate renames (finding 2). A content-hash cache would embed it once.
 - **Three release spikes:**

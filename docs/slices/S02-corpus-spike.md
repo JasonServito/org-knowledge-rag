@@ -133,6 +133,10 @@ n/a. The outputs are measurements.
 - **Goal:** run `git diff --find-renames` between adjacent release branches for the in-scope paths, and sample 10 detected renames.
 - **Done when:** the report gives precision on the sample, lists unmatched add/delete pairs, and recommends a similarity threshold.
 
+#### T4 notes (added at T3a review, 2026-09-30)
+
+- **Blog identity across the year-folder move:** verify that front-matter blog ids (`blog:<date>-<slug>`, ADR-002 D4) stay the same across website PR #53902's move: no collisions and no missing slugs. T1's key inventory found `slug` in 411 of 413 in-range posts at the head, so the fallback for a missing slug matters. If the ids hold, S05 uses front-matter identity for the blog, and rename detection is for docs only.
+
 ### S02-T5: Format checks `[core]`
 
 Each answered yes/no with an example:
@@ -149,6 +153,22 @@ Each answered yes/no with an example:
 
 - **Goal:** write the report's conclusion, amend the ADRs, and set them to Accepted.
 - **Done when:** the ADR index is updated.
+
+#### T6 notes (added at T3a review, 2026-09-30)
+
+- **Feature-gate share of embeddable versions, per release** (from the T3a data; embeddable means every version except `kep.yaml` and PRR metadata; computed with a scratch script, because `measure.py` doesn't print the per-source split by release):
+  - 1.20–1.28: 1–2% each
+  - 1.29: 318 of 432 (74%), the split into one file per gate
+  - 1.30: 54 of 141 (38%)
+  - 1.31: 69 of 356 (19%)
+  - 1.32: 371 of 451 (82%), the file renames
+  - 1.33: 85 of 159 (53%)
+  - 1.34: 71 of 236 (30%)
+  - 1.35: 58 of 145 (40%)
+  - 1.36: 68 of 213 (32%)
+  - 1.37: 62 of 213 (29%)
+  - head: 0 of 36
+  - overall: 1,169 of 3,281 (36%)
 
 ## Risks & unknowns
 
