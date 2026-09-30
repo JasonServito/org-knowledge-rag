@@ -5,9 +5,12 @@
 # each release branch and the SHA of each main-branch repo at each release date.
 #
 # Paths are repo-relative. A path ending in "/" is a directory prefix; anything else
-# is a single file. Paths were checked against the real trees on 2026-09-29. Not every
-# path exists in every release (e.g. pages that moved); the S02-T1 PR has the
-# per-release presence table.
+# is a single file. Paths were checked against the real trees on 2026-09-29; the
+# S02-T1 PR has the per-release presence table.
+#
+# Missing-path rule: pages move, so a path may be absent from some releases.
+#   - Absent from some releases: skip it for those releases and log it.
+#   - Absent from every release in range: error. The manifest is wrong.
 
 schema_version: 0
 
@@ -17,8 +20,8 @@ releases:
   latest: "1.37"
   # release_date: the v1.R.0 tag date in kubernetes/kubernetes (UTC). Matches website
   #   data/releases/schedule.yaml for 1.34-1.37, the only releases it lists.
-  # end_of_life: website data/releases/eol.yaml (<= 1.33) and schedule.yaml (>= 1.34).
-  #   The 1.34-1.37 dates are planned, not yet reached.
+  # end_of_life: 1.20-1.33 from website data/releases/eol.yaml (`endOfLifeDate`, all 14
+  #   present); 1.34-1.37 from schedule.yaml. The 1.34-1.37 dates are planned, not yet reached.
   list:
     - {version: "1.20", release_date: 2020-12-08, end_of_life: 2022-02-28}
     - {version: "1.21", release_date: 2021-04-08, end_of_life: 2022-06-28}
@@ -153,8 +156,15 @@ sources:
 # They are still stored as metadata. Built from the front-matter key inventory in the
 # S02-T1 PR; keys not listed are kept. Match keys case-insensitively, as Hugo does.
 normalization:
-  # Lifecycle keys. Stripping any of these is a bug; the loader should reject it.
+  # Lifecycle, identity and temporal keys. Stripping any of these is a bug; the loader
+  # should reject a strip list that contains one.
   never_strip:
+    # identity and time (canonical_id, validity windows, rename detection)
+    - title
+    - date
+    - slug
+    - aliases
+    # lifecycle (claimed_status, claimed_stage, feature-gate stages)
     - status
     - stage
     - stages
@@ -165,7 +175,7 @@ normalization:
     - superseded-by
     - evergreen
   strip_front_matter:
-    docs_page: [reviewers, weight, linktitle, no_list, simple_list, hide_summary, aliases]
+    docs_page: [reviewers, weight, linktitle, no_list, simple_list, hide_summary]
     release_record: [reviewers, weight, card, linktitle, notoc, sitemap, layout, type]
     feature_gate_reference: [_build, weight, card]
     blog_post: [layout, math]
