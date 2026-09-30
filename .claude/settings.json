@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(make check)", "Bash(make test-int)", "Bash(make fmt)",
+      "Bash(make up)", "Bash(make migrate)", "Bash(uv sync)",
+      "Bash(uv run pytest *)", "Bash(uv run mypy *)", "Bash(uv run ruff *)",
+      "Bash(uv run alembic *)", "Bash(uv run pre-commit *)",
+      "Bash(uv run python spikes/*)", "Bash(uv run python -m json.tool *)",
+      "Bash(git status)", "Bash(git diff *)", "Bash(git log *)", "Bash(git branch *)",
+      "Bash(git switch *)", "Bash(git pull)", "Bash(git pull *)",
+      "Bash(git add *)", "Bash(git commit *)",
+      "Bash(git push)", "Bash(git push -u origin *)",
+      "Bash(gh pr create *)", "Bash(gh pr view *)", "Bash(gh pr checks *)",
+      "Bash(gh pr ready *)",
+      "Bash(grep *)"
+    ],
+    "deny": [
+      "Bash(git push --force *)", "Bash(git push -f *)", "Bash(rm -rf *)",
+      "Edit(./eval/golden_set/**)", "Write(./eval/golden_set/**)"
+    ],
+    "ask": ["Bash(gh pr merge *)", "Bash(make down)"]
+  }
+}
