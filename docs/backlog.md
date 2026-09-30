@@ -77,7 +77,7 @@ Tasks:
   - Per release: in-scope files and distinct versions after ADR-002 normalization and hashing, plus a `head` row for the date-scoped sources.
   - Done when: the per-release and per-source tables are in the spike report, and the hand checks match.
   - Deps: T2.
-- [ ] **S02-T3b `[core]` Tokens, chunks, cost.**
+- [x] **S02-T3b `[core]` Tokens, chunks, cost.**
   - Estimated tokens and chunks (upper and lower bound, chunk-size sensitivity); embedding cost at current Voyage pricing (look it up); vector storage.
   - Done when: there is a cost table in the spike report.
   - Deps: T3a.
@@ -106,6 +106,11 @@ Tasks:
 - [ ] **S03-T2 `[core]` Write `docs/domain-model.md`.**
   - Entities, keys, constraints, and validity-window invariants. For example: at most one current version per `canonical_id`; windows of the same document don't overlap.
   - Done when: the developer has approved it.
+  - Question from S02-T3b: store one vector per chunk row, or one per unique content hash that chunks reference?
+    - **Per chunk row:** storage follows the spike's upper bound (229 MB at 512-token chunks, 1024 dimensions), and filtering by release or validity window stays on the chunk row.
+    - **Per content hash:** storage follows the lower bound (109 MB). But one nearest-neighbour hit maps to several versions, so temporal filtering needs a join after the search.
+
+    See `docs/research/corpus-spike-report.md` §3.
   - Deps: T1.
 - [ ] **S03-T3 `[core]` Migration `0002`.**
   - Tables: `releases`, `documents`, `document_aliases`, `document_versions`, `chunks`, `embeddings` (keyed by model).

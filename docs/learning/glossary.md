@@ -29,6 +29,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Cross-encoder (reranker)** | Scores a query and document *together*. More accurate but slower; used on a small candidate set. |
 | **Dense retrieval** | Finding chunks whose embedding vectors are close to the query's embedding. |
 | **Embedding** | A fixed-length vector representing text meaning, produced by a model (here, Voyage). |
+| **Embedding cache (content-hash)** | Reuses a stored vector when a chunk's embedded text hashes the same as text already embedded, so an unchanged section is paid for once across versions. It only works if the embedded text holds no per-version fields. |
 | **Faithfulness / groundedness** | Whether every claim in the answer is supported by the retrieved evidence. |
 | **Golden set** | A fixed, human-verified set of questions with expected answers and sources, used to evaluate changes. |
 | **HNSW** | Hierarchical Navigable Small World: a graph-based approximate nearest-neighbour index (supported by pgvector). |

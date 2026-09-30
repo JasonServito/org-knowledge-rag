@@ -114,3 +114,83 @@ The website `main` head is also the 1.37 docs snapshot, because 1.37 has no `rel
 | KEP-2579 `README.md` across the 19 enhancements snapshots | absent at 2, then 3 distinct blobs (at 1, 2 and 14 snapshots) | 17 entries, 3 raw versions, 3 versions |
 
 Tokens, chunks, embedding cost and vector storage are in the next section (S02-T3b).
+
+## 3. Tokens, chunks and cost (S02-T3b)
+
+- **Run:** `uv run python spikes/measure.py` on 2026-09-30, against the same lock. The cache was already complete, so nothing was downloaded, and tables A and B above came out unchanged.
+- **Method** (agreed at the T3 plan review; see the slice doc's T3 notes):
+  - **What's embedded:** every new version from section 2 except `kep.yaml` and PRR metadata: 3,281 versions, with in-scope blog posts only.
+  - **Tokens** ≈ characters ÷ 4, counted on the **body only**. The front matter isn't embedded; the chunk header carries the fields that stay the same.
+  - **Sections:** the body is split at markdown headings (`#` to `######`), ignoring `#` lines inside code fences. Text before the first heading is its own section.
+  - **Chunks:** a section of t tokens becomes ceil(t ÷ size) chunks. A chunk never spans two sections, and small sections aren't merged. The default size is 512 tokens; 256 and 1024 are sensitivity rows.
+  - **Header:** 40 tokens per chunk, added to the embedded tokens.
+  - **Upper bound:** every section of every new version is embedded.
+  - **Lower bound:** each unique (document, section hash) pair is embedded once. This is what a chunk-level content-hash cache sees when the chunk header holds `canonical_id`, because identical text in two documents then has two different headers. The section hash covers the cleaned section, using the same cleaning as the version hash. Document identity is the same as in section 2: the path, with blog moves followed.
+  - **Floor:** each unique section hash once, across all documents. It's shown for reference only; it can't be reached with `canonical_id` in the header.
+  - **Pricing:** the standard endpoint rates, per million tokens: voyage-4-lite $0.02, voyage-4 $0.06, voyage-4-large $0.12. Source: [docs.voyageai.com/docs/pricing](https://docs.voyageai.com/docs/pricing), last updated 2026-09-29, read 2026-09-30. The same page says the first 200M tokens on the voyage-4 family are free per account, and that the Batch API is 33% cheaper.
+  - **Vector storage:** chunks × dimensions × 4 bytes (float32), raw vectors only. The dimensions come from [docs.voyageai.com/docs/embeddings](https://docs.voyageai.com/docs/embeddings) (updated 2026-08-10): 1024 by default, and 256, 512 and 2048 are also supported. 1 MB = 10⁶ bytes.
+
+### C. Tokens and chunks per source type (chunks @512)
+
+| source | upper: sections | body tokens | chunks | lower: sections | body tokens | chunks |
+|---|---:|---:|---:|---:|---:|---:|
+| blog_post | 13,280 | 3,322,477 | 14,765 | 4,828 | 1,408,489 | 5,701 |
+| docs_page | 7,282 | 2,150,425 | 8,682 | 2,020 | 713,885 | 2,591 |
+| feature_gate_reference | 1,267 | 237,580 | 1,566 | 969 | 216,758 | 1,268 |
+| governance_doc | 2,927 | 675,689 | 3,418 | 932 | 259,648 | 1,151 |
+| kep | 16,606 | 2,410,752 | 17,733 | 7,550 | 1,280,830 | 8,256 |
+| release_record | 7,094 | 2,129,387 | 9,657 | 5,066 | 2,040,882 | 7,621 |
+| **total** | 48,456 | 10,926,310 | 55,821 | 21,365 | 5,920,492 | 26,588 |
+
+- **Floor:** 18,138 sections, 5,634,504 body tokens, 23,257 chunks, 6,564,784 embedded tokens.
+- **Sections under 64 tokens:**
+  - upper bound: 15,320 of 48,456 (32%), which is 27% of the chunks
+  - lower bound: 6,336 of 21,365 (30%), which is 24% of the chunks
+
+### D. Embedding cost and vector storage
+
+| chunk size | bound | chunks | embedded tokens | voyage-4-lite | voyage-4 | voyage-4-large | vectors @1024d | vectors @512d | vectors @256d |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 256 | upper: every new version | 73,250 | 13,856,310 | $0.28 | $0.83 | $1.66 | 300.0 MB | 150.0 MB | 75.0 MB |
+| 256 | lower: unique (document, section) | 36,554 | 7,382,652 | $0.15 | $0.44 | $0.89 | 149.7 MB | 74.9 MB | 37.4 MB |
+| 512 | upper: every new version | 55,821 | 13,159,150 | $0.26 | $0.79 | $1.58 | 228.6 MB | 114.3 MB | 57.2 MB |
+| 512 | lower: unique (document, section) | 26,588 | 6,984,012 | $0.14 | $0.42 | $0.84 | 108.9 MB | 54.5 MB | 27.2 MB |
+| 1,024 | upper: every new version | 50,331 | 12,939,550 | $0.26 | $0.78 | $1.55 | 206.2 MB | 103.1 MB | 51.5 MB |
+| 1,024 | lower: unique (document, section) | 22,902 | 6,836,572 | $0.14 | $0.41 | $0.82 | 93.8 MB | 46.9 MB | 23.5 MB |
+| 512 | upper, excl. feature_gate_reference | 54,255 | 12,858,930 | $0.26 | $0.77 | $1.54 | 222.2 MB | 111.1 MB | 55.6 MB |
+| 512 | lower, excl. feature_gate_reference | 25,320 | 6,716,534 | $0.13 | $0.40 | $0.81 | 103.7 MB | 51.9 MB | 25.9 MB |
+
+### Reading the numbers
+
+- **Cost isn't a constraint.** The largest row (256-token chunks, upper bound) is 13.9M embedded tokens. That's $1.66 at voyage-4-large's list price, and 7% of the 200M free tokens. Even if characters ÷ 4 undercounts by half, the largest row stays under 28M tokens: 14% of the free allowance, or $3.33 at list price. An ablation with another model (ADR-002 keys embeddings by model name) costs the same amount again per model.
+- **The cache halves the work.** At 512, the lower bound is 26,588 chunks and 7.0M embedded tokens, against 55,821 and 13.2M for the upper bound. The floor is only 13% fewer chunks than the lower bound, and 6% fewer embedded tokens. So putting `canonical_id` in the header costs little cache reuse.
+- **Feature gates are 36% of the embedded versions but 2% of the tokens:** 237,580 of 10.9M body tokens. Leaving them out changes the 512 rows by 2–5% (chunks and tokens). The 1.29 and 1.32 feature-gate churn from section 2 matters for version counts and identity, not for cost.
+- **The CHANGELOGs are a third of the lower bound.** At 512-token chunks, the 18 CHANGELOGs (7.74M characters) have 1,923,527 body tokens in the lower bound, which is 94% of `release_record`. As a share of the lower bound, that's:
+  - 32% of the **body tokens** (5,920,492, which exclude the chunk headers)
+  - 32% of the **embedded tokens**: the CHANGELOGs' 2,208,687 (7,129 chunks × 40 header tokens included) out of 6,984,012
+  - 27% of the chunks
+
+  These were computed with a scratch script using the spike's own functions, because `measure.py` doesn't print a per-file split. Each CHANGELOG has one version (the kubernetes head), so the cache barely helps (2.13M upper vs. 2.04M lower for `release_record`). 25% of their characters are sha512 download-table rows. Those are hex strings, which likely tokenize denser than 4 characters per token, and they have no retrieval value. **For S04-T3:** consider leaving download tables out of CHANGELOG chunks.
+- **Section size matters more than chunk size.** 30–32% of sections are under 64 tokens, and each one still becomes its own chunk: 24–27% of all chunks. Going from 512 to 1024 cuts chunks by only 10% (55,821 to 50,331), because most sections already fit. **For S04-T3:** merging small sections into a neighbour (keeping the heading path) could remove up to a quarter of the chunks; a bigger chunk size removes a tenth.
+- **Vector storage is small.** At 512-token chunks and 1024 dimensions, the raw vectors take 109 MB at the lower bound and 229 MB at the upper bound. Which of the two applies depends on the schema (see caveats). The largest row is 300 MB. The pgvector row overhead and the HNSW index (the approximate nearest-neighbour search index) come on top of that, and aren't estimated here.
+
+### Caveats
+
+- **Characters ÷ 4 likely undercounts** code, YAML, tables and hex (see the CHANGELOG note above). No tokenizer was run, because Voyage's tokenizer would add a dependency.
+- **Title and heading-path edits cost cache hits.** The lower bound assumes the header changes only when identity changes. But a document's title and a section's heading path can change between versions: a retitled post, or a renamed parent heading. The affected sections then miss the cache, so the real figure sits somewhat above the lower bound.
+- **Identity is the path here** (blog moves followed). The 1.32 feature-gate renames (finding 2) count as new documents. With the gate name as `canonical_id`, the lower bound would drop slightly, but feature gates are only 216,758 of its body tokens.
+- **Sections aren't merged or overlapped here.** A real chunker (S04-T3) will give different counts.
+- **Which storage bound applies depends on the S03 schema:**
+  - **One vector per chunk row:** storage follows the upper bound. The cache saves API calls, not disk.
+  - **One vector per unique content hash, referenced by the chunks:** storage follows the lower bound. But one nearest-neighbour hit then maps to several versions, so filtering by release or validity window needs a join after the vector search.
+
+  This is a question for S03-T2 (see the backlog).
+
+### Hand checks
+
+| Check | By hand | Spike |
+|---|---|---|
+| Docs page `tasks/configure-pod-container/migrate-from-psp.md` at the website head | 19 lines start with `#`; 4 of them are shell comments inside ` ```sh ` fences. So 15 headings, plus the intro, = 16 sections. Body (after the front matter): 18,637 characters ÷ 4 = 4,660 tokens | 16 sections, 4,664 tokens |
+| `CHANGELOG/CHANGELOG-1.30.md` at the kubernetes head (no front matter) | 354 headings and no code fences, so 355 sections with the table of contents before the first heading. 407,532 characters ÷ 4 = 101,883 tokens | 355 sections, 101,915 tokens (+0.03%) |
+
+The small token differences are expected: each section is rounded up separately, and the newline between two sections isn't counted.
