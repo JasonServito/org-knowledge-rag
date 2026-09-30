@@ -150,6 +150,7 @@ violations, simpler alternatives. Don't rewrite. Just list findings by severity.
 - When the agent goes off-plan, stop it and re-plan. Don't let it "fix forward" through scope creep.
 - One task per PR. Small PRs make reverting cheap.
 - Sync the claude.ai project files only at slice boundaries or before starting a new chat.
+- Project rules live in the repo (`CLAUDE.md`, ADRs, docs). Claude Code's auto-memory is only for machine or tool quirks, and `/slice-retro` reviews it at every retro.
 
 ## 10. Anti-patterns to catch early
 
