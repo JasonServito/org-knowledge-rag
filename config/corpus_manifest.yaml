@@ -11,6 +11,10 @@
 # Missing-path rule: pages move, so a path may be absent from some releases.
 #   - Absent from some releases: skip it for those releases and log it.
 #   - Absent from every release in range: error. The manifest is wrong.
+#
+# Processing order for each file: (1) extract metadata from the raw front matter,
+# (2) normalize (strip the keys below, collapse whitespace), (3) hash. A stripped key
+# is still stored as metadata; it just doesn't affect the content hash.
 
 schema_version: 0
 
@@ -159,11 +163,10 @@ normalization:
   # Lifecycle, identity and temporal keys. Stripping any of these is a bug; the loader
   # should reject a strip list that contains one.
   never_strip:
-    # identity and time (canonical_id, validity windows, rename detection)
+    # identity and time (canonical_id, validity windows)
     - title
     - date
     - slug
-    - aliases
     # lifecycle (claimed_status, claimed_stage, feature-gate stages)
     - status
     - stage
@@ -175,7 +178,13 @@ normalization:
     - superseded-by
     - evergreen
   strip_front_matter:
-    docs_page: [reviewers, weight, linktitle, no_list, simple_list, hide_summary]
+    docs_page:
+      [
+        reviewers, weight, linktitle, no_list, simple_list, hide_summary,
+        # aliases: extracted from raw front matter before stripping (ADR-002 D4);
+        # excluded from the hash because redirects aren't content.
+        aliases,
+      ]
     release_record: [reviewers, weight, card, linktitle, notoc, sitemap, layout, type]
     feature_gate_reference: [_build, weight, card]
     blog_post: [layout, math]
