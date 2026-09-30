@@ -15,13 +15,19 @@ description: Close out a slice. Verify exit checks, summarize results with numbe
    - `docs/architecture.md`, if the architecture changed
    - glossary gaps: only terms an interviewer would plausibly use
    - ADR status changes: propose them only. The developer accepts ADRs.
-5. **Slice brief.** Write `docs/learning/SNN-<name>.md` from `docs/learning/_template.md`, complete:
+5. **Auto-memory review.** Read Claude Code's auto-memory for this project: `MEMORY.md` and every note it indexes, in `~/.claude/projects/<repo key>/memory/`. The key is the repo's absolute path with each `/` replaced by `-`, e.g. `-home-jservito-code-org-knowledge-rag`. In the retro PR body, list each entry as:
+   - **keep:** a machine or tool quirk
+   - **move-to-repo:** a project rule; name the target file
+   - **delete:** stale, or already recorded in the repo
+
+   Report only. Don't edit memory or move content without the developer's approval.
+6. **Slice brief.** Write `docs/learning/SNN-<name>.md` from `docs/learning/_template.md`, complete:
    - what was built (3–5 sentences)
    - the decisions table (decision / alternative rejected / why / cost), from facts and ADRs
    - 3–5 likely interview questions, with answers
    - numbers to remember
 
    No quizzes, blank answer fields, or grading.
-6. **Status flip.** In `docs/backlog.md`, mark this slice ✅ and the next slice 🟨. If the next slice's doc exists, set its Status to 🟨. The developer approves the change by merging the retro PR.
-7. **Ship.** Commit `SNN: retro`, push, and open the PR with `gh pr create --base main`. Put the exit-check evidence and results in the body. Stop there; **never merge.**
-8. **Next slice.** Say whether the next slice is ready to start, and list any blocking open questions. Remind the developer to sync the claude.ai project after merging.
+7. **Status flip.** In `docs/backlog.md`, mark this slice ✅ and the next slice 🟨. If the next slice's doc exists, set its Status to 🟨. The developer approves the change by merging the retro PR.
+8. **Ship.** Commit `SNN: retro`, push, and open the PR with `gh pr create --base main`. Put the exit-check evidence, the results, and the auto-memory review in the body. Stop there; **never merge.**
+9. **Next slice.** Say whether the next slice is ready to start, and list any blocking open questions. Remind the developer to sync the claude.ai project after merging.
