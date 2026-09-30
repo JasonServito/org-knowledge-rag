@@ -69,7 +69,7 @@ Tasks:
 - [x] **S02-T1 `[core]` Manifest v0.**
   - `config/corpus_manifest.yaml`: repos, release range, SIG → path allowlists (Release/Auth/Network), the 4 traced KEPs, blog/CHANGELOG/governance sources.
   - Done when: the developer has reviewed it against ADR-002 D6.
-- [ ] **S02-T2 `[commodity]` Fetch script.**
+- [x] **S02-T2 `[commodity]` Fetch script.**
   - `spikes/fetch.py` makes partial clones into `CORPUS_CACHE_DIR` (outside the repo) and records the SHAs.
   - Done when: SHAs are written to the spike report.
   - Deps: T1.
