@@ -73,10 +73,14 @@ Tasks:
   - `spikes/fetch.py` makes partial clones into `CORPUS_CACHE_DIR` (outside the repo) and records the SHAs.
   - Done when: SHAs are written to the spike report.
   - Deps: T1.
-- [ ] **S02-T3 `[core]` Measurement.**
-  - Per release: in-scope files; distinct versions after ADR-002 normalization and hashing; estimated tokens and chunks; estimated embedding cost at current Voyage pricing (look it up).
-  - Done when: there is a table in the spike report.
+- [x] **S02-T3a `[core]` Versions.**
+  - Per release: in-scope files and distinct versions after ADR-002 normalization and hashing, plus a `head` row for the date-scoped sources.
+  - Done when: the per-release and per-source tables are in the spike report, and the hand checks match.
   - Deps: T2.
+- [ ] **S02-T3b `[core]` Tokens, chunks, cost.**
+  - Estimated tokens and chunks (upper and lower bound, chunk-size sensitivity); embedding cost at current Voyage pricing (look it up); vector storage.
+  - Done when: there is a cost table in the spike report.
+  - Deps: T3a.
 - [ ] **S02-T4 `[core]` Rename check.**
   - Run `git diff --find-renames` between adjacent release branches, on at least one known move in the Auth or Network docs.
   - Done when: the report records precision on sampled renames and lists unmatched add/delete pairs.
@@ -88,7 +92,7 @@ Tasks:
 - [ ] **S02-T6 `[human]` Decide.**
   - Write `docs/research/corpus-spike-report.md`; amend ADR-002 and ADR-003 if needed; set them to Accepted.
   - Done when: both ADRs are Accepted and the cost estimate fits the budget.
-  - Deps: T3–T5.
+  - Deps: T3a, T3b, T4, T5.
 
 ### ⬜ S03 Domain model + migrations *(blueprint gap #3)*
 
@@ -277,3 +281,4 @@ ADRs are decided when their slice starts, not earlier.
   - **If adopted:** new ADR (dependency); small interface + test fake; pinned version (never `jev-latest`); threshold in config.
   - **Out of bounds:** citation validation (AC2 stays deterministic), date/release resolution, "needs retrieval?" routing.
 - **Community SIG annual reports as WHY-evidence source (deferred).** Reason: `community/sig-{release,auth,network}/annual-report-*.md` (2020–2025) explain SIG priorities and rationale; left out of manifest v0 to keep governance scope to README/charter. (Found in S02-T1.)
+- **Ingestion never drops a file silently; parse failures are recorded with a reason in the ingestion report (S04-T2/S05).** Handle BOM, CRLF, leading blank line. Example: blog `2024/validating-admission-policy-ga` (front matter opens with `------`). (Found in S02-T3a.)
