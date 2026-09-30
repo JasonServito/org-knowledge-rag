@@ -2,28 +2,24 @@
 
 `S0X-TY`: <title>. Slice doc: `docs/slices/S0X-*.md`
 
-## What changed
+## Brief
 
-## Why this approach
+<!-- 8 lines or fewer. Core tasks may add the optional one-line Key code. -->
 
-The reason, and the main alternative rejected.
+- **What changed:** 1–2 lines.
+- **Decisions:** choice → alternative rejected → why, or "none".
+- **How verified:** `make check` <result>; `make test-int` <result, if DB or integration paths changed>; `make eval-smoke` <metric deltas, if retrieval or generation changed>.
+- **Interview-relevant:** 0–2 bullets, or "none".
+- **Key code** (`core` only, optional): `file:function`, …
 
-## Trade-offs / deferred
+<details>
+<summary>Check output</summary>
 
-## How verified
+```
+<paste the make check / make test-int output>
+```
 
-- [ ] `make check`: <result>
-- [ ] `make test-int` (if DB or integration paths changed): <result>
-- [ ] `make eval-smoke` (if retrieval or generation changed): metric deltas vs. previous run:
-
-## Concepts to know
-
-1–3 terms; new ones added to `docs/learning/glossary.md`.
-
-## Interview question
-
-**Q:**
-**A (sketch):**
+</details>
 
 ## Checklist
 
@@ -32,4 +28,3 @@ The reason, and the main alternative rejected.
 - [ ] No changes to `eval/golden_set/` (human-owned)
 - [ ] Docs/ADR updated if behavior changed or a decision was made
 - [ ] Backlog checkbox ticked
-- [ ] `core` task: I can explain every changed function without notes (explain-back done)

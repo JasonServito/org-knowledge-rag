@@ -62,7 +62,7 @@ This is the setup the project is built and verified on:
 | [`docs/backlog.md`](docs/backlog.md) | Ordered slices and tasks |
 | [`docs/ai-workflow.md`](docs/ai-workflow.md) | How this project is built with AI assistance |
 | [`CLAUDE.md`](CLAUDE.md) | Rules for the coding agent |
-| [`docs/learning/`](docs/learning/) | Learning notes and glossary |
+| [`docs/learning/`](docs/learning/) | Slice briefs and glossary |
 | [`docs/research/`](docs/research/) | Corpus selection research |
 
 ## Data, licensing and attribution

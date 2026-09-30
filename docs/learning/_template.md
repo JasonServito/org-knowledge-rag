@@ -1,24 +1,20 @@
-# Learning note: SNN <slice name>
+# Slice brief: SNN <slice name>
 
-*Written by me, in my own words. The AI may critique it but doesn't write it.*
+*Written by the coding agent in `/slice-retro`. The developer reads it before merging the retro PR.*
 
-## In my own words (5–8 sentences)
+## What was built
 
-What we built, how it works end to end, and why it matters to the project's thesis.
+3–5 sentences: what the slice delivered, how it works end to end, and why it matters to the project's thesis.
 
-## Decisions and trade-offs
+## Decisions
 
-| Decision | Alternative rejected | Why | What it cost us |
+| Decision | Alternative rejected | Why | Cost |
 |---|---|---|---|
 | | | | |
 
-## Concepts I now understand
+## Likely interview questions
 
-Link to glossary terms; add a sentence on anything subtle.
-
-## Interview Q&A
-
-Generate the questions with `/slice-retro`, then answer them myself, then ask the chat assistant to grade the answers.
+3–5 questions an interviewer would plausibly ask about this slice, each with a short answer.
 
 1. **Q:**
    **A:**
@@ -27,14 +23,6 @@ Generate the questions with `/slice-retro`, then answer them myself, then ask th
 3. **Q:**
    **A:**
 
-## How I'd draw it on a whiteboard
+## Numbers to remember
 
-Boxes and arrows, or a Mermaid diagram.
-
-## Numbers I should remember
-
-Metrics, sizes, costs, latencies from this slice.
-
-## Still fuzzy (follow up in chat)
-
--
+Metrics, sizes, costs and latencies from this slice.

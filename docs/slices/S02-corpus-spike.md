@@ -18,7 +18,7 @@ The schema (S03) depends on how many versions, renames and status mismatches act
 - [ ] `docs/research/corpus-spike-report.md` has: SHAs, per-release counts, distinct versions after dedup, token/chunk estimates, embedding cost estimate, rename findings, format findings.
 - [ ] The embedding cost estimate for the Stage 1 subset is acceptable to you.
 - [ ] ADR-002 and ADR-003 are Accepted (amendments noted).
-- [ ] Learning note S02 written.
+- [ ] Slice brief S02 written.
 
 ## Scope
 
@@ -91,4 +91,4 @@ ADR-002 and ADR-003 (accept or amend).
 - **Shipped:**
 - **Surprises:**
 - **Do differently:**
-- **Learning note:**
+- **Slice brief:**

@@ -1,6 +1,6 @@
 # Learning note 00: Planning decisions (pre-code)
 
-These decisions were made before any code existed. An interviewer will ask about them first, because they reveal judgment. **Answer each one in your own words.** Then paste your answers into chat and ask for them to be graded.
+These decisions were made before any code existed. An interviewer will ask about them first, because they reveal judgment. **Answer each one in your own words.**
 
 The source for each answer is in brackets.
 

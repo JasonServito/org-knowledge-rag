@@ -16,7 +16,7 @@ What this unblocks; which risk it retires.
 ## Exit checks
 
 - [ ] …commands or metrics that prove the outcome…
-- [ ] Retro done; learning note written; backlog updated.
+- [ ] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -49,4 +49,4 @@ These mirror `docs/backlog.md`; details live here.
 - **Surprises:**
 - **What didn't work / negative results:**
 - **Do differently next slice:**
-- **Learning note:** `docs/learning/SNN-*.md`
+- **Slice brief:** `docs/learning/SNN-*.md`
