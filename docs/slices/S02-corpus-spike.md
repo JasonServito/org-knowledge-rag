@@ -80,10 +80,53 @@ n/a. The outputs are measurements.
 - **Known limit:** fresh-cache reproduction from an existing lock is verified for kubernetes only in T2; full check in S05 (AC8).
 - **For T3:** the clones hold no file contents yet. Reading files one at a time makes git fetch each one separately (a "lazy fetch"), which is slow, and `protocol.allow=never` blocks those fetches anyway. T3 should batch-prefetch the in-scope files first.
 
-### S02-T3: Measurement `[core]`
+### S02-T3a: Versions `[core]`
 
-- **Goal:** per release, count the in-scope files and the distinct content versions after normalization and hashing (ADR-002 D2), and estimate tokens and chunks.
-- **Done when:** there's a table in the report, plus an embedding cost estimate using current Voyage pricing. Cite the pricing page and date.
+- **Goal:** per release, count the in-scope files and the distinct content versions after normalization and hashing (ADR-002 D2). Add a `head` row for the date-scoped sources.
+- **Done when:** the report has the per-release and per-source tables, and the hand checks match: one blog post against `git log --first-parent`, and one release's file count against `git ls-tree`.
+
+### S02-T3b: Tokens, chunks, cost `[core]`
+
+- **Goal:** estimate tokens and chunks as an upper bound and a lower bound:
+  - upper bound: every new version is embedded in full
+  - lower bound: only unique heading sections are embedded, as a chunk-level content-hash cache would see them
+
+  Then estimate the embedding cost and the vector storage.
+- **Done when:** the report has the cost table, citing the Voyage pricing page and date.
+
+#### T3 notes (decided at plan review, 2026-09-30)
+
+- **Split:** the plan estimated about 290 lines. The drafts came to 381 code lines (+30%), so T3 was split into T3a (versions) and T3b (tokens, chunks, cost). The T3b code is kept from the draft and re-applied on the T3b branch. T3a as shipped: 311 code lines in `measure.py` plus 52 in tests (363), against the split estimate of about 310 (+17%). The extra came from following blog moves and parsing front-matter variants, both found in the data.
+- **Run:** `uv run python spikes/measure.py [--dry-run]`, with the same `CORPUS_CACHE_DIR` rule as T2. `--dry-run` prints the blob counts and stops before downloading.
+- **Tests:** the module has no import-time side effects (no env reads, git or exit), so `tests/unit/test_spike_measure.py` runs in CI without a cache. Replace those tests in S04.
+- **Download:**
+  - Blob ids come from local trees (`git ls-tree`, `git log --raw`). `fetch.py` now also allows `ls-tree` and `log`.
+  - The contents are fetched with `git fetch --stdin`, 1,000 ids per request. It's the same request git's own lazy fetch makes, but batched.
+  - A batch whose blobs are all present is skipped without contacting the remote, so re-runs download nothing.
+  - One `git cat-file --batch` per repo reads the contents under `protocol.allow=never`, so a missing blob fails loudly.
+- **Version rule:** a new version when the normalized hash differs from the same document's previous version. A→B→A is three versions. The `raw blob versions` column compares blob ids instead, to show what normalization saves.
+- **Normalization (spike version of ADR-002 D2):**
+  - Parse the YAML front matter and drop the manifest's strip keys for that source, ignoring case. The script refuses a strip list that contains a `never_strip` key.
+  - Sort the remaining keys.
+  - Remove link targets (`[text](url)` becomes `[text]`).
+  - Collapse whitespace.
+  - The parse tolerates a byte-order mark, CRLF line endings and blank lines before the opening `---`. All three occur in real blog posts.
+- **Rows:**
+  - Releases 1.20–1.37 are the locked snapshots.
+  - `head` holds the date-scoped changes after 1.37's release date, up to the lock's default-branch heads.
+  - A blog commit goes to the first release whose cutoff is at or after the commit. The cutoff is the lock's rule: committer time (UTC) <= the release date at 23:59:59Z.
+- **Blog:**
+  - One entry per first-parent commit (`--first-parent --diff-merges=first-parent --raw`), `*.md` only.
+  - Scope: the latest version's front-matter `date` is on or after 1.20's release date, and it isn't `draft: true`.
+  - Moves are followed with git rename detection. That needs file contents, so the history is listed twice: without renames to find the blobs, then with renames after the download.
+- **KEPs:** `README.md` and other `.md` files are the documents. `kep.yaml` and PRR files are counted as metadata versions and aren't embedded (ADR-003 D1).
+- **Identity:** the file path, except that blog moves are followed. Docs renames are T4's subject.
+- **T3b estimation rules (agreed):**
+  - Tokens ≈ characters ÷ 4. This likely underestimates code and YAML, which have more tokens per character.
+  - Chunks: split at headings, at most 512 tokens per chunk, plus a 40-token header per chunk. Add 256 and 1024 as sensitivity rows.
+  - Lower bound: from unique section hashes.
+  - Vector storage: chunks × dimension × 4 bytes, at voyage-4's default of 1024 dimensions (docs.voyageai.com/docs/embeddings, updated 2026-08-10). The voyage-4 family also supports 256, 512 and 2048, so add storage rows at 512 and 256 dimensions.
+- **For S04:** the chunk header should contain only fields that are fixed when the version is created. Mutable fields (`valid_until`, tier, flags) go in DB columns, so closing a validity window doesn't force a re-embed.
 
 ### S02-T4: Rename check `[core]`
 
