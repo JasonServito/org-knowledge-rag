@@ -54,3 +54,9 @@ S01-T5 and S01-T6 need libraries that the table above implies but doesn't name. 
 S01-T8 makes the README quickstart work from a fresh clone. Added with the developer's approval:
 
 - **`pre-commit`** (dev only): the hook runner already chosen in the table above, now pinned in `uv.lock` so `uv run pre-commit install` works right after `uv sync`. Before this, it had to be installed globally, and a fresh clone would fail at that step. Rejected: a global `uv tool install pre-commit` prerequisite, because it's one more machine-level step and leaves the version unpinned.
+
+## Amendment 2026-09-29
+
+S02-T2 (`spikes/fetch.py`) reads `config/corpus_manifest.yaml` and writes `config/corpus_manifest.lock.yaml`. Added with the developer's approval:
+
+- **PyYAML** (dev only for now): parses the manifest and writes the lock file. Only `yaml.safe_load` and `yaml.safe_dump` are allowed. The full loader can build arbitrary Python objects from YAML tags, so it is never used. PyYAML is already in `uv.lock` as a transitive dependency of pre-commit. It is named explicitly so the project doesn't depend on another tool's dependency tree. It moves to the runtime dependencies in S04, when ingestion reads the manifest from `src/`. Rejected: **ruamel.yaml**, whose selling point is round-trip editing that keeps comments, which we don't need, and whose API is less familiar; a **TOML manifest** read with the standard library's `tomllib`, which needs no dependency, but the corpus itself is YAML (doc front matter, `kep.yaml`), so a YAML parser is needed anyway.
