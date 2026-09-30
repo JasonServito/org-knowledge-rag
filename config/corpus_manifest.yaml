@@ -1,0 +1,192 @@
+# Corpus manifest v0 (S02-T1).
+# The manifest, not code, defines the Stage 1 subset (ADR-002 D6).
+#
+# No SHAs here. S02-T2 writes config/corpus_manifest.lock.yaml with the head SHA of
+# each release branch and the SHA of each main-branch repo at each release date.
+#
+# Paths are repo-relative. A path ending in "/" is a directory prefix; anything else
+# is a single file. Paths were checked against the real trees on 2026-09-29; the
+# S02-T1 PR has the per-release presence table.
+#
+# Missing-path rule: pages move, so a path may be absent from some releases.
+#   - Absent from some releases: skip it for those releases and log it.
+#   - Absent from every release in range: error. The manifest is wrong.
+#
+# Processing order for each file: (1) extract metadata from the raw front matter,
+# (2) normalize (strip the keys below, collapse whitespace), (3) hash. A stripped key
+# is still stored as metadata; it just doesn't affect the content hash.
+
+schema_version: 0
+
+releases:
+  first: "1.20"
+  # From the website branch listing and hugo.toml `latest`. Confirmed in T5.
+  latest: "1.37"
+  # release_date: the v1.R.0 tag date in kubernetes/kubernetes (UTC). Matches website
+  #   data/releases/schedule.yaml for 1.34-1.37, the only releases it lists.
+  # end_of_life: 1.20-1.33 from website data/releases/eol.yaml (`endOfLifeDate`, all 14
+  #   present); 1.34-1.37 from schedule.yaml. The 1.34-1.37 dates are planned, not yet reached.
+  list:
+    - {version: "1.20", release_date: 2020-12-08, end_of_life: 2022-02-28}
+    - {version: "1.21", release_date: 2021-04-08, end_of_life: 2022-06-28}
+    - {version: "1.22", release_date: 2021-08-04, end_of_life: 2022-12-08}
+    - {version: "1.23", release_date: 2021-12-07, end_of_life: 2023-02-28}
+    - {version: "1.24", release_date: 2022-05-03, end_of_life: 2023-07-28}
+    - {version: "1.25", release_date: 2022-08-23, end_of_life: 2023-10-28}
+    - {version: "1.26", release_date: 2022-12-08, end_of_life: 2024-02-28}
+    - {version: "1.27", release_date: 2023-04-11, end_of_life: 2024-07-16}
+    - {version: "1.28", release_date: 2023-08-15, end_of_life: 2024-10-22}
+    - {version: "1.29", release_date: 2023-12-13, end_of_life: 2025-02-28}
+    - {version: "1.30", release_date: 2024-04-17, end_of_life: 2025-07-15}
+    - {version: "1.31", release_date: 2024-08-13, end_of_life: 2025-11-11}
+    - {version: "1.32", release_date: 2024-12-11, end_of_life: 2026-02-28}
+    - {version: "1.33", release_date: 2025-04-23, end_of_life: 2026-06-28}
+    - {version: "1.34", release_date: 2025-08-27, end_of_life: 2026-10-27}
+    - {version: "1.35", release_date: 2025-12-17, end_of_life: 2027-02-28}
+    - {version: "1.36", release_date: 2026-04-22, end_of_life: 2027-06-28}
+    - {version: "1.37", release_date: 2026-08-26, end_of_life: 2027-10-28}
+
+repos:
+  website: {url: "https://github.com/kubernetes/website", default_branch: main}
+  kubernetes: {url: "https://github.com/kubernetes/kubernetes", default_branch: master}
+  enhancements: {url: "https://github.com/kubernetes/enhancements", default_branch: master}
+  community: {url: "https://github.com/kubernetes/community", default_branch: main}
+  sig-release: {url: "https://github.com/kubernetes/sig-release", default_branch: master}
+
+# Where release-scoped website sources are read from (ADR-002 D1).
+# The latest release has no release-1.R branch: its docs live on `main`, and
+# release-1.R is cut only when 1.(R+1) ships.
+website_release_branches:
+  pattern: "release-{version}"
+  latest: main
+
+# Keyed by ADR-003 D1 source_type.
+# clock: "release" = one snapshot per release (release-scoped); "date" = read from
+# the default branch, versioned by commit date (ADR-002 D3).
+sources:
+  docs_page:
+    repo: website
+    clock: release
+    sigs:
+      auth:
+        - content/en/docs/concepts/security/
+        - content/en/docs/reference/access-authn-authz/
+        # The PSP page before it moved to concepts/security/ (present 1.20-1.22).
+        - content/en/docs/concepts/policy/pod-security-policy.md
+        # Pod Security Admission task and setup pages (present 1.22+).
+        - content/en/docs/tasks/configure-pod-container/enforce-standards-admission-controller.md
+        - content/en/docs/tasks/configure-pod-container/enforce-standards-namespace-labels.md
+        - content/en/docs/tasks/configure-pod-container/migrate-from-psp.md
+        - content/en/docs/setup/best-practices/enforcing-pod-security-standards.md
+      network:
+        - content/en/docs/concepts/services-networking/
+        - content/en/docs/reference/networking/  # present 1.25+
+      release:
+        # The deprecation policy moved at 1.37; both locations are listed.
+        - content/en/docs/reference/using-api/deprecation-policy.md
+        - content/en/docs/reference/deprecation-policy.md
+
+  release_record:
+    - repo: website
+      clock: release
+      paths:
+        - content/en/releases/  # present 1.21+ (release cycle, version skew, patch releases)
+        - content/en/docs/setup/release/  # 1.20 only: release notes and version skew before the move
+        - content/en/docs/reference/using-api/deprecation-guide.md
+    - repo: kubernetes
+      clock: release
+      branch: master
+      # One file per release in range. CHANGELOG-1.38.md already exists (pre-release) and is out of range.
+      paths:
+        - "CHANGELOG/CHANGELOG-{version}.md"
+
+  feature_gate_reference:
+    repo: website
+    clock: release
+    # Not SIG-filtered: gate files carry no owning SIG. About 490 small files at 1.37.
+    paths:
+      - content/en/docs/reference/command-line-tools-reference/feature-gates.md  # 1.20-1.28: one page
+      - content/en/docs/reference/command-line-tools-reference/feature-gates/  # 1.29+: one file per gate
+      - content/en/docs/reference/command-line-tools-reference/feature-gates-removed.md  # 1.25-1.28
+      - content/en/docs/reference/command-line-tools-reference/feature-gates-removed/  # 1.29+
+
+  kep:
+    repo: enhancements
+    clock: date
+    sig_dirs:
+      - keps/sig-release/
+      - keps/sig-auth/
+      - keps/sig-network/
+    # Production readiness review files: KEP metadata, not retrievable documents (ADR-003 D1).
+    prr_dirs:
+      - keps/prod-readiness/sig-release/
+      - keps/prod-readiness/sig-auth/
+      - keps/prod-readiness/sig-network/
+    # The four traced KEPs (ADR-002 D6). All sit inside sig_dirs; listed so the fetch can assert they exist.
+    traced:
+      2572: keps/sig-release/2572-release-cadence/
+      2579: keps/sig-auth/2579-psp-replacement/
+      2799: keps/sig-auth/2799-reduction-of-secret-based-service-account-token/
+      4858: keps/sig-network/4858-ip-cidr-validation/
+
+  blog_post:
+    repo: website
+    clock: date
+    branch: main  # never from release branches (ADR-002 D1)
+    paths:
+      - content/en/blog/_posts/
+    # Keep posts whose front-matter `date` is on or after this release's release_date.
+    # Most filenames carry no date, so the front matter is the only reliable source.
+    from_release: "1.20"
+    exclude_drafts: true  # front matter `draft: true`
+
+  governance_doc:
+    - repo: community
+      clock: date
+      paths:
+        - sig-release/README.md
+        - sig-release/charter.md
+        - sig-auth/README.md
+        - sig-auth/charter.md
+        - sig-network/README.md
+        - sig-network/charter.md
+        - contributors/devel/sig-release/
+    - repo: sig-release
+      clock: date
+      paths:
+        - release-engineering/  # includes reference/versioning.md (gate Appendix A conflict case)
+
+# ADR-002 D2: front-matter keys removed before hashing, so they never create a new version.
+# They are still stored as metadata. Built from the front-matter key inventory in the
+# S02-T1 PR; keys not listed are kept. Match keys case-insensitively, as Hugo does.
+normalization:
+  # Lifecycle, identity and temporal keys. Stripping any of these is a bug; the loader
+  # should reject a strip list that contains one.
+  never_strip:
+    # identity and time (canonical_id, validity windows)
+    - title
+    - date
+    - slug
+    # lifecycle (claimed_status, claimed_stage, feature-gate stages)
+    - status
+    - stage
+    - stages
+    - milestone
+    - latest-milestone
+    - removed
+    - replaces
+    - superseded-by
+    - evergreen
+  strip_front_matter:
+    docs_page:
+      [
+        reviewers, weight, linktitle, no_list, simple_list, hide_summary,
+        # aliases: extracted from raw front matter before stripping (ADR-002 D4);
+        # excluded from the hash because redirects aren't content.
+        aliases,
+      ]
+    release_record: [reviewers, weight, card, linktitle, notoc, sitemap, layout, type]
+    feature_gate_reference: [_build, weight, card]
+    blog_post: [layout, math]
+    kep_yaml: [reviewers, approvers, editor, last-updated]
+    prr_yaml: []  # only kep-number plus stage -> approver maps; the stage keys are lifecycle data
