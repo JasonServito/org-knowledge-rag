@@ -30,7 +30,7 @@ LOCK = REPO_ROOT / "config" / "corpus_manifest.lock.yaml"
 NETWORK_GIT = {"clone", "fetch"}
 # Read-only commands run with protocol.allow=never, so a missing object in a partial clone
 # fails instead of being fetched silently. (git 2.43 has no --no-lazy-fetch.)
-LOCAL_GIT = {"rev-parse", "rev-list", "cat-file"}
+LOCAL_GIT = {"rev-parse", "rev-list", "cat-file", "ls-tree", "log"}
 
 # CHANGELOG is read from master's head only, so no history is needed (ADR-002 D1).
 SHALLOW_REPOS = {"kubernetes"}
