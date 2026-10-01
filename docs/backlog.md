@@ -59,7 +59,7 @@ Tasks:
   - Done when: a fresh clone following the README works.
   - Deps: T7.
 
-### 🟨 S02 Corpus spike *(validates ADR-002 and ADR-003)*
+### ✅ S02 Corpus spike *(validates ADR-002 and ADR-003)*
 
 - **Outcome:** measured corpus numbers, with ADR-002 and ADR-003 accepted or amended on evidence.
 - **Slice doc:** `docs/slices/S02-corpus-spike.md`
@@ -102,7 +102,7 @@ Tasks:
   - Done when: both ADRs are Accepted and the cost estimate fits the budget.
   - Deps: T3a, T3b, T4a, T4b, T5a, T5b.
 
-### ⬜ S03 Domain model + migrations *(blueprint gap #3)*
+### 🟨 S03 Domain model + migrations *(blueprint gap #3)*
 
 - **Outcome:** a schema that encodes ADR-002/003 invariants, enforced by the DB or by tested code.
 
