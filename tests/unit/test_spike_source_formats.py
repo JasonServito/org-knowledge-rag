@@ -59,6 +59,14 @@ def test_changelog_sections_survive_a_stray_fence_in_a_list_item(sf: ModuleType)
     assert [h for h, _ in sf.changelog_sections(stray)[1]] == ["v1.28.1", "v1.28.2"]
 
 
+def test_changelog_sections_level_two(sf: ModuleType) -> None:
+    section = "# v1.28.1\n\n## Downloads for v1.28.1\n\n### Source Code\n\n```\n## not one\n```\n"
+    preamble, subsections = sf.changelog_sections(section + "## Changes by Kind\n", 2)
+    assert preamble == "# v1.28.1\n\n"  # the level-1 heading line stays before the first `##`
+    # `###` doesn't split at level 2, and neither does a `##` line inside a fence.
+    assert [h for h, _ in subsections] == ["Downloads for v1.28.1", "Changes by Kind"]
+
+
 def test_duplicate_headings(sf: ModuleType) -> None:
     _, sections = sf.changelog_sections(CHANGELOG + "# v1.28.0\n")
     assert sf.duplicate_headings(sections) == ["v1.28.0"]
@@ -98,6 +106,13 @@ def test_compare_verdicts(sf: ModuleType) -> None:
     assert sf.compare_sections(old, sf.changelog_sections(edited)[1])["changed"] == ["v1.28.0"]
 
 
+def test_compare_counts_a_link_target_change_as_cosmetic(sf: ModuleType) -> None:
+    old = sf.changelog_sections("# v1.28.0\n\n- Fix. ([#1](https://github.com/k/k/pull/1))\n")[1]
+    new = sf.changelog_sections("# v1.28.0\n\n- Fix. ([#1](https://github.com/k/k/pull/2))\n")[1]
+    # clean_text drops link targets (ADR-002 D2), so a changed URL alone isn't a "changed" section.
+    assert sf.compare_sections(old, new) == {"identical after clean_text": ["v1.28.0"]}
+
+
 def test_first_changed_line(sf: ModuleType) -> None:
     assert sf.first_changed_line("a\nb\nc", "a\nB\nc") == ("b", "B")
     assert sf.first_changed_line("a\nb", "a") == ("b", "")
@@ -114,9 +129,9 @@ def test_classify(sf: ModuleType) -> None:
     assert sf.classify("stable", template) == "in vocabulary"
     assert sf.classify(" Stable", template) == "normalizes"  # case and whitespace only
     assert sf.classify("GA", template) == "out of vocabulary"  # reported, not mapped
-    assert sf.classify("deprecated", template) == "out of vocabulary"
+    assert sf.classify("disabled", template) == "in vocabulary"  # for deprecation KEPs
+    assert sf.classify("disabled", lifecycle) == "out of vocabulary"  # ADR-003 D5 lacks it
     assert sf.classify("deprecated", lifecycle) == "in vocabulary"
-    assert sf.classify("disabled", lifecycle) == "out of vocabulary"
     assert sf.classify(None, template) == "missing"
     assert sf.classify(1.3, template) == "not a string"
 

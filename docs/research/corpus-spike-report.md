@@ -644,7 +644,7 @@ Each cell is the number of changes between consecutive commits, with the number 
 | Is the structure under each section regular? | **Yes, with one trap.** 3 `##` headings are in all 371 sections, and "Changes by Kind" is in 362. But a stray closing fence in 2 files hides 6 sections from a parser that toggles on every fence (table P). | `CHANGELOG-1.22.md` line 3085 |
 | Are written sections immutable (ADR-002 D1)? | **No, in the one sampled file; not exhaustive.** At least 3 of the 23 sections in `CHANGELOG-1.28.md` changed after they were written. That's a lower bound: edits before v1.28.0 weren't measured. Two of the edits are typo fixes; one is a factual correction (table Q). | `v1.28.0`: the pod-index label became `apps.kubernetes.io/pod-index`, 13 months after the release (PR #125502) |
 | Are KEP `status` values in vocabulary? | **Yes.** All 440 metadata versions use the template's 7 values or have none (1). There are no case or whitespace variants after YAML parsing (table R). | KEP-2572: `implementable` |
-| Are KEP `stage` values in vocabulary? | **No: 3 values are outside the template's alpha/beta/stable, and 2 of those are outside ADR-003 D5 too.** In addition, 76 versions have no stage (table R). | KEP-1611 claimed `stage: "GA"` at 7 release snapshots, 1.27–1.33 |
+| Are KEP `stage` values in vocabulary? | **No: 1 typo, and 1 valid value that ADR-003 D5 lacks.** `GA` is outside both vocabularies. `disabled` is valid under the KEP template, which allows deprecated, disabled or removed for deprecation KEPs, but ADR-003 D5 has no `disabled`. 76 versions have no stage (table R). | KEP-1611 claimed `stage: "GA"` at 7 release snapshots, 1.27–1.33 |
 | Does YAML read any milestone as a non-string (unquoted `1.30` → `1.3`, `yes` → `true`)? | **No.** 0 of 415 `kep.yaml` versions (table R). | KEP-4858: `latest-milestone: "v1.38"` |
 | Do blog posts have front-matter dates? | **Yes, all 412 in-scope posts at the head.** S04's parser must accept three YAML types, though: PyYAML returns an offset without a colon as a string (table S). | `date: 2023-03-17T14:00:00+0000` is a `str` |
 | Are in-place edits visible in git history? | **Yes.** T4b counted 508 versions committed after publication, in 272 of the 416 published posts (§5, table K). | The NSA/CISA post's "Update, November 2023" note arrived in its own commit, 2 years after publication (hand checks) |
@@ -693,7 +693,23 @@ Each cell is the number of changes between consecutive commits, with the number 
     - `CHANGELOG-1.36.md` line 1602, in `v1.36.0-beta.0`
   - **What goes wrong:** a parser that toggles "inside code" on every fence line reads the rest of the file as code. It loses 4 sections in 1.22 (`beta.0`, `alpha.3`–`alpha.1`) and 2 in 1.36 (`alpha.2`, `alpha.1`). The spike's first run did exactly that, and the hand count below caught it.
   - **The fix:** in CommonMark, a fence indented inside a list item ends with the item. The spike now closes an indented fence at the next line in column 0. After the fix, the section counts match `grep -c '^# v'` for all 18 files.
-  - **T3b's `split_sections` has the same toggle,** so T3b's section and chunk counts for these 2 files are slightly low. The token totals aren't affected. Not recomputed; recorded for S04-T3 in the backlog.
+  - **T3b's `split_sections` has the same toggle,** so T3b undercounted these 2 files' sections and chunks (recount below; recorded for S04-T3 in the backlog).
+
+**T3b recount for the two files.** Method: a scratch script. It applies T3b's own estimate (`analyse`, `tally`, `embed_totals`) and changes only the fence rule in `split_sections`. The other 16 CHANGELOGs come out identical.
+
+| file | bound | sections | chunks @512 | embedded tokens @512 |
+|---|---|---:|---:|---:|
+| `CHANGELOG-1.22.md` | upper | 341 → 427 | 497 → 556 (+59) | 136,067 → 138,435 (+2,368) |
+| `CHANGELOG-1.22.md` | lower | 253 → 325 | 409 → 454 (+45) | 131,872 → 133,609 (+1,737) |
+| `CHANGELOG-1.36.md` | upper | 141 → 193 | 295 → 332 (+37) | 104,923 → 106,408 (+1,485) |
+| `CHANGELOG-1.36.md` | lower | 111 → 153 | 265 → 292 (+27) | 103,512 → 104,538 (+1,026) |
+
+- **Against §3's totals at 512 tokens:**
+  - The upper bound gains 96 chunks (55,821 → 55,917, +0.17%) and 3,853 embedded tokens (+0.03%, +$0.0002 at voyage-4).
+  - The lower bound gains 72 chunks (26,588 → 26,660, +0.27%) and 2,763 embedded tokens.
+  - At 256 and 1,024 tokens: upper +98 and +104 chunks, lower +74 and +80.
+- **Body tokens move by less than 70 per file.** The estimate rounds up per section, and some of the new sections are duplicates within their file, so the lower bound drops them.
+- **Not done:** §3's tables aren't edited, the floor wasn't recounted, and other sources weren't checked for stray fences.
 
 ### Q. Immutability sample: `CHANGELOG-1.28.md` (one sampled file, not exhaustive)
 
@@ -725,9 +741,9 @@ Each cell is the number of changes between consecutive commits, with the number 
   - **25 single-file KEPs,** whose metadata is front matter. All 25 exist only in the 1.20 snapshot. By 1.21 they've moved to KEP directories: for example, `0014-dynamic-audit-configuration.md` and `600-dynamic-audit-configuration/kep.yaml` have the same title.
   - **8 single `.md` files without metadata,** which are left out: `keps/sig-network/README.md` (an index) and 7 symlinks (mode `120000`) into KEP directories, for example `keps/sig-release/k8s-image-promoter.md` → `1734-k8s-image-promoter/README.md`.
 - **Vocabularies:**
-  - **The KEP template at the lock head:** `status: provisional|implementable|implemented|deferred|rejected|withdrawn|replaced` and `stage: alpha|beta|stable`.
-  - **ADR-003 D5:** the same 7 statuses, and `lifecycle_stage` = alpha, beta, stable, deprecated, removed.
-  - **The enhancements repo's own validator** (`api/proposal.go`, `ValidStages`) also accepts `deprecated`, `disabled` and `removed`. The template's comment says a deprecation KEP uses one of those three.
+  - **The KEP template at the lock head:** `status: provisional|implementable|implemented|deferred|rejected|withdrawn|replaced` and `stage: alpha|beta|stable`. The comment above `stage` adds that a deprecation KEP uses `deprecated|disabled|removed`. So the template allows six stages, and that's the spike's template vocabulary.
+  - **ADR-003 D5:** the same 7 statuses, and `lifecycle_stage` = alpha, beta, stable, deprecated, removed. It has no `disabled`.
+  - **The enhancements repo's own validator** (`api/proposal.go`, `ValidStages`) accepts the same six stages as the template.
 
 **`status`**
 
@@ -748,20 +764,20 @@ Each cell is the number of changes between consecutive commits, with the number 
 | `alpha` | in vocabulary | in vocabulary | 20 | 126 | 0 | `sig-network/1435-mixed-protocol-lb/kep.yaml` |
 | `beta` | in vocabulary | in vocabulary | 5 | 81 | 0 | `sig-auth/541-external-credential-providers/kep.yaml` |
 | (none) | missing | missing | 5 | 76 | 25 | `sig-auth/0000-20170814-bounding-self-labeling-kubelets.md` |
-| `deprecated` | **out of vocabulary** | in vocabulary | 3 | 6 | 0 | `sig-network/4974-deprecate-endpoints/kep.yaml` |
-| `disabled` | **out of vocabulary** | **out of vocabulary** | 1 | 2 | 0 | `sig-network/4004-deprecate-kube-proxy-version/kep.yaml` |
+| `deprecated` | in vocabulary | in vocabulary | 3 | 6 | 0 | `sig-network/4974-deprecate-endpoints/kep.yaml` |
+| `disabled` | in vocabulary | **out of vocabulary** | 1 | 2 | 0 | `sig-network/4004-deprecate-kube-proxy-version/kep.yaml` |
 | `GA` | **out of vocabulary** | **out of vocabulary** | 0 | 1 | 0 | `sig-network/1611-network-policy-validation/kep.yaml` |
 
 - **"Normalizes" is empty: YAML absorbs the variants.** At the head, 9 raw `stage:` lines are quoted (7, such as `stage: "stable"`) or end in a space (2). YAML reads all 9 as plain in-vocabulary strings.
 - **`GA` is a typo with a long life.** KEP-1611's single `kep.yaml` version with `stage: "GA"` is the claim at 7 release snapshots, 1.27–1.33. It became `stable` by 1.34. Its status was `implemented` throughout.
-- **`disabled` isn't a typo.** KEP-4004, which deprecates the kube-proxy version field, has used it from the 1.33 snapshot to the head, and the validator accepts it. ADR-003 D5 has no `disabled`.
+- **`disabled` isn't a typo.** KEP-4004, which deprecates the kube-proxy version field, has used it from the 1.33 snapshot to the head. The template allows it for deprecation KEPs and the validator accepts it. Only ADR-003 D5 lacks it.
 - **76 versions have no stage:**
   - all 25 single-file KEPs, because the old format had no `stage` key
   - 51 `kep.yaml` versions, 5 of them at the head
 - **Milestones:**
   - **0 non-string values.** Every `latest-milestone` and `milestone.<stage>` value is quoted or starts with `v`.
   - 47 of the 415 `kep.yaml` versions have an empty or missing `latest-milestone`.
-  - **The `milestone` keys repeat the stage problem:** `alpha` 291, `stable` 286, `beta` 285, `deprecated` 9, `disabled` 2, `GA` 1.
+  - **The `milestone` keys:** `alpha` 291, `stable` 286, `beta` 285, `deprecated` 9 and `disabled` 2 (both valid under the template), and `GA` 1. The `GA` key is KEP-2595's, at the 1.22 snapshot only; it's a different KEP from the `GA` stage.
 - **One `kep.yaml` doesn't parse:** KEP-1205's (bound service account tokens) at the 1.20 snapshot.
   - It starts and ends with `---`, so `yaml.safe_load` sees a second, empty document and raises "expected a single document in the stream". Its later versions parse.
   - Reading the first document with `safe_load_all` would recover `status: implementable` and `stage: beta`.
@@ -801,20 +817,18 @@ Each cell is the number of changes between consecutive commits, with the number 
 
 ### For T6
 
-- **ADR-002 D1 says CHANGELOG sections are immutable and need no versioning. The sample says otherwise.**
-  - Edits land in written sections: two typo fixes and one factual fix, the last 13 months after the release.
-  - This is one sampled file, so it can't give a rate, but one counter-example is enough to drop the assumption.
-  - Either way, S04 must re-read each CHANGELOG from `master` and hash it per section, not skip a section because it "can't change".
-  - **T6 decides:**
-    - keep only the latest text of each section (corrections replace the old text), or
-    - version sections like other date-scoped sources (ADR-002 D2/D3).
-- **ADR-003 D5 `claimed_stage` vocabulary:**
-  - `GA` is a typo for `stable`. T5a maps `GA` → `stable` for feature gates, and the same mapping would cover KEP-1611's 7 snapshots. T6 decides whether to map it or flag it.
-  - `disabled` is a real stage in the enhancements validator. Add it to `lifecycle_stage`, or record that KEP claims can hold values the observed side can't.
-  - `deprecated` is fine under ADR-003 D5, but not under the template.
-- **ADR-003 D2's fallback has nothing to fall back to for 76 versions:** 25 old-format KEPs and 51 `kep.yaml` versions with no `stage`. Those need "no claim" as well as `status_confidence = low`.
-- **KEP-1205's multi-document `kep.yaml`:** read the first document and log the file, in line with the backlog's "never drop a file silently".
-- **ADR-002's validation item "Confirm the blog front matter has a date, and that in-place updates are visible in git history":** yes to both. The NSA/CISA hand check also shows that an update note's own date ("November 2023") can differ from its commit date (2023-12-27). `valid_from` follows the commit (T4b's rule), not the note's text.
+Questions for T6, with the evidence above:
+
+- **ADR-002 D1 assumes CHANGELOG sections never change. Does that still hold?**
+  - In the sample, at least 3 sections changed after they were written: two typo fixes, and one factual fix 13 months after the release (table Q).
+  - One sampled file can't give a rate.
+  - If the assumption goes: should a corrected section replace the old text, or become a new version like other date-scoped sources (ADR-002 D2/D3)? And should S04 re-read and hash every section at each ingestion?
+- **Should `disabled` join ADR-003 D5's `claimed_stage` vocabulary?** The KEP template allows it for deprecation KEPs and the validator accepts it (KEP-4004). Direction at the T5b review: yes, add it.
+- **Should `GA` be mapped to `stable`, or flagged?** It was KEP-1611's claim at 7 release snapshots. T5a maps `GA` → `stable` for feature gates.
+- **What should ADR-003 D2's fallback do for the 76 versions with no `stage`** (25 old-format KEPs, 51 `kep.yaml` versions)? Is "no claim" a separate state from `status_confidence = low`?
+- **How should a `kep.yaml` that fails to parse be handled?** KEP-1205's 1.20 version parses if its first YAML document is read (`safe_load_all`).
+- **Does §3's cost estimate need a correction for the stray fence?** The recount adds 96 chunks (+0.17%) and 3,853 embedded tokens (+$0.0002 at voyage-4) to the upper bound at 512 (table P).
+- **Can ADR-002's validation item on blog dates and in-place edits be ticked?** Both checks say yes (table S; §5, table K). The NSA/CISA hand check also shows that an update note's own date ("November 2023") can differ from its commit date (2023-12-27). T4b's `valid_from` rule follows the commit.
 
 ### Hand checks
 
@@ -827,8 +841,9 @@ Each cell is the number of changes between consecutive commits, with the number 
 | Label fix | `gh api repos/kubernetes/kubernetes/pulls/125502/files`: one changed line in `CHANGELOG-1.28.md`. `…/pulls/125502/commits` lists `bcd1d845` only. | `v1.28.0` changed |
 | KEP-2572 at the head | `git show <head>:keps/sig-release/2572-release-cadence/kep.yaml`: line 14 `status: implementable`, line 30 `stage: alpha`, line 35 `latest-milestone: "v1.22"` | same |
 | `GA` and `disabled` across snapshots | KEP-1611's `kep.yaml`: `stage: "GA"` at 1.27–1.33, `"stable"` from 1.34. KEP-4004's: `alpha` at 1.29–1.30, `beta` at 1.31–1.32, `disabled` from 1.33. | 1 and 2 versions |
+| `GA` as a milestone key | Every `kep.yaml` version at every snapshot: only KEP-2595's (`2595-expanded-dns-config`), at the 1.22 snapshot | `GA` 1 |
 | Unparseable `kep.yaml` | KEP-1205's at the 1.20 snapshot has `---` on lines 1 and 38. `yaml.safe_load` raises "expected a single document in the stream". | the one `kep.yaml` without metadata |
 | Symlinks | `git ls-tree <head> -- keps/sig-release/ keps/sig-auth/`: mode `120000` on the 7 files, for example `k8s-image-promoter.md`, whose content is `1734-k8s-image-promoter/README.md` | 7 `.md` files without metadata |
-| Vocabularies | `gh api` at the enhancements lock head: `keps/NNNN-kep-template/kep.yaml` lines 9 and 27, and `api/proposal.go` lines 44–51 | `STATUSES`, `TEMPLATE_STAGES` |
+| Vocabularies | `gh api` at the enhancements lock head: `keps/NNNN-kep-template/kep.yaml` line 9 (`status`) and lines 24–27 (the `stage` line and the deprecation comment above it), and `api/proposal.go` lines 44–51 | `STATUSES`, `TEMPLATE_STAGES` |
 | Offset without a colon | `yaml.safe_load("date: 2024-03-01T10:00:00+0000")` gives a `str`, and T4b's `front_time` reads it as 10:00 UTC. `git grep` lists 9 such dates or millisecond dates, matching the table's 8 + 1. | 8 + 1 posts |
 | In-place edit: NSA/CISA post | Added 2021-10-04 (`a72f7fac`, PR #29791) with `date: 2021-10-05`. On 2023-12-27, `8aecf063` (PR #44031) added `**Update, November 2023:**` and changed the guidance link. PR #53902 moved it with no content change (R100). | after publication, so 1 of T4b's 508 |

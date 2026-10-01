@@ -55,7 +55,8 @@ VERDICTS += ("duplicate heading",)
 # The KEP template's values (keps/NNNN-kep-template/kep.yaml); statuses match ADR-003 D5.
 STATUSES = ("provisional", "implementable", "implemented", "deferred", "rejected", "withdrawn")
 STATUSES += ("replaced",)
-TEMPLATE_STAGES = ("alpha", "beta", "stable")
+# `stage: alpha|beta|stable`, and its comment adds deprecated|disabled|removed for deprecation KEPs.
+TEMPLATE_STAGES = ("alpha", "beta", "stable", "deprecated", "disabled", "removed")
 LIFECYCLE_STAGES = ("alpha", "beta", "stable", "deprecated", "removed")  # ADR-003 D5
 
 
