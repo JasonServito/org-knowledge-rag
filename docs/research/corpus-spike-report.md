@@ -626,3 +626,209 @@ Each cell is the number of changes between consecutive commits, with the number 
 | `1,24` typo | 1.28 `feature-gates-removed.md` line 353: `\| GA \| 1.22 \| 1,24 \|` | unparseable version |
 | Table-name typos | 1.28 `feature-gates.md` line 165 `PersistentVolumeLastPhaseTransistionTime`, line 670 `…Transition…`. 1.24 line 88 `csiMigrationRBD`; 1.25 line 82 `CSIMigrationRBD`. | 2 gates only in the tables |
 | `DynamicResourceAllocation` rewrite | 1.31 file `dynamic-resource-allocation.md`: alpha from 1.26. 1.32 file `DynamicResourceAllocation.md`: alpha 1.30–1.31, beta from 1.32. | first differs at 1.26 |
+
+## 7. Format checks (S02-T5b: CHANGELOG, KEP metadata and blog)
+
+- **Run:** `uv run python spikes/source_formats.py` on 2026-10-01, against the same lock.
+  - **Network:** only the CHANGELOG sample. Two historical versions of `CHANGELOG-1.28.md` came through read-only `gh api` and are saved under `$CORPUS_CACHE_DIR/gh/` (746 KB). T2's depth-1 kubernetes clone wasn't touched.
+  - **Everything else was local since T3a.** The five clones' object stores stayed at 138,020,474 bytes in total. The website's share is the 104,390,029 bytes quoted in §5 and §6.
+  - **A second run** took 1.7 seconds, made no `gh` calls, and printed the same output.
+- **Method:** the three checks are listed in the spike's docstring. In brief:
+  - **CHANGELOG:** split each file at its level-1 headings. Sections are paired **by heading, never by position**, because the files are newest first and each release is prepended.
+  - **KEP metadata:** `status` and `stage` are classified as parsed by YAML. A case or whitespace variant normalizes; any other value is out of vocabulary, reported and not mapped (T5 notes).
+  - **Blog:** T4b's numbers, plus the raw `date` line of each in-scope post at the head.
+
+| question | answer | example |
+|---|---|---|
+| Does each CHANGELOG have one section per release, under a unique version heading? | **Yes.** 18 files, 371 `# v1.R.x` sections. There are no duplicates, every heading parses as a version of its file's `1.R`, and every file opens with a generated TOC (table P). | `CHANGELOG-1.28.md`: 23 sections, `v1.28.0-alpha.1` to `v1.28.15` |
+| Is the structure under each section regular? | **Yes, with one trap.** 3 `##` headings are in all 371 sections, and "Changes by Kind" is in 362. But a stray closing fence in 2 files hides 6 sections from a parser that toggles on every fence (table P). | `CHANGELOG-1.22.md` line 3085 |
+| Are written sections immutable (ADR-002 D1)? | **No, in the one sampled file; not exhaustive.** At least 3 of the 23 sections in `CHANGELOG-1.28.md` changed after they were written. That's a lower bound: edits before v1.28.0 weren't measured. Two of the edits are typo fixes; one is a factual correction (table Q). | `v1.28.0`: the pod-index label became `apps.kubernetes.io/pod-index`, 13 months after the release (PR #125502) |
+| Are KEP `status` values in vocabulary? | **Yes.** All 440 metadata versions use the template's 7 values or have none (1). There are no case or whitespace variants after YAML parsing (table R). | KEP-2572: `implementable` |
+| Are KEP `stage` values in vocabulary? | **No: 3 values are outside the template's alpha/beta/stable, and 2 of those are outside ADR-003 D5 too.** In addition, 76 versions have no stage (table R). | KEP-1611 claimed `stage: "GA"` at 7 release snapshots, 1.27–1.33 |
+| Does YAML read any milestone as a non-string (unquoted `1.30` → `1.3`, `yes` → `true`)? | **No.** 0 of 415 `kep.yaml` versions (table R). | KEP-4858: `latest-milestone: "v1.38"` |
+| Do blog posts have front-matter dates? | **Yes, all 412 in-scope posts at the head.** S04's parser must accept three YAML types, though: PyYAML returns an offset without a colon as a string (table S). | `date: 2023-03-17T14:00:00+0000` is a `str` |
+| Are in-place edits visible in git history? | **Yes.** T4b counted 508 versions committed after publication, in 272 of the 416 published posts (§5, table K). | The NSA/CISA post's "Update, November 2023" note arrived in its own commit, 2 years after publication (hand checks) |
+
+### P. CHANGELOG sections (at the kubernetes lock head)
+
+| release | sections | oldest … newest |
+|---|---:|---|
+| 1.20 | 23 | v1.20.0-alpha.1 … v1.20.15 |
+| 1.21 | 21 | v1.21.0-alpha.1 … v1.21.14 |
+| 1.22 | 25 | v1.22.0-alpha.1 … v1.22.17 |
+| 1.23 | 25 | v1.23.0-alpha.1 … v1.23.17 |
+| 1.24 | 25 | v1.24.0-alpha.1 … v1.24.17 |
+| 1.25 | 23 | v1.25.0-alpha.1 … v1.25.16 |
+| 1.26 | 22 | v1.26.0-alpha.1 … v1.26.15 |
+| 1.27 | 23 | v1.27.0-alpha.1 … v1.27.16 |
+| 1.28 | 23 | v1.28.0-alpha.1 … v1.28.15 |
+| 1.29 | 22 | v1.29.0-alpha.1 … v1.29.15 |
+| 1.30 | 22 | v1.30.0-alpha.1 … v1.30.14 |
+| 1.31 | 21 | v1.31.0-alpha.1 … v1.31.14 |
+| 1.32 | 21 | v1.32.0-alpha.1 … v1.32.13 |
+| 1.33 | 20 | v1.33.0-alpha.1 … v1.33.13 |
+| 1.34 | 20 | v1.34.0-alpha.1 … v1.34.12 |
+| 1.35 | 16 | v1.35.0-alpha.1 … v1.35.9 |
+| 1.36 | 11 | v1.36.0-alpha.1 … v1.36.5 |
+| 1.37 | 8 | v1.37.0-alpha.1 … v1.37.1 |
+
+- **No duplicate headings, no level-1 heading that isn't a version of the file's release, and a generated TOC in every file.** The TOC sits before the first section (`<!-- BEGIN MUNGE: GENERATED_TOC -->`), and it changes whenever a release is prepended. Like the sha512 download tables (backlog, from T3b), it has no retrieval value.
+- **The `##` headings, by the number of sections that have each:**
+
+| `##` heading | sections (of 371) |
+|---|---:|
+| Changelog since `<v>` | 371 |
+| Dependencies | 371 |
+| Downloads for `<v>` | 371 |
+| Changes by Kind | 362 |
+| Urgent Upgrade Notes | 59 |
+| Important Security Information | 44 |
+| Known Issues | 6 |
+| What's New (Major Themes) | 5 |
+| Major Themes | 1 |
+
+- **The stray-fence trap:**
+  - Two release notes end with a closing code fence (a line of three backticks) that was never opened. It's left over from the PR template's release-note block:
+    - `CHANGELOG-1.22.md` line 3085, in `v1.22.0-beta.1`
+    - `CHANGELOG-1.36.md` line 1602, in `v1.36.0-beta.0`
+  - **What goes wrong:** a parser that toggles "inside code" on every fence line reads the rest of the file as code. It loses 4 sections in 1.22 (`beta.0`, `alpha.3`–`alpha.1`) and 2 in 1.36 (`alpha.2`, `alpha.1`). The spike's first run did exactly that, and the hand count below caught it.
+  - **The fix:** in CommonMark, a fence indented inside a list item ends with the item. The spike now closes an indented fence at the next line in column 0. After the fix, the section counts match `grep -c '^# v'` for all 18 files.
+  - **T3b's `split_sections` has the same toggle,** so T3b's section and chunk counts for these 2 files are slightly low. The token totals aren't affected. Not recomputed; recorded for S04-T3 in the backlog.
+
+### Q. Immutability sample: `CHANGELOG-1.28.md` (one sampled file, not exhaustive)
+
+- **Versions:**
+  - **after v1.28.0:** commit `8cb979ae`, 2023-08-15, "CHANGELOG: Update directory for v1.28.0 release". It holds 8 sections, `alpha.1` to `v1.28.0`.
+  - **after v1.28.15:** commit `6d99b1c8`, 2024-10-23, the last patch release's update. It holds all 23 sections.
+  - **locked head:** the kubernetes lock head. Its blob is the file as of `c8681531`, 2025-09-05, the last commit to touch it (hand checks).
+- **Commits touching the file:** 34 in total (`gh api …/commits?path=…`).
+  - 23 are release-tool commits, one per release from `alpha.1` to `v1.28.15`.
+  - 7 commits come before v1.28.0: 5 whose messages describe release-note corrections and 2 merge commits. An example of the first kind is "Remove release-notes for the PR#118895". The sample starts after them, so it doesn't measure them.
+  - 4 commits come after v1.28.0. They make 3 edits, and the sample sees all 3.
+
+| pair | identical | identical after `clean_text` | changed | removed | added | duplicate heading |
+|---|---:|---:|---:|---:|---:|---:|
+| after v1.28.0 → after v1.28.15 | 7 | 0 | 1 | 0 | 15 | 0 |
+| after v1.28.0 → locked head | 6 | 0 | 2 | 0 | 15 | 0 |
+| after v1.28.15 → locked head | 20 | 0 | 3 | 0 | 0 | 0 |
+
+- **The 3 edits after v1.28.0:**
+  1. **PR #125502** (commit `bcd1d845`, merged 2024-09-26), "Fix pod-index label name for StatefulSet Pods". In `v1.28.0`, `statefulset.kubernetes.io/pod-index` became `apps.kubernetes.io/pod-index`. **This corrects a fact,** 13 months after the release: an answer from the earlier text would give the wrong label name.
+  2. **`f0ac94ff`, 2024-10-23:** in `v1.28.15`, `kubeamd join` became `kubeadm join`, on the day the section was written.
+  3. **`c8681531`, 2025-09-05:** `sattsfied` became `satisfied` in both `v1.28.0-alpha.1` and `v1.28.0`. The `v1.28.0` section repeats the pre-release notes, so one typo appears twice.
+- **No section was removed, and none differs only in whitespace or link targets.** Every edit changes words.
+
+### R. KEP metadata (`status`, `stage`, milestones)
+
+- **Units:** distinct metadata versions (blobs) across the 19 enhancements snapshots in the lock, under the three SIG directories.
+  - **415 `kep.yaml` versions.** A 416th doesn't parse; see below.
+  - **25 single-file KEPs,** whose metadata is front matter. All 25 exist only in the 1.20 snapshot. By 1.21 they've moved to KEP directories: for example, `0014-dynamic-audit-configuration.md` and `600-dynamic-audit-configuration/kep.yaml` have the same title.
+  - **8 single `.md` files without metadata,** which are left out: `keps/sig-network/README.md` (an index) and 7 symlinks (mode `120000`) into KEP directories, for example `keps/sig-release/k8s-image-promoter.md` → `1734-k8s-image-promoter/README.md`.
+- **Vocabularies:**
+  - **The KEP template at the lock head:** `status: provisional|implementable|implemented|deferred|rejected|withdrawn|replaced` and `stage: alpha|beta|stable`.
+  - **ADR-003 D5:** the same 7 statuses, and `lifecycle_stage` = alpha, beta, stable, deprecated, removed.
+  - **The enhancements repo's own validator** (`api/proposal.go`, `ValidStages`) also accepts `deprecated`, `disabled` and `removed`. The template's comment says a deprecation KEP uses one of those three.
+
+**`status`**
+
+| value | template = ADR-003 D5 | at head | all versions | of which single-file | example |
+|---|---|---:|---:|---:|---|
+| `implementable` | in vocabulary | 26 | 284 | 14 | `sig-auth/0014-dynamic-audit-configuration.md` |
+| `implemented` | in vocabulary | 74 | 121 | 6 | `sig-auth/0000-20170814-bounding-self-labeling-kubelets.md` |
+| `provisional` | in vocabulary | 7 | 28 | 4 | `sig-auth/1687-hierarchical-namespaces-subproject/kep.yaml` |
+| `withdrawn` | in vocabulary | 4 | 4 | 0 | `sig-auth/600-dynamic-audit-configuration/kep.yaml` |
+| `replaced` | in vocabulary | 2 | 2 | 0 | `sig-network/536-topology-aware-routing/kep.yaml` |
+| (none) | missing | 0 | 1 | 1 | `sig-network/20190920-external-dns.md` |
+
+**`stage`**
+
+| value | KEP template | ADR-003 D5 | at head | all versions | of which single-file | example |
+|---|---|---|---:|---:|---:|---|
+| `stable` | in vocabulary | in vocabulary | 79 | 148 | 0 | `sig-network/1453-ingress-api/kep.yaml` |
+| `alpha` | in vocabulary | in vocabulary | 20 | 126 | 0 | `sig-network/1435-mixed-protocol-lb/kep.yaml` |
+| `beta` | in vocabulary | in vocabulary | 5 | 81 | 0 | `sig-auth/541-external-credential-providers/kep.yaml` |
+| (none) | missing | missing | 5 | 76 | 25 | `sig-auth/0000-20170814-bounding-self-labeling-kubelets.md` |
+| `deprecated` | **out of vocabulary** | in vocabulary | 3 | 6 | 0 | `sig-network/4974-deprecate-endpoints/kep.yaml` |
+| `disabled` | **out of vocabulary** | **out of vocabulary** | 1 | 2 | 0 | `sig-network/4004-deprecate-kube-proxy-version/kep.yaml` |
+| `GA` | **out of vocabulary** | **out of vocabulary** | 0 | 1 | 0 | `sig-network/1611-network-policy-validation/kep.yaml` |
+
+- **"Normalizes" is empty: YAML absorbs the variants.** At the head, 9 raw `stage:` lines are quoted (7, such as `stage: "stable"`) or end in a space (2). YAML reads all 9 as plain in-vocabulary strings.
+- **`GA` is a typo with a long life.** KEP-1611's single `kep.yaml` version with `stage: "GA"` is the claim at 7 release snapshots, 1.27–1.33. It became `stable` by 1.34. Its status was `implemented` throughout.
+- **`disabled` isn't a typo.** KEP-4004, which deprecates the kube-proxy version field, has used it from the 1.33 snapshot to the head, and the validator accepts it. ADR-003 D5 has no `disabled`.
+- **76 versions have no stage:**
+  - all 25 single-file KEPs, because the old format had no `stage` key
+  - 51 `kep.yaml` versions, 5 of them at the head
+- **Milestones:**
+  - **0 non-string values.** Every `latest-milestone` and `milestone.<stage>` value is quoted or starts with `v`.
+  - 47 of the 415 `kep.yaml` versions have an empty or missing `latest-milestone`.
+  - **The `milestone` keys repeat the stage problem:** `alpha` 291, `stable` 286, `beta` 285, `deprecated` 9, `disabled` 2, `GA` 1.
+- **One `kep.yaml` doesn't parse:** KEP-1205's (bound service account tokens) at the 1.20 snapshot.
+  - It starts and ends with `---`, so `yaml.safe_load` sees a second, empty document and raises "expected a single document in the stream". Its later versions parse.
+  - Reading the first document with `safe_load_all` would recover `status: implementable` and `stage: beta`.
+- **T3a counted the 7 symlinks as KEP documents:** `measure.ls_tree` keeps every blob, and a symlink is a blob. That's 7 tiny versions of 3,281, too few to recompute. S04 should skip symlinks.
+
+**Traced KEPs at the head** (parsed and raw `latest-milestone` are identical; all are quoted):
+
+| KEP | status | stage | `latest-milestone` (raw) | `milestone` |
+|---|---|---|---|---|
+| 2572 | implementable | alpha | `"v1.22"` | alpha v1.22, beta v1.23, stable v1.26 |
+| 2579 | implemented | stable | `"v1.25"` | alpha v1.22, beta v1.23, stable v1.25 |
+| 2799 | implemented | stable | `"v1.30"` | beta v1.24, stable v1.30 |
+| 4858 | implemented | stable | `"v1.38"` | alpha v1.33, beta v1.36, stable v1.38 |
+
+- **KEP-2572** still claims `alpha` and `implementable`, while its own milestone map says stable at v1.26. That's ADR-003's first example.
+- **KEP-4858** claims `implemented` and `stable` for v1.38, which isn't released: the latest is 1.37 (§6, table M). That's ADR-003's other example, the claim running ahead of the release.
+- **KEP-2579's** stable v1.25 matches `PodSecurity`'s GA from 1.25 in both feature-gate formats (§6, table O).
+
+### S. Blog: front-matter dates and in-place edits
+
+- **Dates:** T3a's scope rule applied to the files at the website head gives 412 posts. That's T3a's 417 in-scope histories minus 5 that end in a delete, among them the 2 extensionless interviews (§5, table L) and the kubescape fragment (§5, table J). All 412 have a front-matter `date`.
+
+| raw `date`, digits as 9 | posts | PyYAML returns |
+|---|---:|---|
+| `9999-99-99` | 259 | `date` |
+| `9999-99-99T99:99:99-99:99` | 137 | `datetime` with offset |
+| `9999-99-99T99:99:99+99:99` | 7 | `datetime` with offset |
+| `9999-99-99T99:99:99+9999` | 7 | **`str`** |
+| `9999-99-99T99:99:99-9999` | 1 | **`str`** |
+| `9999-99-99T99:99:99.999Z` | 1 | `datetime`, UTC |
+
+- **8 posts write the offset without a colon** (`+0000`, `-0800`). YAML 1.1's timestamp pattern needs the colon, so PyYAML returns a string. Python's `datetime.fromisoformat` parses those strings, and T4b's `front_time` already handles them. S04's parser must accept all three types. No date is quoted.
+- **2 of the 773 post files at the head have no front-matter date.** Both are outside T3a's scope:
+  - `2026/scaling-kubernetes-workloads-with-node-swap/index.md`, a draft
+  - `2024/validating-admission-policy-ga/index.md`, whose front matter opens with `------` (§2, finding 3; not fetched live, as agreed in the T5 notes)
+- **In-place edits:** yes. T4b's table K counts 508 ADR-002 D2 versions committed after publication, in 272 of the 416 published posts. The hand check below follows one dated update note.
+
+### For T6
+
+- **ADR-002 D1 says CHANGELOG sections are immutable and need no versioning. The sample says otherwise.**
+  - Edits land in written sections: two typo fixes and one factual fix, the last 13 months after the release.
+  - This is one sampled file, so it can't give a rate, but one counter-example is enough to drop the assumption.
+  - Either way, S04 must re-read each CHANGELOG from `master` and hash it per section, not skip a section because it "can't change".
+  - **T6 decides:**
+    - keep only the latest text of each section (corrections replace the old text), or
+    - version sections like other date-scoped sources (ADR-002 D2/D3).
+- **ADR-003 D5 `claimed_stage` vocabulary:**
+  - `GA` is a typo for `stable`. T5a maps `GA` → `stable` for feature gates, and the same mapping would cover KEP-1611's 7 snapshots. T6 decides whether to map it or flag it.
+  - `disabled` is a real stage in the enhancements validator. Add it to `lifecycle_stage`, or record that KEP claims can hold values the observed side can't.
+  - `deprecated` is fine under ADR-003 D5, but not under the template.
+- **ADR-003 D2's fallback has nothing to fall back to for 76 versions:** 25 old-format KEPs and 51 `kep.yaml` versions with no `stage`. Those need "no claim" as well as `status_confidence = low`.
+- **KEP-1205's multi-document `kep.yaml`:** read the first document and log the file, in line with the backlog's "never drop a file silently".
+- **ADR-002's validation item "Confirm the blog front matter has a date, and that in-place updates are visible in git history":** yes to both. The NSA/CISA hand check also shows that an update note's own date ("November 2023") can differ from its commit date (2023-12-27). `valid_from` follows the commit (T4b's rule), not the note's text.
+
+### Hand checks
+
+| Check | By hand | Spike |
+|---|---|---|
+| CHANGELOG section counts | `grep -c '^# v'` on each of the 18 files at the lock head | same count for all 18. Before the stray-fence fix, the spike gave 21 for 1.22 and 9 for 1.36, against 25 and 11. |
+| Stray fence | `CHANGELOG-1.22.md` lines 3084–3087: a release-note line, a line of three backticks indented 2 spaces, a blank line, then the PR template's `#### Additional documentation…`. `CHANGELOG-1.36.md` line 1602 is the same, indented 3. | 25 and 11 sections |
+| Sample commits | `gh api --paginate 'repos/kubernetes/kubernetes/commits?path=CHANGELOG/CHANGELOG-1.28.md'`: 34 commits. `8cb979ae` is "…for v1.28.0 release" and `6d99b1c8` is "…for v1.28.15 release". | the pinned `SAMPLE_REFS` |
+| Locked head = last edit | The `gh api` raw file at `c8681531`, piped to `git hash-object --stdin`, gives `34535d47…`, the blob at the kubernetes lock head | the "locked head" rows |
+| Label fix | `gh api repos/kubernetes/kubernetes/pulls/125502/files`: one changed line in `CHANGELOG-1.28.md`. `…/pulls/125502/commits` lists `bcd1d845` only. | `v1.28.0` changed |
+| KEP-2572 at the head | `git show <head>:keps/sig-release/2572-release-cadence/kep.yaml`: line 14 `status: implementable`, line 30 `stage: alpha`, line 35 `latest-milestone: "v1.22"` | same |
+| `GA` and `disabled` across snapshots | KEP-1611's `kep.yaml`: `stage: "GA"` at 1.27–1.33, `"stable"` from 1.34. KEP-4004's: `alpha` at 1.29–1.30, `beta` at 1.31–1.32, `disabled` from 1.33. | 1 and 2 versions |
+| Unparseable `kep.yaml` | KEP-1205's at the 1.20 snapshot has `---` on lines 1 and 38. `yaml.safe_load` raises "expected a single document in the stream". | the one `kep.yaml` without metadata |
+| Symlinks | `git ls-tree <head> -- keps/sig-release/ keps/sig-auth/`: mode `120000` on the 7 files, for example `k8s-image-promoter.md`, whose content is `1734-k8s-image-promoter/README.md` | 7 `.md` files without metadata |
+| Vocabularies | `gh api` at the enhancements lock head: `keps/NNNN-kep-template/kep.yaml` lines 9 and 27, and `api/proposal.go` lines 44–51 | `STATUSES`, `TEMPLATE_STAGES` |
+| Offset without a colon | `yaml.safe_load("date: 2024-03-01T10:00:00+0000")` gives a `str`, and T4b's `front_time` reads it as 10:00 UTC. `git grep` lists 9 such dates or millisecond dates, matching the table's 8 + 1. | 8 + 1 posts |
+| In-place edit: NSA/CISA post | Added 2021-10-04 (`a72f7fac`, PR #29791) with `date: 2021-10-05`. On 2023-12-27, `8aecf063` (PR #44031) added `**Update, November 2023:**` and changed the guidance link. PR #53902 moved it with no content change (R100). | after publication, so 1 of T4b's 508 |

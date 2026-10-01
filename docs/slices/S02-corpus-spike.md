@@ -241,6 +241,36 @@ Each answered yes/no with an example:
   - 0–3% of gates per release have ranges that leave a stage undefined or ambiguous.
   - Later files rewrite earlier history for 2 gates (`EventedPLEG`, `DynamicResourceAllocation`).
 
+#### T5b notes (decided at plan review, 2026-10-01)
+
+- **CHANGELOG comparison:** pair sections by heading, never by position, because the files are newest first and each release is prepended. Report duplicate headings rather than comparing them.
+- **Immutability sample:** `CHANGELOG-1.28.md`, with three comparisons:
+  - after v1.28.0 → after v1.28.15
+  - after v1.28.0 → the locked head
+  - after v1.28.15 → the locked head
+
+  The two historical versions come through read-only `gh api` at pinned SHAs. The report says "one sampled file, not exhaustive".
+- **KEP metadata:**
+  - Classify `stage` against both the KEP template (alpha/beta/stable) and ADR-003 D5's `lifecycle_stage`, in two columns.
+  - Include the 25 single-file KEPs, whose metadata is front matter.
+  - Count milestone values that YAML reads as non-strings (an unquoted `1.30` is the float `1.3`; `yes`/`on` are booleans). Show the traced KEPs' raw `latest-milestone` too.
+- **Blog:** no update-note regex. Cite T4b's 508 versions in 272 posts, and hand-check one post. Keep the head's date-format list.
+
+#### T5b notes (as shipped)
+
+- **Size:** 282 non-blank lines in `source_formats.py` (247 without docstrings and comments) and 106 in tests, 388 in total. The plan estimated about 290 (+34%), over the ~300 cap and past the ~330 point at which the plan said it would stop and propose a split. That wasn't proposed before going over. The overrun comes from:
+  - the plan-review additions: the second stage vocabulary, the single-file KEPs, the milestone type check, duplicate headings, and their tests
+  - a parser fix the data needed: a stray closing fence in a list item (below)
+- **Stray fence:** a release note in `CHANGELOG-1.22.md` and one in `CHANGELOG-1.36.md` end with the PR template's closing fence, with no opening one. Toggling on every fence hid 6 sections, and a `grep -c '^# v'` hand count caught it. The spike now ends an indented fence at the next line in column 0, as CommonMark ends a fence with its list item. T3b's `split_sections` still toggles (backlog, S04-T3).
+- **Run:** `uv run python spikes/source_formats.py`, with the same `CORPUS_CACHE_DIR` rule as T2. The two `gh api` files are saved under `$CORPUS_CACHE_DIR/gh/`, so a re-run is offline. T2's depth-1 clone isn't touched.
+- **Tests:** `tests/unit/test_spike_source_formats.py`, written first. It needs no git, cache or network. Replace it in S04/S05.
+- **Results** (report §7):
+  - Every CHANGELOG has one unique, parseable `# v1.R.x` section per release: 371 sections in 18 files.
+  - In the sample, at least 3 of the 23 sections in `CHANGELOG-1.28.md` changed after they were written. One change is a factual correction 13 months later (PR #125502), so ADR-002 D1's "immutable" doesn't hold.
+  - KEP `status` is always in vocabulary. `stage` has `GA` (KEP-1611, 7 snapshots), `disabled` (KEP-4004; the enhancements validator accepts it) and `deprecated` outside the template, and 76 versions have no stage.
+  - No milestone value parses as a non-string.
+  - All 412 in-scope blog posts at the head have a front-matter date. PyYAML returns 8 of them, whose offsets have no colon, as strings.
+
 ### S02-T6: Decide `[human]`
 
 - **Goal:** write the report's conclusion, amend the ADRs, and set them to Accepted.

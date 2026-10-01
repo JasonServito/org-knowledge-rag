@@ -93,7 +93,7 @@ Tasks:
   - Latest release number and branch (hand check); feature-gates page structure (stage per version?), and whether the pre-1.29 tables agree with the 1.29+ `stages:` ranges.
   - Done when: each has a yes/no plus an example in the report, with the agreement counts.
   - Deps: T2.
-- [ ] **S02-T5b `[core]` CHANGELOG, KEP and blog formats.**
+- [x] **S02-T5b `[core]` CHANGELOG, KEP and blog formats.**
   - Blog front-matter dates and in-place edit history; CHANGELOG section structure, plus one sampled immutability check; `kep.yaml` status typos.
   - Done when: each has a yes/no plus an example in the report.
   - Deps: T2.
@@ -299,3 +299,5 @@ ADRs are decided when their slice starts, not earlier.
 - **S04-T3: merge sections under 64 tokens into a neighbour, keeping the heading path.** Reason: 30–32% of sections are under 64 tokens and each becomes its own chunk, so merging could cut up to ~25% of chunks. A bigger chunk size cuts only ~10%. (Found in S02-T3b.)
 - **S04-T4: check the characters ÷ 4 token estimate against Voyage's own token count** on one CHANGELOG and one docs page. Reason: the S02 cost estimate rests on that heuristic, which likely undercounts code, YAML and hex. (Found in S02-T3b.)
 - **S04: the manifest's `*.md` filter drops the 1.23 and 1.24 release interviews.** Website PR #53902 moved them to files with no extension (`_posts/2022/kubernetes-1.23-release-interview`). Check whether Hugo still renders them; if it does, include them. (Found in S02-T4b.)
+- **S04-T3: the chunker must survive a stray closing code fence.** Reason: release notes in `CHANGELOG-1.22.md` (line 3085) and `CHANGELOG-1.36.md` (line 1602) end with the PR template's closing fence, with no opening one. Toggling on every fence hides the remaining 4 and 2 sections. A fence inside a list item ends with the item (CommonMark). T3b's `split_sections` has this bug. (Found in S02-T5b.)
+- **S04-T2: KEP metadata parsing.** Skip symlinks (mode `120000`): 7 `.md` files in the SIG KEP dirs point into KEP directories. Read the first YAML document: KEP-1205's 1.20 `kep.yaml` ends with `---` and fails `safe_load`. Accept front-matter dates as `date`, `datetime` or `str`: PyYAML returns a string for offsets without a colon (`+0000`), used by 8 posts. (Found in S02-T5b.)
