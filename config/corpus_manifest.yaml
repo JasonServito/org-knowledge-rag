@@ -20,7 +20,7 @@ schema_version: 0
 
 releases:
   first: "1.20"
-  # From the website branch listing and hugo.toml `latest`. Confirmed in T5.
+  # From the website branch listing and hugo.toml `latest`. Confirmed in T5a (spike report §6, table M).
   latest: "1.37"
   # release_date: the v1.R.0 tag date in kubernetes/kubernetes (UTC). Matches website
   #   data/releases/schedule.yaml for 1.34-1.37, the only releases it lists.

@@ -89,7 +89,7 @@ Tasks:
   - Break down the front-matter blog id changes by cause and by before/after publication. Score two identity rules: the latest date and slug applied backwards, and the Hugo URL from the permalink config.
   - Done when: the report has the breakdown, both rules' scores, and a `valid_from` note for T6.
   - Deps: T2.
-- [ ] **S02-T5a `[core]` Feature gates and latest release.**
+- [x] **S02-T5a `[core]` Feature gates and latest release.**
   - Latest release number and branch (hand check); feature-gates page structure (stage per version?), and whether the pre-1.29 tables agree with the 1.29+ `stages:` ranges.
   - Done when: each has a yes/no plus an example in the report, with the agreement counts.
   - Deps: T2.

@@ -221,6 +221,26 @@ Each answered yes/no with an example:
   - **Blog:** no live fetch of the `------` post.
   - **`kep.yaml`:** case and whitespace variants normalize, but an out-of-vocabulary value is reported, not mapped.
 
+#### T5a notes (as shipped)
+
+- **Size:** 188 non-blank lines in `formats.py` and 115 in tests, 303 in total. The split estimated about 150 for T5a (+102%), and the total is right at the ~300 cap. The overrun comes from:
+  - the agreement check and the test list that were widened at plan review
+  - two parser fixes the data needed:
+    - `-` as well as an empty cell means an open Until (591 cells)
+    - a stage range can end and restart at a patch release (`1.35.3` → `1.35.4`)
+- **Added beyond the plan:**
+  - Besides the stage at 1.28, the spike compares the stage at every minor release 1.0–1.28.
+  - Reason: 141 of the 293 shared gates have no stage at 1.28 in either format, so "same at 1.28" says nothing about them.
+- **Stage vocabulary:** `GA` = `stable` is the only synonym, applied before comparing. Every other value is reported as written.
+- **Run:** `uv run python spikes/formats.py`, with the same `CORPUS_CACHE_DIR` rule as T2. It reuses T3a's `ls_tree`, `prefetch` and `read_blobs`, so nothing new downloads.
+- **Tests:** `tests/unit/test_spike_formats.py`, written first. It needs no git and no cache. Replace it in S04/S05.
+- **Results** (report §6):
+  - 1.37 is the latest release, on website `main`.
+  - Every gate has stage ranges in every release.
+  - The 1.28 tables and the 1.37 files match at every minor release for 287 of 293 gates.
+  - 0–3% of gates per release have ranges that leave a stage undefined or ambiguous.
+  - Later files rewrite earlier history for 2 gates (`EventedPLEG`, `DynamicResourceAllocation`).
+
 ### S02-T6: Decide `[human]`
 
 - **Goal:** write the report's conclusion, amend the ADRs, and set them to Accepted.

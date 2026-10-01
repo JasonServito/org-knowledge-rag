@@ -471,3 +471,158 @@ Each cell is the number of changes between consecutive commits, with the number 
 | Old URL with neither: `ingress-nginx-retirement` | 3 commits on 2025-11-12, with `date:` values `12:00-05:00`, `10:30-08:00`, then `2025-11-11T10:30-08:00`. No rule in `_redirects.base` and no `aliases`. | none; the 17:00 UTC publication comes from the approximation, and whether the old URL was served is unverified (table I, post 5) |
 | kubescape split | `git diff -M10%` across website PR #40392: `R041 2023-04-05-kubescape-… → 2023-03-30-kubescape-…` | 2 histories, 1 never published |
 | Extensionless interviews | `git ls-tree` at the head: `_posts/2022/kubernetes-1.23-release-interview` and `…1.24-release-interview` are blobs with no extension, added by PR #53902 | both histories end in a delete at PR #53902 |
+
+## 6. Format checks (S02-T5a: latest release and feature gates)
+
+- **Run:** `uv run python spikes/formats.py` on 2026-09-30, against the same lock. Nothing was downloaded: the T3a cache already held all 881 feature-gate blobs, and the cache's object store stayed at 104,390,029 bytes across two runs. The second run took 3.5 seconds and printed the same output.
+- **Split:** T5 was split at plan review (slice doc, T5 notes). This section answers the latest release and the feature gates. T5b adds the CHANGELOG, blog and `kep.yaml` checks.
+
+| question | answer | example |
+|---|---|---|
+| What's the latest release, and which branch holds its docs? | **1.37, on website `main`.** There's no `release-1.37` branch yet. The manifest's `latest: "1.37"` and `website_release_branches.latest: main` are correct. | `hugo.toml` on `main`: `latest = "v1.37"`. GitHub's latest release is `v1.37.1` (table M). |
+| Does the feature-gates reference give a stage per version? | **Yes, as version ranges, in two formats.** The stage at release R is a range lookup. Every gate has ranges in every release. | `PodSecurity`: alpha 1.22–1.22, beta 1.23–1.24, GA/stable 1.25–1.27, identical in both formats (table O). |
+| Is it reliable? | **Mostly, not fully.** The two formats agree on the stage at every minor release 1.0–1.28 for 287 of the 293 gates they share (98%). 0–3% of gates per release have ranges that leave some release's stage undefined or ambiguous. Later files rewrite earlier history for 2 gates. | `EventedPLEG`: beta at 1.27 in the 1.28 table, alpha only in the 1.37 file (table O). |
+
+### M. Latest release (hand check)
+
+| signal | where | result |
+|---|---|---|
+| Website release branches | `git for-each-ref 'refs/remotes/origin/release-1.*'` in the cache (fetched 2026-09-30) | `release-1.20` to `release-1.36`. No `release-1.37`. |
+| Site config | `hugo.toml` at the website lock head, lines 140–144 and 182–186 | `latest = "v1.37"` and `docsbranch = "main"`. The first `[[params.versions]]` entry is v1.37, with `docsbranch = "main"`. v1.36's is `release-1.36`. |
+| CHANGELOG | `CHANGELOG-1.37.md` at the kubernetes lock head | `# v1.37.1` (line 157) and `# v1.37.0` (line 254), then rc.1, rc.0, beta.0 and alpha.3 to alpha.1 |
+| GitHub, live | `gh api repos/kubernetes/kubernetes/releases/latest`, run 2026-10-01T05:57Z | `v1.37.1`, published 2026-09-23T19:13:17Z, not a pre-release |
+
+- **`hugo.toml`'s `githubbranch = "v1.37.0"` lags the patch release,** so it can't be used as a patch signal. Only the minor release matters here.
+- **`CHANGELOG-1.38.md` exists at the kubernetes head but wasn't read.** It's outside the manifest, and downloading it was declined at plan review.
+
+### N. Feature gates per release
+
+- **Formats:**
+  - **1.20–1.28:** markdown tables in `feature-gates.md`, under "Feature gates for Alpha or Beta features" and "Feature gates for graduated or deprecated features". From 1.25, also `feature-gates-removed.md`, whose table names its columns `From | To` instead of `Since | Until`. Each row is one gate and one stage.
+  - **1.29–1.37:** one file per gate, with a `stages:` list in the front matter. Each entry has `stage`, `fromVersion` and, optionally, `toVersion`. Other keys (`defaultValue`, `locked`) are ignored here.
+- **Gate identity:** the gate name, which is the first table column or the file's `title` (T4a).
+- **Ranges** include both ends. An open end is an empty cell or `-` in the tables (591 `-` cells across the 9 table releases), and a missing `toVersion` in the files.
+- **Stage values** are compared after case and whitespace normalization, with GA = stable: the tables say `GA`, the files `stable`. Any other value is reported as is, not mapped.
+- **Range problems:**
+  - an unparseable version
+  - a range that ends before it starts
+  - an open range that isn't the last
+  - an overlap
+  - a gap
+
+  The next range must start at the next minor release, or at the next patch when the previous range ends at a patch.
+- **Version values:** all 2,949 `fromVersion`/`toVersion` values in the 868 distinct gate-file versions of 1.29–1.37 are quoted strings (scratch check). So YAML never reads `1.10` as the float `1.1`. S04's parser should still reject values that aren't strings.
+
+| release | format | gates | with ranges | stage values | gates with a problem |
+|---|---|---:|---:|---|---|
+| 1.20 | tables | 153 | 153 | Alpha 139, Beta 103, GA 52, Deprecated 14, True 1 | open range not last 5 |
+| 1.21 | tables | 170 | 170 | Alpha 152, Beta 115, GA 65, Deprecated 13, Derecated 1 | open range not last 2, gap 1 |
+| 1.22 | tables | 196 | 196 | Alpha 179, Beta 136, GA 77, Deprecated 25, Derecated 1 | open range not last 4, gap 1 |
+| 1.23 | tables | 216 | 216 | Alpha 196, Beta 151, GA 81, Deprecated 26 | open range not last 2, gap 1 |
+| 1.24 | tables | 224 | 224 | Alpha 202, Beta 163, GA 100, Deprecated 26 | gap 1 |
+| 1.25 | tables | 238 | 238 | Alpha 217, Beta 173, GA 112, Deprecated 26 | unparseable version 1 |
+| 1.26 | tables | 257 | 257 | Alpha 233, Beta 182, GA 127, Deprecated 26 | unparseable version 1 |
+| 1.27 | tables | 272 | 272 | Alpha 245, Beta 204, GA 135, Deprecated 26, ``Beta` `` 1 | unparseable version 1 |
+| 1.28 | tables | 294 | 294 | Alpha 261, Beta 219, GA 147, Deprecated 32 | open range not last 2, unparseable version 1 |
+| 1.29 | per-gate files | 316 | 316 | alpha 278, beta 234, stable 157, deprecated 34 | none |
+| 1.30 | per-gate files | 328 | 328 | alpha 288, beta 250, stable 169, deprecated 34 | overlap 3, open range not last 1 |
+| 1.31 | per-gate files | 346 | 346 | alpha 299, beta 275, stable 182, deprecated 36 | overlap 3, open range not last 1 |
+| 1.32 | per-gate files | 372 | 372 | alpha 320, beta 290, stable 197, deprecated 38 | overlap 3, open range not last 2 |
+| 1.33 | per-gate files | 398 | 398 | alpha 341, beta 314, stable 214, deprecated 44 | overlap 3, open range not last 2 |
+| 1.34 | per-gate files | 420 | 420 | alpha 353, beta 340, stable 241, deprecated 45 | open range not last 3, overlap 3 |
+| 1.35 | per-gate files | 440 | 440 | alpha 367, beta 361, stable 248, deprecated 46 | open range not last 3, overlap 3 |
+| 1.36 | per-gate files | 465 | 465 | beta 389, alpha 383, stable 266, deprecated 47 | open range not last 3, overlap 3 |
+| 1.37 | per-gate files | 488 | 488 | beta 410, alpha 401, stable 280, deprecated 49 | overlap 5, open range not last 4 |
+
+- **Every gate has ranges in every release.**
+- **Typos in the table stages and versions, one row each:**
+  - `True` in the Stage column (1.20, `LegacyNodeRoleBehavior`)
+  - `Derecated` (1.21–1.22, `RequestManagement`)
+  - ``Beta` `` with a stray backtick (1.27, `ElasticIndexedJob`)
+  - `1,24` for 1.24 (1.25–1.28, `SetHostnameAsFQDN`, on the removed page)
+
+  The per-gate files have no values outside alpha, beta, stable and deprecated.
+- **Range problems affect 0–3% of gates per release:** at most 5 gates in the tables (5 of 153 at 1.20 is 3.3%), and at most 9 of 488 (1.8%) in the files, at 1.37. The script lists each one.
+  - **In the tables, most problems are a gate listed twice,** either in both tables of the page or on both pages. For example, at 1.28 `DaemonSetUpdateSurge` is open-ended GA on the main page and GA 1.25–1.26 on the removed page.
+  - **The rest of the table problems:**
+    - an earlier stage with no Until, for example `CSIMigrationAWS` at 1.20: Alpha 1.14–, Beta 1.17–
+    - a gap: `CSIMigrationAzureFile` is alpha up to 1.19 and beta from 1.21
+  - **In the files:**
+    - overlaps at a boundary, for example `DRADeviceTaints` at 1.37: beta 1.36–1.37 and stable from 1.37, so 1.37 is both
+    - earlier stages with no `toVersion`, for example `ContextualLogging`: alpha 1.24–, beta 1.30–
+- **The files have patch-level ranges:**
+  - `DisableNodeKubeProxyVersion`: beta 1.31.0–1.31.0, deprecated from 1.31.1
+  - `MaxUnavailableStatefulSet`: beta 1.35.0–1.35.3, then beta 1.35.4–1.36
+
+  A stage can change inside a minor release.
+
+### O. Agreement: the 1.28 tables vs the 1.37 files
+
+293 gates are in both the 1.28 tables and the 1.37 files.
+
+| stage at 1.28 | gates | examples |
+|---|---:|---|
+| same stage | 149 | `APIListChunking`, `APIPriorityAndFairness`, `APIResponseCompression` |
+| no stage in either (removed before 1.28) | 141 | `Accelerators`, `AdvancedAuditing`, `AffinityInAnnotations` |
+| a stage on one side only | 2 | `DaemonSetUpdateSurge`, `DynamicResourceAllocation` |
+| different stage | 1 | `EventedPLEG` |
+
+- **31 of the 149 matches rely on GA = stable.**
+- **"No stage in either" is a vacuous match,** so the spike also compares the stage at every minor release 1.0–1.28: **287 of 293 match.** The 6 that don't:
+
+| gate | first differs | 1.28 tables | 1.37 files | cause |
+|---|---|---|---|---|
+| `EventedPLEG` | 1.27 | Alpha 1.26–1.26, Beta 1.27– | alpha 1.26– | **A real change, rewritten later.** Beta (off by default) from 1.27, then reverted to alpha by patch releases 1.27.10, 1.28.6 and 1.29.1; 1.30.0 shipped it as alpha. Each of those CHANGELOG sections says "Reverts the EventedPLEG feature (beta, but disabled by default) back to alpha". The 1.28 table was right for 1.28.0–1.28.5 and was never updated after the revert. The 1.37 file drops the beta altogether. |
+| `DynamicResourceAllocation` | 1.26 | Alpha 1.26– | alpha 1.30–1.31, beta 1.32–1.33, stable 1.34–1.34, stable 1.35– | **History rewritten at 1.32.** The 1.31 file still says alpha from 1.26; the 1.32 file starts at 1.30. 1.32 removed "classic" DRA (CHANGELOG-1.32), and the gate now covers the structured-parameters model only. |
+| `DaemonSetUpdateSurge` | 1.27 | GA 1.25– (main page) and GA 1.25–1.26 (removed page) | stable 1.25–1.26 | **A stale duplicate row in the table.** The removed page agrees with the file. |
+| `NewVolumeManagerReconstruction` | 1.25 | Beta 1.27–1.27, Beta 1.28– | alpha 1.25–1.26, beta 1.27–1.29, stable 1.30–1.31 | **The table has no alpha row.** |
+| `SetHostnameAsFQDN` | 1.22 | GA 1.22–`1,24` | stable 1.22–1.24 | **The `1,24` typo.** Read as 1.24, the two match. |
+| `WindowsGMSA` | 1.19 | GA 1.18–1.20 | stable 1.18–1.18 | **They disagree on when the stage ended.** Not resolved here. |
+
+- **2 of the 295 gate names exist only in the pre-1.29 tables. Both are typos fixed later, not gates the files lost:**
+  - `PersistentVolumeLastPhaseTransistionTime`: the 1.28 table row (line 165). The same page's description list spells it `…Transition…` (line 670), and so does the 1.29 file.
+  - `csiMigrationRBD`: the 1.23–1.24 tables. It's `CSIMigrationRBD` from 1.25.
+
+  So 293 of the 295 table names join a per-gate file exactly, and all 295 do once the two typos are corrected.
+- **The site records one gate rename in front matter.** At 1.37, `PodReadyToStartContainersCondition` has `former_titles: [PodHasNetworkCondition]`. Both names also keep their own ranges, in the 1.28 tables and in every file release: the old gate alpha 1.25–1.27, the new one from 1.28.
+
+**In-scope examples:** all four match at every minor release 1.0–1.28.
+
+| gate | 1.28 tables | 1.37 files | first difference |
+|---|---|---|---|
+| `PodSecurity` (KEP-2579) | Alpha 1.22–1.22, Beta 1.23–1.24, GA 1.25–1.27 | alpha 1.22–1.22, beta 1.23–1.24, stable 1.25–1.27 | none |
+| `LegacyServiceAccountTokenNoAutoGeneration` (KEP-2799) | Beta 1.24–1.25, GA 1.26– | beta 1.24–1.25, stable 1.26–1.28 | none |
+| `LegacyServiceAccountTokenTracking` (KEP-2799) | Alpha 1.26–1.26, Beta 1.27–1.27, GA 1.28– | alpha 1.26–1.26, beta 1.27–1.27, stable 1.28–1.29 | none |
+| `LegacyServiceAccountTokenCleanUp` (KEP-2799) | Alpha 1.28– | alpha 1.28–1.28, beta 1.29–1.29, stable 1.30–1.31 | none |
+
+### For T6
+
+- **ADR-003's open question:** "Does the feature-gates page give a reliable stage-per-version table for every gate in scope?"
+  - **Answer:** every gate has one in every release. The two formats match for 98% of the gates they share, over their whole history.
+  - **But it's a claim to check, not ground truth:**
+    1. 0–3% of gates per release have ranges that leave a release's stage undefined or ambiguous. The parser should flag those gates, for example with `status_confidence = low`, not pick one range.
+    2. **Neither snapshot is a complete record.** The 1.28 docs still say `EventedPLEG` is beta after 1.28.6 reverted it, and the 1.37 file drops the beta altogether. Only the CHANGELOG has the revert. That supports ADR-002 D5 using both the CHANGELOG and the gate reference for `observed_stage`. The difference between a release's snapshot and a later one is conflict evidence (ADR-003 D6).
+    3. **Later files rewrite earlier ranges** (`EventedPLEG`, `DynamicResourceAllocation`). `observed_stage` for release R should come from R's own snapshot (ADR-002 D1), not from the latest file.
+- **Stages can change at a patch release.**
+  - Examples: `EventedPLEG`'s revert, and the patch-level ranges of `DisableNodeKubeProxyVersion` and `MaxUnavailableStatefulSet`.
+  - ADR-003 D5 keys `lifecycle_stage` by feature × release (minor).
+  - T6 decides: keep the minor-release key and record patch changes as a known limit, or key by patch release.
+- **Stage vocabulary:**
+  - Map `GA` → `stable` at parse time, the only synonym needed.
+  - Flag the four table typos and report them; don't map them.
+- **Gate identity:** the gate name works across the 1.28→1.29 format change, apart from the two misspelled table names.
+  - A case-insensitive match would recover `csiMigrationRBD`, but not `…Transistion…`.
+  - `former_titles` is a declared rename signal, in the spirit of T4a's "declared signals first". It covers 1 gate here.
+
+### Hand checks
+
+| Check | By hand | Spike |
+|---|---|---|
+| `PodSecurity` in the 1.28 tables | `git show <1.28>:…/feature-gates-removed.md`, lines 290–292: alpha 1.22–1.22, beta 1.23–1.24, GA 1.25–1.27 | same ranges |
+| `PodSecurity` at 1.37 | `feature-gates/PodSecurity.md`: `stages:` alpha 1.22–1.22, beta 1.23–1.24, stable 1.25–1.27 | same ranges; no difference at any minor |
+| KEP-2799 gates in the 1.28 tables | `feature-gates.md`, lines 137 and 289–293 | same ranges for all three |
+| `EventedPLEG` disagreement | 1.28 `feature-gates.md` lines 103–104: Alpha 1.26–1.26, Beta 1.27 (Until empty). The 1.37 file has one stage: alpha from 1.26. The revert note is in the CHANGELOG sections `v1.27.10`, `v1.28.6`, `v1.29.1`, `v1.30.0-alpha.1` and `v1.30.0`. | different stage at 1.27 |
+| `DaemonSetUpdateSurge` duplicate | 1.28 `feature-gates.md` lines 251–253 (GA 1.25, Until empty) and `feature-gates-removed.md` lines 141–143 (GA 1.25–1.26) | listed twice; differs from 1.27 |
+| `1,24` typo | 1.28 `feature-gates-removed.md` line 353: `\| GA \| 1.22 \| 1,24 \|` | unparseable version |
+| Table-name typos | 1.28 `feature-gates.md` line 165 `PersistentVolumeLastPhaseTransistionTime`, line 670 `…Transition…`. 1.24 line 88 `csiMigrationRBD`; 1.25 line 82 `CSIMigrationRBD`. | 2 gates only in the tables |
+| `DynamicResourceAllocation` rewrite | 1.31 file `dynamic-resource-allocation.md`: alpha from 1.26. 1.32 file `DynamicResourceAllocation.md`: alpha 1.30–1.31, beta from 1.32. | first differs at 1.26 |
