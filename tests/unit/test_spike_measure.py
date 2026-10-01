@@ -1,6 +1,6 @@
 """Tests for the S02-T3 spike, spikes/measure.py.
 
-Replace in S04: normalization and hashing are rewritten in src/ with their own tests.
+Replace in S04: normalization, hashing and chunking are rewritten in src/ with their own tests.
 Delete this file then, together with the spike.
 """
 
@@ -56,6 +56,44 @@ def test_link_target_and_whitespace_changes_keep_hash(measure: ModuleType) -> No
     moved = doc_hash(measure, "See  [the docs](https://b.example/x)\nand [r].\n[r]: https://b/y\n")
     assert base == moved
     assert base != doc_hash(measure, "See [other docs](https://a.example/x) and [r].\n")
+
+
+def test_split_sections_ignores_headings_in_code(measure: ModuleType) -> None:
+    body = "intro\n# A\ntext\n```\n# not a heading\n```\n## B\n~~~\n# nor this\n~~~\nmore\n"
+    sections = measure.split_sections(body)
+    assert [s.splitlines()[0] for s in sections] == ["intro", "# A", "## B"]
+
+
+def test_split_sections_drops_blank_sections(measure: ModuleType) -> None:
+    sections = measure.split_sections("\n\n# A\n\n# B\nx\n")
+    assert [s.splitlines()[0] for s in sections] == ["# A", "# B"]
+
+
+def test_token_and_chunk_estimates(measure: ModuleType) -> None:
+    assert measure.estimate_tokens("abcde") == 2  # 5 chars / 4, rounded up
+    assert measure.estimate_tokens("") == 0
+    # A chunk never spans two sections: each section is ceil(tokens / size) chunks.
+    assert measure.estimate_chunks([100, 512, 513, 1200], 512) == 1 + 1 + 2 + 3
+    # Every chunk also embeds a header.
+    assert measure.embed_totals([100, 600], 512) == (3, 700 + 3 * measure.HEADER_TOKENS)
+
+
+def test_bounds_dedupe_sections_per_document(measure: ModuleType) -> None:
+    version = measure.Version
+    analysed = {
+        ("a1", "docs_page"): version("h1", None, (("s1", 10), ("s2", 20))),
+        ("a2", "docs_page"): version("h2", None, (("s1", 10), ("s3", 30))),
+        ("b1", "docs_page"): version("h3", None, (("s1", 10),)),
+    }
+    docs = [
+        measure.Doc("docs_page", "website", "a.md", [(0, "a1"), (1, "a2")]),
+        measure.Doc("docs_page", "website", "b.md", [(0, "b1")]),
+    ]
+    _, by_source = measure.tally(docs, analysed, 2)
+    t = by_source["docs_page"]
+    assert sorted(t.upper) == [10, 10, 10, 20, 30]  # every section of every new version
+    assert sorted(t.lower) == [10, 10, 20, 30]  # s1 once per document
+    assert t.floor == {"s1": 10, "s2": 20, "s3": 30}  # s1 once across documents
 
 
 def test_sequences_mark_disappearances(measure: ModuleType) -> None:

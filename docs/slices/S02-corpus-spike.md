@@ -122,11 +122,11 @@ n/a. The outputs are measurements.
 - **KEPs:** `README.md` and other `.md` files are the documents. `kep.yaml` and PRR files are counted as metadata versions and aren't embedded (ADR-003 D1).
 - **Identity:** the file path, except that blog moves are followed. Docs renames are T4's subject.
 - **T3b estimation rules (agreed):**
-  - Tokens ≈ characters ÷ 4. This likely underestimates code and YAML, which have more tokens per character.
+  - Tokens ≈ characters ÷ 4, counted on the body only (the front matter isn't embedded). This likely underestimates code and YAML, which have more tokens per character.
   - Chunks: split at headings, at most 512 tokens per chunk, plus a 40-token header per chunk. Add 256 and 1024 as sensitivity rows.
-  - Lower bound: from unique section hashes.
+  - Lower bound: unique (document, section hash) pairs, because the header holds `canonical_id`, so identical text in two documents is two cache entries. The global section-hash dedup is printed as a one-line floor. (Changed at T3b plan review, 2026-09-30; the T3a notes said "unique section hashes".)
   - Vector storage: chunks × dimension × 4 bytes, at voyage-4's default of 1024 dimensions (docs.voyageai.com/docs/embeddings, updated 2026-08-10). The voyage-4 family also supports 256, 512 and 2048, so add storage rows at 512 and 256 dimensions.
-- **For S04:** the chunk header should contain only fields that are fixed when the version is created. Mutable fields (`valid_until`, tier, flags) go in DB columns, so closing a validity window doesn't force a re-embed.
+- **For S04:** the chunk header holds only fields that are stable across all versions of a document: `source_type`, `canonical_id`/title, and the heading path. `valid_from`/`valid_until`, tier and flags go in DB columns, because any per-version field in the embedded text defeats the content-hash cache. (Corrected at T3b plan review, 2026-09-30.)
 
 ### S02-T4: Rename check `[core]`
 

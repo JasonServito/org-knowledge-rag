@@ -1,4 +1,5 @@
-"""S02-T3a spike: per-release in-scope files and distinct versions after ADR-002 normalization.
+"""S02-T3 spike: per-release files and versions after ADR-002 normalization (T3a), then
+tokens, chunks, embedding cost and vector storage (T3b).
 
 Run: uv run python spikes/measure.py [--dry-run]
 
@@ -6,8 +7,8 @@ Lists every in-scope file at every snapshot in config/corpus_manifest.lock.yaml,
 the file contents into the CORPUS_CACHE_DIR clones, and prints markdown tables for
 docs/research/corpus-spike-report.md. --dry-run prints the blob counts and stops before downloading.
 
-Throwaway spike code (docs/slices/S02-corpus-spike.md): never imported by src/. Normalization
-and hashing are rewritten properly in S04.
+Throwaway spike code (docs/slices/S02-corpus-spike.md): never imported by src/. Normalization,
+hashing and chunking are rewritten properly in S04.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import shlex
 import subprocess
@@ -31,9 +33,22 @@ from fetch import LOCK, MANIFEST, cache_dir_or_exit, git
 
 FETCH_BATCH = 1000  # blob ids per fetch request
 
+# Estimation rules agreed at the T3 plan review (slice doc, T3 notes). The real chunker is S04.
+CHARS_PER_TOKEN = 4  # heuristic; likely underestimates code and YAML, which tokenize denser
+CHUNK_SIZES = (256, 512, 1024)  # max tokens per chunk: 512 is the default, the others sensitivity
+DEFAULT_CHUNK = 512
+HEADER_TOKENS = 40  # the metadata header embedded with every chunk
+SMALL_SECTION = 64  # sections under this many tokens: a chunk-count inflation signal for S04
+# Standard rates, docs.voyageai.com/docs/pricing (updated 2026-09-29, read 2026-09-30).
+PRICE_PER_M_TOKENS = {"voyage-4-lite": 0.02, "voyage-4": 0.06, "voyage-4-large": 0.12}
+# voyage-4 family: 1024 is the default, docs.voyageai.com/docs/embeddings (updated 2026-08-10).
+DIMENSIONS = (1024, 512, 256)
+
 FRONT_MATTER = re.compile(r"\A---[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
 LINK_TARGET = re.compile(r"\]\([^)]*\)")  # [text](url) -> [text]
 LINK_DEFINITION = re.compile(r"^(\s*\[[^\]]+\]:)[ \t]*\S.*$", re.M)  # [id]: url -> [id]:
+HEADING = re.compile(r"^#{1,6}\s")
+FENCE = re.compile(r"^\s*(```|~~~)")
 
 Seq = list[tuple[int, str | None]]  # (row, blob id, or None once the file is gone), oldest first
 
@@ -73,25 +88,61 @@ def clean_text(text: str) -> str:
     return " ".join(text.split())
 
 
+def sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def content_hash(meta: dict[str, Any] | None, body: str, strip: frozenset[str]) -> str:
     """Hash of the kept front-matter keys (sorted; `strip` is lowercase) plus the cleaned body."""
     kept = {str(k): v for k, v in (meta or {}).items() if str(k).lower() not in strip}
-    canonical = json.dumps(kept, sort_keys=True, default=str) + "\n" + clean_text(body)
-    return hashlib.sha256(canonical.encode()).hexdigest()
+    return sha256_hex(json.dumps(kept, sort_keys=True, default=str) + "\n" + clean_text(body))
+
+
+# --- Token and chunk estimates (T3b) --------------------------------------------------------
+
+
+def split_sections(body: str) -> list[str]:
+    """Split at markdown headings, ignoring '#' lines inside fenced code blocks."""
+    sections: list[list[str]] = [[]]
+    in_fence = False
+    for line in body.splitlines():
+        if FENCE.match(line):
+            in_fence = not in_fence
+        elif HEADING.match(line) and not in_fence and sections[-1]:
+            sections.append([])
+        sections[-1].append(line)
+    return ["\n".join(lines) for lines in sections if "".join(lines).strip()]
+
+
+def estimate_tokens(text: str) -> int:
+    return math.ceil(len(text) / CHARS_PER_TOKEN)
+
+
+def estimate_chunks(section_tokens: Iterable[int], size: int) -> int:
+    """A section of t tokens becomes ceil(t / size) chunks; a chunk never spans two sections."""
+    return sum(math.ceil(tokens / size) for tokens in section_tokens)
+
+
+def embed_totals(section_tokens: list[int], size: int) -> tuple[int, int]:
+    """(chunks, embedded tokens), where every chunk also embeds a HEADER_TOKENS header."""
+    chunks = estimate_chunks(section_tokens, size)
+    return chunks, sum(section_tokens) + chunks * HEADER_TOKENS
 
 
 @dataclass(frozen=True)
 class Version:
     hash: str
     meta: dict[str, Any] | None
+    sections: tuple[tuple[str, int], ...]  # (hash of the cleaned section, estimated tokens)
 
 
 def analyse(text: str, strip: frozenset[str], is_yaml: bool) -> Version:
-    if is_yaml:  # kep.yaml and PRR files: the whole file is metadata (ADR-003 D1)
+    if is_yaml:  # kep.yaml and PRR files: metadata, not embedded (ADR-003 D1)
         meta = load_mapping(text)
-        return Version(content_hash(meta, "" if meta is not None else text, strip), meta)
-    meta, body = split_front_matter(text)
-    return Version(content_hash(meta, body, strip), meta)
+        return Version(content_hash(meta, "" if meta is not None else text, strip), meta, ())
+    meta, body = split_front_matter(text)  # tokens count the body only, not the front matter
+    sections = tuple((sha256_hex(clean_text(s)), estimate_tokens(s)) for s in split_sections(body))
+    return Version(content_hash(meta, body, strip), meta, sections)
 
 
 # --- Versions over time --------------------------------------------------------------------
@@ -306,6 +357,22 @@ class Tally:
     versions: int = 0
     raw_versions: int = 0
     hashes: set[str] = field(default_factory=set)
+    upper: list[int] = field(default_factory=list)  # tokens of every section of every new version
+    lower: list[int] = field(default_factory=list)  # tokens of each unique (document, section)
+    floor: dict[str, int] = field(default_factory=dict)  # section hash -> tokens, across documents
+
+
+def combine(tallies: Iterable[Tally]) -> Tally:
+    total = Tally()
+    for t in tallies:
+        total.files += t.files
+        total.versions += t.versions
+        total.raw_versions += t.raw_versions
+        total.hashes |= t.hashes
+        total.upper += t.upper
+        total.lower += t.lower
+        total.floor |= t.floor
+    return total
 
 
 def tally(
@@ -322,10 +389,17 @@ def tally(
             by_row[row].raw_versions += 1
             by_source[label].raw_versions += 1
         hashes = {oid: analysed[(oid, doc.strip_kind)].hash for _, oid in doc.seq if oid}
+        doc_sections: dict[str, int] = {}  # section hash -> tokens, within this document
         for row, oid in new_versions(doc.seq, hashes):
+            version = analysed[(oid, doc.strip_kind)]
             by_row[row].versions += 1
             by_source[label].versions += 1
             by_source[label].hashes.add(hashes[oid])
+            by_source[label].upper += [tokens for _, tokens in version.sections]
+            doc_sections.update(version.sections)
+        # The chunk header holds canonical_id, so equal text in two documents is two cache entries.
+        by_source[label].lower += doc_sections.values()
+        by_source[label].floor |= doc_sections
     return by_row, by_source
 
 
@@ -350,13 +424,58 @@ def print_report(labels: list[str], by_row: list[Tally], by_source: dict[str, Ta
         [s, t.files, t.versions, t.raw_versions, len(t.hashes)]
         for s, t in sorted(by_source.items())
     ]
-    tallies = list(by_source.values())
-    all_hashes = set().union(*(t.hashes for t in tallies))
-    totals = [sum(t.files for t in tallies), sum(t.versions for t in tallies)]
-    totals += [sum(t.raw_versions for t in tallies), len(all_hashes)]
-    rows_b.append(["**total**", *totals])
+    total = combine(by_source.values())
+    rows_b.append(["**total**", total.files, total.versions, total.raw_versions, len(total.hashes)])
     head_b = ["source", "documents", "versions", "raw blob versions", "unique content hashes"]
     print(md_table(head_b, rows_b))
+
+
+def cost_row(size: int, bound: str, section_tokens: list[int]) -> list[object]:
+    chunks, tokens = embed_totals(section_tokens, size)
+    costs = [f"${tokens / 1e6 * price:,.2f}" for price in PRICE_PER_M_TOKENS.values()]
+    storage = [f"{chunks * dim * 4 / 1e6:,.1f} MB" for dim in DIMENSIONS]  # float32: 4 bytes
+    return [size, bound, chunks, tokens, *costs, *storage]
+
+
+def print_cost_report(by_source: dict[str, Tally]) -> None:
+    embedded = {s: t for s, t in sorted(by_source.items()) if t.upper}  # not YAML metadata
+    total = combine(embedded.values())
+
+    def cols(sections: list[int]) -> list[int]:
+        return [len(sections), sum(sections), estimate_chunks(sections, DEFAULT_CHUNK)]
+
+    print(f"\n### C. Tokens and chunks per source type (chunks @{DEFAULT_CHUNK})\n")
+    rows_c = [
+        [s, *cols(t.upper), *cols(t.lower)] for s, t in [*embedded.items(), ("**total**", total)]
+    ]
+    head_c = ["source", "upper: sections", "body tokens", "chunks"]
+    head_c += ["lower: sections", "body tokens", "chunks"]
+    print(md_table(head_c, rows_c))
+    floor = list(total.floor.values())
+    floor_chunks, floor_tokens = embed_totals(floor, DEFAULT_CHUNK)
+    print(
+        f"\nfloor, each section hash once across documents: {len(floor):,} sections, "
+        f"{sum(floor):,} body tokens, {floor_chunks:,} chunks, {floor_tokens:,} embedded tokens"
+    )
+    for bound, sections in [("upper", total.upper), ("lower", total.lower)]:
+        small = sum(n < SMALL_SECTION for n in sections)
+        share = small / estimate_chunks(sections, DEFAULT_CHUNK)  # each is one whole chunk
+        print(
+            f"{bound}: {small:,} of {len(sections):,} sections ({small / len(sections):.0%}) "
+            f"are under {SMALL_SECTION} tokens, {share:.0%} of the chunks"
+        )
+
+    print("\n### D. Embedding cost and vector storage\n")
+    rows_d = []
+    for size in CHUNK_SIZES:
+        rows_d.append(cost_row(size, "upper: every new version", total.upper))
+        rows_d.append(cost_row(size, "lower: unique (document, section)", total.lower))
+    no_gates = combine(t for s, t in embedded.items() if s != "feature_gate_reference")
+    rows_d.append(cost_row(DEFAULT_CHUNK, "upper, excl. feature_gate_reference", no_gates.upper))
+    rows_d.append(cost_row(DEFAULT_CHUNK, "lower, excl. feature_gate_reference", no_gates.lower))
+    head_d = ["chunk size", "bound", "chunks", "embedded tokens", *PRICE_PER_M_TOKENS]
+    head_d += [f"vectors @{dim}d" for dim in DIMENSIONS]
+    print(md_table(head_d, rows_d))
 
 
 def main() -> None:
@@ -419,7 +538,9 @@ def main() -> None:
     print(f"\nblog: {blog_paths} paths are {n_blog} posts after following moves")
     print(f"blog posts kept: {n_kept} of {n_blog} (front-matter date >= {since}, not draft)")
     print("documents without parseable YAML front matter:", dict(no_front_matter))
-    print_report(labels, *tally(kept, analysed, len(labels)))
+    by_row, by_source = tally(kept, analysed, len(labels))
+    print_report(labels, by_row, by_source)
+    print_cost_report(by_source)
 
 
 if __name__ == "__main__":
