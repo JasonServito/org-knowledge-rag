@@ -197,6 +197,30 @@ Each answered yes/no with an example:
 
 **Done when:** all are answered in the report.
 
+#### T5 notes (decided at plan review, 2026-09-30)
+
+- **Split before starting:**
+  - The plan estimated about 300 lines for all five checks: 220 in the spike, 80 in tests. That's at CLAUDE.md's cap, and T3a, T4a and T4b came in 17–117% over their estimates.
+  - So T5 is split up front:
+    - **T5a:** feature gates, plus the latest-release hand check
+    - **T5b:** CHANGELOG, `kep.yaml` and blog
+- **T5a, latest release:** a hand check, no code. It uses three local signals:
+  - the website's `release-1.R` branch list
+  - `hugo.toml` on `main`
+  - the `# v1.37.*` headings in `CHANGELOG-1.37.md`
+
+  Optionally add `gh api repos/kubernetes/kubernetes/releases/latest`. Don't download `CHANGELOG-1.38.md`: it's outside the manifest.
+- **T5a, feature gates:** "reliable" means the two formats **agree**, not just that each is well-formed.
+  - Per release: the format, the gate count, the stage values, and the gates whose ranges have a gap, an overlap, or an unparseable version.
+  - Agreement: for gates in both the 1.28 tables and the 1.37 files, compare the 1.28 table's stage at 1.28 with the stage the 1.37 `stages:` ranges give for 1.28. Report agreements and disagreements, with examples.
+  - Count the gates that exist only in the pre-1.29 tables.
+  - Examples come from in-scope gates: `PodSecurity` (KEP-2579) and the KEP-2799 service-account token gates.
+- **T5b scope:**
+  - **CHANGELOG:** keep the version-heading uniqueness check. Drop the newest-first and "since" pointer checks.
+  - **CHANGELOG immutability:** sample it for one file with read-only `gh api`. Fetch two historical versions and compare the sections they share. Don't change T2's depth-1 clone.
+  - **Blog:** no live fetch of the `------` post.
+  - **`kep.yaml`:** case and whitespace variants normalize, but an out-of-vocabulary value is reported, not mapped.
+
 ### S02-T6: Decide `[human]`
 
 - **Goal:** write the report's conclusion, amend the ADRs, and set them to Accepted.
