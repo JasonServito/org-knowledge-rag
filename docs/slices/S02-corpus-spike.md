@@ -168,6 +168,23 @@ n/a. The outputs are measurements.
   - **4 in-scope posts have no `slug`:** the 1.21–1.24 release interviews.
   - **The path is a poor fallback.** The path's slug matches the front-matter slug in only 177 of 413 posts. Hugo's `:slug` token falls back to the title; check that against the config.
 
+#### T4b notes (decided at plan review, 2026-09-30)
+
+- **Size:**
+  - The plan estimated about 230 lines: 160 in the spike, 60 in tests, 10 in the `measure.py` refactor.
+  - As shipped: 315 non-blank lines in `blog_identity.py`, 172 in tests, and +22/−10 in `measure.py`. That's about 500, +117% over the estimate.
+  - That's over CLAUDE.md's ~300-line cap with no split proposed before going over. The PR review flagged it.
+  - The overrun comes from three places:
+    - Hugo fidelity that the data turned out to need: `url:` front matter with tokens, the filename date and slug, the title fallback, and dates that keep their own offset.
+    - The checks added at plan review: the publication phases, old-URL coverage, and the move table.
+    - The review fixes: the per-post logic moved out of `main()` into tested functions, and a test for `score`.
+- **Run:** `uv run python spikes/blog_identity.py`, with the same `CORPUS_CACHE_DIR` rule as T2. It reuses T3a's post histories through `measure.blog_log`, which was split out of `blog_docs`. `measure.py`'s output is byte-identical before and after the split.
+- **Publication, as agreed:** the first moment Hugo would render the post: the live version isn't a draft and its date has passed (`buildFuture` is off, `timeZone` is UTC). It's an approximation, because the site builds on merge.
+- **The site config is read:** every `config.toml`/`hugo.toml` on `main` since 1.20's date must give the same blog permalink and date order, or the spike refuses to run. All 69 versions do.
+- **Caveat:** table J's ground truth is T3a's rename-followed histories (git similarity), not an independent source. One known miss: the kubescape post, renamed at 41% similarity.
+- **Tests:** `tests/unit/test_spike_blog_identity.py`, written first. It needs no git and no cache. Replace it in S04/S05.
+- **Results:** report §5. 137 of 417 posts change front-matter id, 144 of the 150 changes before publication. No collisions. Over published commits, the Hugo URL keeps 413 of 416 histories whole, and all 349 measured in-scope moves by PR #53902 keep it.
+
 ### S02-T5: Format checks `[core]`
 
 Each answered yes/no with an example:
@@ -211,6 +228,31 @@ Each answered yes/no with an example:
   - Use redirects, Hugo aliases and the gate title before git similarity.
   - Similarity found only 4 of the 6 docs renames the redirects declare, and it paired two different gates at 40%.
   - A redirect counts as a rename only when its target was added in the same release (report §4, table G).
+
+#### T6 notes (added at T4b review, 2026-09-30)
+
+- **URL identity applies only to rendered pages.**
+  - The per-gate files have `_build: render: false`, so they have no URL (report §4, section H), and feature gates keep gate-name identity.
+  - The general rule: the URL for rendered pages (docs pages, website release records, blog posts); a declared key for embedded or structured sources (gate name, KEP number, CHANGELOG `1.R`).
+- **Identity and content change are separate.** The v1.20 release notes kept their URL identity through the redirect alias (`/docs/setup/release/notes/` → `/releases/notes/`), but became a 13-line pointer to the CHANGELOG. That's one document with a drastic new version, which is correct (report §4, table G).
+- **Blog `canonical_id`: the evidence for the URL** (report §5, table J):
+  - Over published commits, the Hugo URL keeps 413 of 416 histories whole. All 349 measured in-scope moves by PR #53902 keep it. 2 more weren't measured: they lost their `.md` extension.
+  - That it needs no rename following is an inference: the URL never changes across a move, and no URL is shared by two posts. The spike didn't test grouping by URL directly, and its histories come from git (report §5, J).
+  - ADR-002 D4's `blog:<date>-<slug>` splits 10, and has no id for the 4 interviews with no `slug`.
+  - "Latest date and slug, applied backwards" needs git rename following, and its id differs between publication and the head for 6 posts (5 real).
+  - The 3 URL changes after publication: 1 redirect, 1 alias, and 1 with neither (`ingress-nginx-retirement`).
+  - That last URL may never have been served. That holds only if builds run on merge, which wasn't checked against the Netlify config or logs. So declared signals cover 2 of 3, too few to call them complete for the blog.
+- **A blog version's `valid_from` = max(commit time, publication time).**
+  - 317 of the 416 versions live at publication were merged ahead of their date: median 2.6 days, maximum 28.5. With commit time, they'd claim to be public early.
+  - **This amends ADR-002 D3.** D3 says `valid_from_date` is "the date of the commit that introduced the change".
+  - **Release rows:** D3 derives the release window from `valid_from_date`, and T3a assigned blog versions to rows by commit time. Under this rule, 25 of the 317 move to a later release row.
+  - For versions committed after publication, the rule gives the commit time.
+- **Question for T6: exclude never-public versions?**
+  - 213 versions, in 168 posts, were superseded before publication.
+  - 1 more is the kubescape fragment, which was never published.
+  - None of these were ever public.
+  - Excluding them removes 214 of T3a's 1,138 blog versions (19%), which is 6.5% of the 3,281 embeddable versions.
+  - Report §2's per-release counts and §3's cost estimate would both drop. The token effect wasn't computed.
 
 ## Risks & unknowns
 

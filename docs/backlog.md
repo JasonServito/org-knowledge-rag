@@ -85,7 +85,7 @@ Tasks:
   - Run `git diff --find-renames` between adjacent release branches, on at least one known move in the Auth or Network docs. Grade every rename with an oracle: redirects or aliases for docs, the title for feature gates.
   - Done when: the report records precision (census plus hand-read sample), lists and classifies the unmatched add/delete pairs, and recommends a similarity threshold.
   - Deps: T2.
-- [ ] **S02-T4b `[core]` Blog identity.**
+- [x] **S02-T4b `[core]` Blog identity.**
   - Break down the front-matter blog id changes by cause and by before/after publication. Score two identity rules: the latest date and slug applied backwards, and the Hugo URL from the permalink config.
   - Done when: the report has the breakdown, both rules' scores, and a `valid_from` note for T6.
   - Deps: T2.
@@ -294,3 +294,4 @@ ADRs are decided when their slice starts, not earlier.
 - **S04-T3: leave the CHANGELOG sha512 download tables out of chunks.** Reason: they're 25% of CHANGELOG characters, they're hex strings with no retrieval value, and they add noise to lexical search. (Found in S02-T3b.)
 - **S04-T3: merge sections under 64 tokens into a neighbour, keeping the heading path.** Reason: 30–32% of sections are under 64 tokens and each becomes its own chunk, so merging could cut up to ~25% of chunks. A bigger chunk size cuts only ~10%. (Found in S02-T3b.)
 - **S04-T4: check the characters ÷ 4 token estimate against Voyage's own token count** on one CHANGELOG and one docs page. Reason: the S02 cost estimate rests on that heuristic, which likely undercounts code, YAML and hex. (Found in S02-T3b.)
+- **S04: the manifest's `*.md` filter drops the 1.23 and 1.24 release interviews.** Website PR #53902 moved them to files with no extension (`_posts/2022/kubernetes-1.23-release-interview`). Check whether Hugo still renders them; if it does, include them. (Found in S02-T4b.)
