@@ -128,14 +128,45 @@ n/a. The outputs are measurements.
   - Vector storage: chunks × dimension × 4 bytes, at voyage-4's default of 1024 dimensions (docs.voyageai.com/docs/embeddings, updated 2026-08-10). The voyage-4 family also supports 256, 512 and 2048, so add storage rows at 512 and 256 dimensions.
 - **For S04:** the chunk header holds only fields that are stable across all versions of a document: `source_type`, `canonical_id`/title, and the heading path. `valid_from`/`valid_until`, tier and flags go in DB columns, because any per-version field in the embedded text defeats the content-hash cache. (Corrected at T3b plan review, 2026-09-30.)
 
-### S02-T4: Rename check `[core]`
+### S02-T4a: Renames `[core]`
 
-- **Goal:** run `git diff --find-renames` between adjacent release branches for the in-scope paths, and sample 10 detected renames.
-- **Done when:** the report gives precision on the sample, lists unmatched add/delete pairs, and recommends a similarity threshold.
+- **Goal:** run `git diff --find-renames` between adjacent release branches for the in-scope paths. Grade every detected rename with an oracle (a census), and hand-read a sample.
+- **Done when:** the report gives precision on the census and the sample, lists the unmatched add/delete pairs with their classes, and recommends a similarity threshold.
 
-#### T4 notes (added at T3a review, 2026-09-30)
+#### T4a notes (decided at plan review, 2026-09-30)
 
-- **Blog identity across the year-folder move:** verify that front-matter blog ids (`blog:<date>-<slug>`, ADR-002 D4) stay the same across website PR #53902's move: no collisions and no missing slugs. T1's key inventory found `slug` in 411 of 413 in-range posts at the head, so the fallback for a missing slug matters. If the ids hold, S05 uses front-matter identity for the blog, and rename detection is for docs only.
+- **Split:**
+  - The plan estimated about 260 code lines for T4. The draft, with the blog check, came to about 440 non-blank lines: 335 in the spike and 103 in tests.
+  - The blog check's first result was also bigger than expected. So T4 was split into T4a (renames) and T4b (blog identity).
+  - T4a as shipped: 267 non-blank lines in `renames.py` plus 83 in tests (350). The overrun comes from the oracle grading asked for at plan review: the census, the threshold deltas, the split section, and the moved-vs-removed classes.
+- **Run:** `uv run python spikes/renames.py`, with the same `CORPUS_CACHE_DIR` rule as T2. `fetch.py`'s git helper now also allows `diff`, which is read-only and runs with the network blocked.
+- **Census plus sample:**
+  - Every detected rename is graded. Docs pages and release records use the redirect file or Hugo `aliases`; feature gates use the front-matter `title`.
+  - Read by hand: every title mismatch, all docs renames, and 6 inexact gate renames (seed 4). The 6 are extra qualitative checks.
+- **Threshold table:** for each threshold, it shows the wrong pairings added as well as the real renames gained. One run at a 10% floor gives every row. This was checked against separate runs at 50, 60 and 90%.
+- **Delete classes:** a redirect counts as a move only if its target was added in the same release. Otherwise the delete is "removed, redirected to an older page".
+- **The 1.28→1.29 feature-gate change** is reported on its own: it's a split, not a rename.
+- **Tests:** `tests/unit/test_spike_renames.py` needs no git and no cache. Replace it in S04/S05.
+
+### S02-T4b: Blog identity `[core]`
+
+- **Goal:** check whether front-matter blog ids (`blog:<date>-<slug>`, ADR-002 D4) hold across versions, and across website PR #53902's year-folder move:
+  1. Break down the id changes by cause (date, slug, missing date) and by whether they happen before or after publication.
+  2. Score two identity rules by how many post histories each keeps together:
+     - the latest version's date and slug, applied backwards through the path history
+     - the Hugo URL from the site's permalink config, with Hugo's slug-or-title fallback. Read the config; don't assume it.
+  3. Check whether pre-publication versions explain most of the changes.
+- **Done when:** the report has the breakdown and both rules' scores, plus a note for T6: should a blog version's `valid_from` be the publication date rather than the commit date?
+- **Size:** aim for about 150 lines.
+
+#### T4b notes
+
+- **From T3a review (2026-09-30):** verify that the ids stay the same across website PR #53902's move: no collisions and no missing slugs. T1's key inventory found `slug` in 411 of 413 in-range posts at the head, so the fallback for a missing slug matters. If the ids hold, S05 uses front-matter identity for the blog, and rename detection is for docs only.
+- **From the T4a draft (2026-09-30):**
+  - **136 of the 417 in-scope posts change id between versions.** Causes include date edits, slug edits, and early versions with no date.
+  - **No collisions.** No id is shared by two posts.
+  - **4 in-scope posts have no `slug`:** the 1.21–1.24 release interviews.
+  - **The path is a poor fallback.** The path's slug matches the front-matter slug in only 177 of 413 posts. Hugo's `:slug` token falls back to the title; check that against the config.
 
 ### S02-T5: Format checks `[core]`
 
@@ -169,6 +200,17 @@ Each answered yes/no with an example:
   - 1.37: 62 of 213 (29%)
   - head: 0 of 36
   - overall: 1,169 of 3,281 (36%)
+
+#### T6 notes (added at T4a review, 2026-09-30)
+
+- **Docs `canonical_id` = the Hugo URL, not the file path.**
+  - ADR-002 D4 currently says `docs:<path under content/en/docs>`.
+  - A move into a page bundle keeps the URL: `feature-gates.md` became `feature-gates/index.md` at 1.29, at the same URL, and git can't pair the two (report §4, section H).
+  - Redirects then become URL → URL aliases.
+- **Declared signals first, similarity as the fallback.**
+  - Use redirects, Hugo aliases and the gate title before git similarity.
+  - Similarity found only 4 of the 6 docs renames the redirects declare, and it paired two different gates at 40%.
+  - A redirect counts as a rename only when its target was added in the same release (report §4, table G).
 
 ## Risks & unknowns
 

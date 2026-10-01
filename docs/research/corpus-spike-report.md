@@ -194,3 +194,155 @@ Tokens, chunks, embedding cost and vector storage are in the next section (S02-T
 | `CHANGELOG/CHANGELOG-1.30.md` at the kubernetes head (no front matter) | 354 headings and no code fences, so 355 sections with the table of contents before the first heading. 407,532 characters ÷ 4 = 101,883 tokens | 355 sections, 101,915 tokens (+0.03%) |
 
 The small token differences are expected: each section is rounded up separately, and the newline between two sections isn't counted.
+
+## 4. Renames (S02-T4a)
+
+- **Run:** `uv run python spikes/renames.py` on 2026-09-30, against the same lock. It downloaded only the 17 redirect files (0.8 MB in total). The `.md` contents were already in the cache from T3a. A second run took 3 seconds and downloaded nothing: the cache's object store stayed at the same size.
+- **Method:**
+  - **Detection:** `git diff -M10% --name-status` between the locked website snapshots of each pair of adjacent releases: 17 pairs, 1.20→1.21 to 1.36→1.37. The diff covers the in-scope `.md` files of the release-scoped website sources: docs pages, the website's release records, and feature gates.
+  - **One run gives every threshold.** git pairs deleted and added files from the highest similarity score down, so a pair scored s% is also found at every threshold up to s. One run at a 10% floor therefore gives the counts for every threshold. Checked: separate runs at 50, 60 and 90% gave exactly the floor run's pairs at or above that score, for all 17 pairs.
+  - **Similarity** is git's score on the raw file, front matter included, not on the ADR-002 D2 normalized text.
+  - **Oracles** (independent sources of truth, used to grade each rename):
+    - **Docs pages and release records:** the site's redirect file at the newer release, or a Hugo `aliases` entry on the new page. The redirect file is Netlify's list of old URL → new URL rules. A file path is turned into the URL Hugo serves it at: drop `content/en` and `.md`, turn `_index.md` and `index.md` into their folder, and lowercase.
+    - **Feature gates:** the front-matter `title`, which is the gate name, compared before and after.
+    - **Read by hand:** every title mismatch, all 4 docs renames, and 6 inexact gate renames sampled with a fixed seed.
+  - **The redirect file from 1.34 on:**
+    - Up to 1.33 it's `static/_redirects`. From 1.34, the site builds `_redirects` at build time from a Hugo template (`layouts/index.redirects`). The template adds two API-reference rules and copies in `static/_redirects.base` whole. So the spike reads `_redirects.base` for 1.34–1.37.
+    - Wildcard (`*`) and placeholder (`:x`) rules are skipped: 8–11 per release, and none covers an in-scope path.
+    - When one source URL has two rules, the first wins, as in Netlify.
+  - **Scope:** detection only sees in-scope paths, so a move across the scope boundary shows up as a plain delete or add. The redirect file classifies those (table G). Diffing the whole website tree was rejected, because it would mean downloading every changed English docs file for 17 pairs.
+
+### E. Rename census
+
+All 4 docs and release-record renames:
+
+| pair | score | old → new | oracle | read by hand | verdict |
+|---|---:|---|---|---|---|
+| 1.20→1.21 | 96% | `setup/release/version-skew-policy.md` → `releases/version-skew-policy.md` | redirect | Title reworded ("Kubernetes version and version skew support policy" → "Version Skew Policy"); 5 lines added, 6 removed | real |
+| 1.22→1.23 | 81% | `concepts/policy/pod-security-policy.md` → `concepts/security/pod-security-policy.md` | redirect (301) | Same title; 128 lines added, 89 removed | real |
+| 1.26→1.27 | 59% | `concepts/services-networking/topology-aware-hints.md` → `topology-aware-routing.md` | redirect (302) | The feature was renamed: "Topology Aware Hints" → "Topology Aware Routing"; 68 lines added, 30 removed | real |
+| 1.36→1.37 | 99% | `reference/using-api/deprecation-policy.md` → `reference/deprecation-policy.md` | alias only | Same title; 2 lines added | real |
+
+- The 1.23 PSP (Pod Security Policy) move is the known Auth move named in the backlog task. Its redirect is line 162 of `static/_redirects` at 1.23.
+- Two of the four changed their title, so a title oracle wouldn't work for docs pages.
+
+**Feature gates:** 350 renames at the floor, 345 of them at 1.31→1.32 (the kebab-case → gate-name renames of finding 2). At git's default of 50% there are 343 at 1.31→1.32, which matches T3a. 348 keep their title. The 2 that don't, read by hand:
+
+| pair | score | old → new | verdict |
+|---|---:|---|---|
+| 1.32→1.33 | 93% | `APIServingWithRoute` → `APIServingWithRoutine` | **Real.** The body and `stages` are identical; only the name changed. The CHANGELOGs only ever say `APIServingWithRoutine` (3 mentions in 1.30, 1 in 1.31), so the old file name was a typo. A gate renamed in the docs is a blind spot of the title oracle. |
+| 1.36→1.37 | 40% | `PodInfoAPI` → `InPlacePodVerticalScalingMemoryBackedVolumes` | **Wrong.** These are different gates. One is the kubelet Pod Info gRPC API: alpha since 1.35, and its file is removed at 1.37. The other is memory-backed `emptyDir` resizing, new as alpha in 1.37 (kubernetes PR #139425). The 40% comes from the front matter (`content_type`, `_build`, `stages`) that makes up most of both short files. |
+
+`renames.py` records the first verdict (`HAND_VERDICTS`), so tables E and F count it as real.
+
+**Sample:** 6 of the 55 inexact gate renames (under 100%), drawn with seed 4. All 6 are real:
+
+- **Same gate:** each keeps its name and body.
+- **What changed:** only `stages` entries added at 1.32 (3 graduations to stable, 1 to beta, 1 deprecation) or `removed: true`.
+
+So these gates were renamed in the same release their stage changed. With path identity, a gate's stage history would break at exactly those graduations.
+
+**Precision:**
+
+| group | at the floor (10%) | at 50% and above |
+|---|---|---|
+| docs pages and release records | 4 of 4 | 4 of 4 |
+| feature gates | 349 of 350 (99.7%) | 347 of 347 |
+
+### F. Thresholds
+
+Docs pages and release records:
+
+| threshold | detected | real | wrong | precision | real gained | wrong added | real missed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 100% | 0 | 0 | 0 | - | 0 | 0 | 6 |
+| 90% | 2 | 2 | 0 | 100.0% | 2 | 0 | 4 |
+| 70% | 3 | 3 | 0 | 100.0% | 1 | 0 | 3 |
+| 60% | 3 | 3 | 0 | 100.0% | 0 | 0 | 3 |
+| 50% | 4 | 4 | 0 | 100.0% | 1 | 0 | 2 |
+| 30% | 4 | 4 | 0 | 100.0% | 0 | 0 | 2 |
+| 10% | 4 | 4 | 0 | 100.0% | 0 | 0 | 2 |
+
+Feature gates:
+
+| threshold | detected | real | wrong | precision | real gained | wrong added | real missed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 100% | 295 | 295 | 0 | 100.0% | 295 | 0 | 56 |
+| 90% | 319 | 319 | 0 | 100.0% | 24 | 0 | 32 |
+| 70% | 341 | 341 | 0 | 100.0% | 22 | 0 | 10 |
+| 60% | 345 | 345 | 0 | 100.0% | 4 | 0 | 6 |
+| 50% | 347 | 347 | 0 | 100.0% | 2 | 0 | 4 |
+| 30% | 350 | 349 | 1 | 99.7% | 2 | 1 | 2 |
+| 10% | 350 | 349 | 1 | 99.7% | 0 | 0 | 2 |
+
+- **Real gained** and **wrong added** compare each row with the stricter row above it.
+- **Real missed** counts the real renames scored below the threshold, plus those no threshold finds:
+  - docs: the 2 missed renames in table G
+  - feature gates: the 2 pages of the 1.29 split (section H)
+- **Recommendation:** use git's default of 50% as the similarity fallback, chosen as an untuned default, not fitted to this data.
+  - **Why it can't be tuned here:** there are only 4 docs renames, too few to tune a threshold on. Every value from 10% to 59% gives the same docs result: 4 of 4 real, none wrong. The gap between 50% and ADR-002 D4's starting 60% comes down to one rename (topology, 59%). One case isn't evidence for moving the boundary, and 50% isn't picked to catch it.
+  - **What supports 50%:** it's git's default, and T3a's blog-move following already uses it. It sits above the only wrong pairing seen (40%, two short files that share boilerplate front matter). Every rename at or above 50% that was graded here is real (351 of 351).
+  - **What matters more:** similarity found only 4 of the 6 docs renames that the redirects declare. Declared signals (redirects, aliases, the gate title) should come first, with similarity as the fallback. That's for T6 (see the slice doc's T6 notes).
+
+### G. Unmatched adds and deletes (docs pages and release records)
+
+Each unmatched delete is classified by where its URL redirects at the newer release. A redirect counts as a move only if its target was **added in the same release**. A redirect to a page that already existed means the page was removed and its readers sent elsewhere.
+
+| class | deletes | adds |
+|---|---:|---:|
+| missed rename (redirect to an in-scope page added in the same release) | 2 | 2 |
+| moved out of scope (redirect to an out-of-scope page added in the same release) | 2 | – |
+| moved in from out of scope (a redirect from a page deleted in the same release) | – | 1 |
+| removed, redirected to an older page (the target existed before that release) | 1 | – |
+| removed, no redirect | 1 | – |
+| new page (no redirect from a page deleted in the same release) | – | 38 |
+
+Every row except the new pages:
+
+| pair | change | path | class | redirect |
+|---|---|---|---|---|
+| 1.20→1.21 | deleted | `setup/release/_index.md` | missed rename | → `/releases/` |
+| 1.20→1.21 | added | `releases/_index.md` | missed rename (partner) | from `/docs/setup/release/` |
+| 1.20→1.21 | deleted | `setup/release/notes.md` | missed rename | → `/releases/notes/` |
+| 1.20→1.21 | added | `releases/notes.md` | missed rename (partner) | from `/docs/setup/release/notes/` |
+| 1.20→1.21 | deleted | `concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases.md` | moved out of scope | → `/docs/tasks/network/customize-hosts-file-for-pods/` |
+| 1.24→1.25 | deleted | `concepts/services-networking/connect-applications-service.md` | moved out of scope | → `/docs/tutorials/services/connect-applications-service/` |
+| 1.24→1.25 | added | `reference/networking/ports-and-protocols.md` | moved in from out of scope | from `/docs/reference/ports-and-protocols/` |
+| 1.26→1.27 | deleted | `concepts/services-networking/service-topology.md` | removed, no redirect | – |
+| 1.28→1.29 | deleted | `concepts/security/overview.md` | removed, redirected to an older page | → `/docs/concepts/security/` (the section index) |
+
+- **The two missed renames continue the URL, not the content.**
+  - `setup/release/notes.md` was the 2,141-line v1.20 release notes. `releases/notes.md` is a 13-line page that points to the CHANGELOG.
+  - The two `_index.md` files are 4 and 26 lines, with different titles ("Release notes and version skew" → "Releases").
+  - git can't pair either. The redirect still says the page moved.
+- **`overview.md` and `cloud-native-security.md`:** at 1.29, `concepts/security/overview.md` was deleted and `cloud-native-security.md` added. They aren't a rename: their similarity is under 10%, and the redirect goes to the section index, not the new page.
+- **Removed, no redirect:** `service-topology.md` documented the `topologyKeys` API, deprecated since 1.21 in favour of Topology Aware Hints. It was dropped at 1.27 with no redirect.
+- **The 38 new pages** have no redirect from a page deleted in the same release. They include the Pod Security Admission pages at 1.22 and `reference/networking/` at 1.25. The full list is in the script output.
+- **For T6:** of the 6 deletes with a redirect, 5 point to a page added in the same release (moves) and 1 to an existing page (a removal). A redirect alone isn't enough to create an alias: the target has to be new in that release.
+- **Feature gates:** the only unmatched gate deletes are the 2 single pages at 1.29 (section H). The unmatched gate adds are:
+  - at 1.25, the `feature-gates-removed.md` page itself
+  - at 1.29, the split (section H)
+  - from 1.30 on, new gates, 12–26 per release
+
+  After the hand verdicts, `PodInfoAPI` is effectively a delete at 1.37 and `InPlacePodVerticalScalingMemoryBackedVolumes` an add.
+
+### H. The 1.28→1.29 feature-gate split
+
+- **What git shows:** `feature-gates.md` and `feature-gates-removed.md` deleted, and 318 adds: 317 under `feature-gates/` and 1 under `feature-gates-removed/`. git pairs none of them, even at 10%.
+- **Two of the adds are the old pages themselves:**
+  - `feature-gates/index.md` (title "Feature Gates") and `feature-gates-removed/index.md` (title "Feature Gates (removed)").
+  - Hugo serves a folder's `index.md` (a page bundle) at the folder's URL. So these are the same two pages at the same URLs, and there's no redirect because the URL didn't change.
+  - git can't pair them because the tables were replaced by a shortcode that renders the per-gate files. The title oracle finds them: they're the 2 feature-gate "missed renames".
+- **The other 316 adds are one file per gate.** All have `_build: render: false`: the page includes them, and they aren't pages of their own.
+  - 294 of the 316 gate names appear in the 1.28 tables. The other 22 are new gates in 1.29: the 5 checked (`ServiceAccountTokenJTI`, `NFTablesProxyMode`, `LoadBalancerIPMode`, `AllowServiceLBStatusOnNonLB`, `VolumeAttributesClass`) all have their first stage `fromVersion: "1.29"`.
+  - So the 1.29 per-gate files are a **split** of the old tables, not renames. Under path identity there are 2 deletes and 318 new documents. Under URL identity the 2 pages continue, and the 316 gate files are new documents whose text came out of the old tables.
+  - These are T3a's 318 extra feature-gate versions at 1.29.
+
+### Hand checks
+
+| Check | By hand | Spike |
+|---|---|---|
+| PSP move, 1.22→1.23 | `git diff -M --name-status` (git's default 50%) between the two locked SHAs, on `content/en/docs/concepts/`: `R081 concepts/policy/pod-security-policy.md → concepts/security/pod-security-policy.md`. `static/_redirects` at 1.23, line 162: `/docs/concepts/policy/pod-security-policy/ → /docs/concepts/security/pod-security-policy/ 301` | 81%, redirect confirms, real |
+| Thresholds from one floor run | Separate git runs at 50, 60 and 90% for all 17 pairs | identical to the floor's pairs at or above each score (0 mismatches) |
+| Inexact gate renames | Word diff of the 6 sampled pairs: only `stages` additions and `removed: true` | 6 of 6 real |
+| 1.28→1.29 split | `git ls-tree` at 1.29: `feature-gates/index.md` and `feature-gates-removed/index.md` exist; `feature-gates.md` doesn't | 2 page files with the old pages' titles |
