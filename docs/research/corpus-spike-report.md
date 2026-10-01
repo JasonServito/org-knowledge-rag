@@ -346,3 +346,123 @@ Every row except the new pages:
 | Thresholds from one floor run | Separate git runs at 50, 60 and 90% for all 17 pairs | identical to the floor's pairs at or above each score (0 mismatches) |
 | Inexact gate renames | Word diff of the 6 sampled pairs: only `stages` additions and `removed: true` | 6 of 6 real |
 | 1.28→1.29 split | `git ls-tree` at 1.29: `feature-gates/index.md` and `feature-gates-removed/index.md` exist; `feature-gates.md` doesn't | 2 page files with the old pages' titles |
+
+## 5. Blog identity (S02-T4b)
+
+- **Run:** `uv run python spikes/blog_identity.py` on 2026-09-30, against the same lock. The only new downloads were the site config files, first fetched at the plan review. The posts and the redirect file were already local from T3a and T4a. A second run took 6 seconds, and the cache's object store stayed at the same size (104,390,029 bytes).
+- **Method:**
+  - **Post histories:** T3a's, unchanged. Each history has one entry per first-parent commit on website `main` that touches the post, and git's rename detection follows moves. That gives 785 histories, 417 of them in scope under T3a's rule. The spike reuses T3a's code: `measure.py`'s `blog_docs` was split so that T4b gets each entry's exact commit time and path. `measure.py`'s output is byte-identical before and after the split.
+  - **Caveat: table J's ground truth isn't independent.** "One post" here means one rename-followed history, which comes from git similarity (default threshold 50%). So table J scores each rule against git's pairing, not against an independent source. One known error:
+    - In website PR #40392, `2023-04-05-kubescape-validating-admission-policy-library.md` was renamed to `2023-03-30-…`, a week before its date.
+    - The pair scores 41%, so git doesn't pair them.
+    - So the 417 includes a never-published fragment of that post.
+  - **The site config is read, not assumed:**
+    - All 69 versions of `config.toml` / `hugo.toml` on `main` since 1.20's release date give the same blog permalink, `/:section/:year/:month/:day/:slug/`.
+    - They also give the same front-matter date order: `date`, then the filename, then `publishDate`, then `lastmod`.
+    - `timeZone` is `"UTC"`. `buildFuture` is unset, so it's false: Hugo doesn't render a post before its date.
+    - The spike refuses to run if any config version differs.
+  - **ADR-002 D4 id:** `blog:<date>-<slug>`, from the front matter alone, with the date as written.
+  - **Hugo URL** (what the site serves):
+    - The pattern is the front-matter `url:` if set (it can contain tokens, and some older posts set it), otherwise the config permalink.
+    - The date is the front-matter `date`, else the filename's `YYYY-MM-DD-` prefix, else `publishDate`, else `lastmod`. A date with an offset (`-08:00`) keeps it, as Hugo does, so the URL uses the day as written. Checked: no in-scope URL changes if dates are converted to UTC first.
+    - The slug is the front-matter `slug`, else the filename's (only when the date came from the filename too), else the title. Hugo's title-to-slug conversion is approximated: lowercase, punctuation dropped, spaces to hyphens. Hand check below.
+  - **Publication:**
+    - The first moment Hugo would render the post: the version live at that moment isn't a draft, and its date (`publishDate`, else the date above) has passed. A version with no date at all renders at once.
+    - Approximation: the site builds on merge, so the real moment is the first build after that. See `ingress-nginx-retirement` under table I.
+  - **Units:** identity is checked at every commit, so moves and filename-derived URLs are seen. Version counts use ADR-002 D2 versions: 1,138, the same as T3a's table B.
+
+### I. Front-matter id changes
+
+Each cell is the number of changes between consecutive commits, with the number of posts in brackets. "date missing" means one side has no front-matter date.
+
+| cause | before publication | after publication | never published |
+|---|---:|---:|---:|
+| date missing | 65 (63) | 1 (1) | 0 (0) |
+| date | 47 (46) | 2 (2) | 0 (0) |
+| date + slug | 15 (15) | 0 (0) | 0 (0) |
+| date missing + slug | 14 (14) | 0 (0) | 0 (0) |
+| slug missing | 1 (1) | 2 (2) | 0 (0) |
+| date missing + slug missing | 1 (1) | 1 (1) | 0 (0) |
+| slug | 1 (1) | 0 (0) | 0 (0) |
+
+- **137 of the 417 posts change id at least once.** The slice's T4a-draft note said 136. That draft wasn't kept, and the one-post difference wasn't traced. It isn't the date's offset or the case of the front-matter keys.
+- **Pre-publication versions explain almost all of the changes: 144 of 150 (96%).**
+  - "date missing" is mostly placeholder drafts, for example `XXXX-XX-XX-dra-134-update.md`, which has `draft: true` and `date: XXXX-XX-XX`.
+  - "date" is mostly re-scheduling. For example, `introducing-jobset` was added as a draft dated 02-03, then re-dated to 03-23 when it was scheduled.
+- **The 6 changes after publication, one per post (5 real edits and 1 parser artifact):**
+  1. **`kubernetes-1.28-release-interview`:** PR #53902 added a slug. The URL is unchanged, because the title fallback already produced that slug.
+  2. **`k8s-book-club`:** a parser artifact, not an edit.
+     - Its first 3 versions open the front matter with `------` (§2, finding 3), so the spike reads no date or slug from them. The fix on 2024-05-20 shows up as "date missing + slug missing".
+     - The URL is unchanged, because the bundle folder `2024-02-22-k8s-book-club/` gives Hugo's filename date and slug.
+     - It's the only in-scope post with unparseable front matter.
+  3. **`headlamp-in-2025-project-highlights`:** a slug was added. The URL is unchanged.
+  4. **`introducing-headlamp-plugin-for-karpenter`:** a date was added, and the URL moved from 09-23 to 10-06. A redirect covers the old URL.
+  5. **`ingress-nginx-retirement`:** the date went from 11-12 to 11-11. There's no redirect and no alias. But the old URL was most likely never served:
+     - Version 1 was merged at 15:49 UTC with a date of 17:00 UTC.
+     - The next merge, at 17:17 UTC, moved the date to 18:30 UTC.
+     - The merge at 17:53 UTC moved it to 11-11, which published it at once.
+     - Builds run on merge, and there was no merge between 17:00 and 17:17.
+  6. **`ccm-new-metric-route-sync-total`:** the date went from 02-26 to 05-15. The new version's `aliases` lists the old URL, and the post says it "was originally published with the wrong date".
+
+### J. Identity rules, scored over the in-scope post histories
+
+"Kept whole" means one id across the history. "Published commits" means from the version live at publication onwards. 416 posts were published; the one that wasn't is the kubescape fragment.
+
+| rule | kept whole, every commit | kept whole, published commits | ids shared by two posts | needs rename following |
+|---|---:|---:|---:|---:|
+| ADR-002 D4 front-matter id, per commit | 276 | 406 of 416 | 0 | no |
+| A: latest date and slug, applied backwards | 413 | 412 of 416 | 0 | yes |
+| B: Hugo URL, per commit | 284 | 413 of 416 | 0 | no |
+
+- **No collisions under any rule.** No id or URL is shared by two posts.
+- **D4 per-version id:** 10 published histories split. These are the 6 changes after publication (table I) and the 4 posts with no `slug`: the 1.21–1.24 release interviews, for which D4 has no id.
+- **Rule A keeps every history whole by construction.** It misses only the 4 interviews with no slug. Its weaknesses don't show in the score:
+  - It depends on rename following, and git missed the kubescape rename.
+  - The id comes from the latest version, so it moves when the latest version changes. For 6 posts (5 without the `k8s-book-club` artifact), the id at publication differs from the id at the head. An ingestion run at publication and another at the head would give those posts different `canonical_id`s.
+- **Rule B splits 133 histories over every commit, as expected.** Re-scheduling a post before publication changes its URL, but those URLs were never public.
+  - **Over published commits, it keeps 413 of 416.** The 3 splits are table I's posts 4–6. Its 3 old URLs: 1 has a redirect, 1 an alias, and 1 has neither (`ingress-nginx-retirement`, most likely never served).
+  - **So for the blog too, the declared signals (redirects and aliases) cover every old URL that was served.**
+  - **It needs no rename following:** all 349 in-scope moves by PR #53902 keep the URL (table L).
+
+### K. Versions by publication phase (ADR-002 D2 versions)
+
+| phase | versions | posts |
+|---|---:|---:|
+| superseded before publication | 213 | 168 |
+| live at publication | 416 | 416 |
+| after publication | 508 | 272 |
+| never public | 1 | 1 |
+
+- **Superseded before publication:** 213 versions, in 168 posts, were replaced before the post went live, so they were never public.
+- **Live at publication:**
+  - 317 of the 416 versions live at publication were merged ahead of their date: median 2.6 days, maximum 28.5.
+  - With `valid_from` = commit time, those 317 would claim their text was public up to 28 days early.
+  - The other 99 were merged after their date, so publication happened at the commit.
+- **Never public:** the 1 version is the kubescape fragment.
+
+### L. Path changes (moves) in the in-scope histories
+
+| move | moves | same front-matter id | same Hugo URL |
+|---|---:|---:|---:|
+| PR #53902 | 349 | 348 | 349 |
+| other, after publication | 21 | 20 | 20 |
+| other, before publication | 100 | 11 | 11 |
+
+- **PR #53902 keeps both identities.** All 349 moves keep the URL. 348 keep the front-matter id; the exception is the 1.28 interview, which gained a slug in the same commit. This answers the T3a review question: no collisions, and the slug fallback matters for 4 posts.
+- **Two more in-scope posts were moved by PR #53902 to files with no `.md` extension:** `_posts/2022/kubernetes-1.23-release-interview` and `…/kubernetes-1.24-release-interview`.
+  - The spike counts only `*.md` files, like T3a, so it sees these two deleted at the move.
+  - Whether Hugo still renders them wasn't checked. Recorded in the backlog for S04.
+- **Other moves after publication:** mostly page-bundle conversions (`x.md` → `x/index.md`) and filename fixes (case, typos), which don't change the URL. The 1 exception is `introducing-headlamp-plugin-for-karpenter` (table I, post 4).
+- **Other moves before publication:** filename changes while a post is being scheduled, for example `XXXX-XX-XX-dra-134-update.md` → `2025-09-01-dra-134-update.md`.
+
+### Hand checks
+
+| Check | By hand | Spike |
+|---|---|---|
+| Title fallback (no `slug`) | Links on the site: `/blog/2018/07/16/how-the-sausage-is-made-the-kubernetes-1.11-release-interview-from-the-kubernetes-podcast/` and `/blog/2019/05/13/cat-shirts-and-groundhog-day-the-kubernetes-1.14-release-interview/`. Neither post has `slug` or `url` in its front matter. | `hugo_url` gives both exactly |
+| Pre-publication date change: `introducing-jobset` | `git log --raw`: added 2025-01-28 as `2025-02-03-…/index.md` with `draft: true`; renamed 2025-03-05 to `2025-03-23-…` with `date: 2025-03-23`; moved by PR #53902 | 1 version superseded before publication, 1 live at publication (merged 17 days ahead), 1 date change before publication |
+| Old URL with a redirect: `introducing-headlamp-plugin-for-karpenter` | `static/_redirects.base` at the head, line 488: `/blog/2025/09/23/… /blog/2025/10/06/… 301` | redirect |
+| Old URL with an alias: `ccm-new-metric-route-sync-total` | The front matter at the head has `aliases: [/blog/2026/02/26/ccm-new-metric-route-sync-total]` | alias |
+| Old URL with neither: `ingress-nginx-retirement` | 3 commits on 2025-11-12, with `date:` values `12:00-05:00`, `10:30-08:00`, then `2025-11-11T10:30-08:00`. No rule in `_redirects.base` and no `aliases`. | none; publication at 17:00 UTC is the approximation's artifact (table I, post 5) |
+| kubescape split | `git diff -M10%` across website PR #40392: `R041 2023-04-05-kubescape-… → 2023-03-30-kubescape-…` | 2 histories, 1 never published |
+| Extensionless interviews | `git ls-tree` at the head: `_posts/2022/kubernetes-1.23-release-interview` and `…1.24-release-interview` are blobs with no extension, added by PR #53902 | both histories end in a delete at PR #53902 |
