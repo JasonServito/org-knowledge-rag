@@ -368,7 +368,7 @@ Every row except the new pages:
     - The slug is the front-matter `slug`, else the filename's (only when the date came from the filename too), else the title. Hugo's title-to-slug conversion is approximated: lowercase, punctuation dropped, spaces to hyphens. Hand check below.
   - **Publication:**
     - The first moment Hugo would render the post: the version live at that moment isn't a draft, and its date (`publishDate`, else the date above) has passed. A version with no date at all renders at once.
-    - Approximation: the site builds on merge, so the real moment is the first build after that. See `ingress-nginx-retirement` under table I.
+    - Approximation: the real moment is the first site build after that. This assumes builds run on merge; it wasn't checked against the Netlify build config or build logs. See `ingress-nginx-retirement` under table I.
   - **Units:** identity is checked at every commit, so moves and filename-derived URLs are seen. Version counts use ADR-002 D2 versions: 1,138, the same as T3a's table B.
 
 ### I. Front-matter id changes
@@ -397,11 +397,11 @@ Each cell is the number of changes between consecutive commits, with the number 
      - It's the only in-scope post with unparseable front matter.
   3. **`headlamp-in-2025-project-highlights`:** a slug was added. The URL is unchanged.
   4. **`introducing-headlamp-plugin-for-karpenter`:** a date was added, and the URL moved from 09-23 to 10-06. A redirect covers the old URL.
-  5. **`ingress-nginx-retirement`:** the date went from 11-12 to 11-11. There's no redirect and no alias. But the old URL was most likely never served:
+  5. **`ingress-nginx-retirement`:** the date went from 11-12 to 11-11. There's no redirect and no alias. The old URL may never have been served, but that depends on an unchecked assumption:
      - Version 1 was merged at 15:49 UTC with a date of 17:00 UTC.
      - The next merge, at 17:17 UTC, moved the date to 18:30 UTC.
      - The merge at 17:53 UTC moved it to 11-11, which published it at once.
-     - Builds run on merge, and there was no merge between 17:00 and 17:17.
+     - So the old URL could only have been served by a build between 17:00 and 17:17 UTC. There was no merge in that window. Scheduled builds weren't checked.
   6. **`ccm-new-metric-route-sync-total`:** the date went from 02-26 to 05-15. The new version's `aliases` lists the old URL, and the post says it "was originally published with the wrong date".
 
 ### J. Identity rules, scored over the in-scope post histories
@@ -420,9 +420,12 @@ Each cell is the number of changes between consecutive commits, with the number 
   - It depends on rename following, and git missed the kubescape rename.
   - The id comes from the latest version, so it moves when the latest version changes. For 6 posts (5 without the `k8s-book-club` artifact), the id at publication differs from the id at the head. An ingestion run at publication and another at the head would give those posts different `canonical_id`s.
 - **Rule B splits 133 histories over every commit, as expected.** Re-scheduling a post before publication changes its URL, but those URLs were never public.
-  - **Over published commits, it keeps 413 of 416.** The 3 splits are table I's posts 4–6. Its 3 old URLs: 1 has a redirect, 1 an alias, and 1 has neither (`ingress-nginx-retirement`, most likely never served).
-  - **So for the blog too, the declared signals (redirects and aliases) cover every old URL that was served.**
-  - **It needs no rename following:** all 349 in-scope moves by PR #53902 keep the URL (table L).
+  - **Over published commits, it keeps 413 of 416.** The 3 splits are table I's posts 4–6. Its 3 old URLs: 1 has a redirect, 1 an alias, and 1 has neither (`ingress-nginx-retirement`, possibly never served).
+  - **Declared signals cover 2 of the 3 old URLs.** The third might never have been served, but only under the build-on-merge assumption. That's 2 data points, too few to claim the blog's redirects and aliases are complete.
+  - **It needs no rename following, by inference rather than a direct test.**
+    - All 349 in-scope moves by PR #53902 keep the URL (table L), and no URL is shared by two posts. So grouping the published commits by URL would rebuild the same histories without git.
+    - The spike didn't run that grouping. Those 349 moves are also the ones git paired.
+    - 2 more in-scope posts moved by PR #53902 weren't measured, because they lost their `.md` extension (table L).
 
 ### K. Versions by publication phase (ADR-002 D2 versions)
 
@@ -438,7 +441,9 @@ Each cell is the number of changes between consecutive commits, with the number 
   - 317 of the 416 versions live at publication were merged ahead of their date: median 2.6 days, maximum 28.5.
   - With `valid_from` = commit time, those 317 would claim their text was public up to 28 days early.
   - The other 99 were merged after their date, so publication happened at the commit.
+  - With `valid_from` = max(commit time, publication time), 25 of the 317 move to a later release row. T3a assigned blog versions to release rows by commit time (§2).
 - **Never public:** the 1 version is the kubescape fragment.
+- **Effect on earlier sections if T6 excludes never-public versions:** 214 of T3a's 1,138 blog versions go (19%; 213 superseded plus the fragment). That's 6.5% of the 3,281 embeddable versions. §2's per-release counts and §3's cost estimate would both drop. The token effect wasn't computed.
 
 ### L. Path changes (moves) in the in-scope histories
 
@@ -463,6 +468,6 @@ Each cell is the number of changes between consecutive commits, with the number 
 | Pre-publication date change: `introducing-jobset` | `git log --raw`: added 2025-01-28 as `2025-02-03-…/index.md` with `draft: true`; renamed 2025-03-05 to `2025-03-23-…` with `date: 2025-03-23`; moved by PR #53902 | 1 version superseded before publication, 1 live at publication (merged 17 days ahead), 1 date change before publication |
 | Old URL with a redirect: `introducing-headlamp-plugin-for-karpenter` | `static/_redirects.base` at the head, line 488: `/blog/2025/09/23/… /blog/2025/10/06/… 301` | redirect |
 | Old URL with an alias: `ccm-new-metric-route-sync-total` | The front matter at the head has `aliases: [/blog/2026/02/26/ccm-new-metric-route-sync-total]` | alias |
-| Old URL with neither: `ingress-nginx-retirement` | 3 commits on 2025-11-12, with `date:` values `12:00-05:00`, `10:30-08:00`, then `2025-11-11T10:30-08:00`. No rule in `_redirects.base` and no `aliases`. | none; publication at 17:00 UTC is the approximation's artifact (table I, post 5) |
+| Old URL with neither: `ingress-nginx-retirement` | 3 commits on 2025-11-12, with `date:` values `12:00-05:00`, `10:30-08:00`, then `2025-11-11T10:30-08:00`. No rule in `_redirects.base` and no `aliases`. | none; the 17:00 UTC publication comes from the approximation, and whether the old URL was served is unverified (table I, post 5) |
 | kubescape split | `git diff -M10%` across website PR #40392: `R041 2023-04-05-kubescape-… → 2023-03-30-kubescape-…` | 2 histories, 1 never published |
 | Extensionless interviews | `git ls-tree` at the head: `_posts/2022/kubernetes-1.23-release-interview` and `…1.24-release-interview` are blobs with no extension, added by PR #53902 | both histories end in a delete at PR #53902 |
