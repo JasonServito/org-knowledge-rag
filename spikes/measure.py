@@ -240,11 +240,12 @@ def snapshot_docs(
     return [Doc(source, repo, path, seq) for path, seq in sequences(listings).items()]
 
 
-def blog_docs(
-    cache: Path, head: str, paths: list[str], release_dates: list[date], follow_renames: bool
-) -> list[Doc]:
-    """One entry per first-parent commit on website main that touches a post (ADR-002 D3).
-    follow_renames keeps a moved post one document; git needs the contents to score renames."""
+def blog_log(
+    cache: Path, head: str, paths: list[str], follow_renames: bool
+) -> dict[str, list[tuple[datetime, str, str | None]]]:
+    """Per post, keyed by its latest path: (commit time, path then, blob or None once deleted),
+    one entry per first-parent commit on website main that touches it, oldest first (ADR-002 D3).
+    follow_renames keeps a moved post one history; git needs the contents to score renames."""
     log_args = ["--first-parent", "--diff-merges=first-parent", "--raw", "--no-abbrev", "-z"]
     log_args += ["--find-renames" if follow_renames else "--no-renames", "--format=@%ct", head]
     posts = [f"{p}*.md" for p in paths]  # posts only, so rename scoring never needs an image
@@ -259,14 +260,25 @@ def blog_docs(
             new, status = token.split()[3:5]
             old = next(tokens) if status.startswith("R") else None
             commits[-1][1].append((old, next(tokens), None if new.strip("0") == "" else new))
-    seqs: dict[str, Seq] = defaultdict(list)
+    history: dict[str, list[tuple[datetime, str, str | None]]] = defaultdict(list)
     for timestamp, changes in reversed(commits):  # git log lists newest first
-        row = release_row(datetime.fromtimestamp(timestamp, UTC), release_dates)
+        committed = datetime.fromtimestamp(timestamp, UTC)
         for old, path, oid in changes:
             if old is not None:  # a moved post continues as the same document
-                seqs[path] = seqs.pop(old, [])
-            seqs[path].append((row, oid))
-    return [Doc("blog_post", "website", path, seq) for path, seq in seqs.items()]
+                history[path] = history.pop(old, [])
+            history[path].append((committed, path, oid))
+    return history
+
+
+def blog_docs(
+    cache: Path, head: str, paths: list[str], release_dates: list[date], follow_renames: bool
+) -> list[Doc]:
+    """One entry per first-parent commit on website main that touches a post, in release rows."""
+    docs = []
+    for path, entries in blog_log(cache, head, paths, follow_renames).items():
+        seq: Seq = [(release_row(committed, release_dates), oid) for committed, _, oid in entries]
+        docs.append(Doc("blog_post", "website", path, seq))
+    return docs
 
 
 def collect(
