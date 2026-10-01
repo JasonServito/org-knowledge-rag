@@ -164,3 +164,63 @@ def test_coverage(blog: ModuleType) -> None:
     assert blog.coverage(old, final, set(), {old: final}) == "redirect"
     assert blog.coverage(old, final, set(), {old: "/blog/"}) == "none"
     assert blog.coverage(old, final, set(), {}) == "none"
+
+
+def test_first_public(blog: ModuleType) -> None:
+    commits = [day(10), day(12), day(20)]
+    assert blog.first_public(commits, day(15)) == 1  # the version committed on the 12th goes live
+    assert blog.first_public(commits, None) == 3  # never published: no published commits
+
+
+def test_d4_id(blog: ModuleType) -> None:
+    assert blog.d4_id(("2024-01-05", "s")) == "blog:2024-01-05-s"
+    assert blog.d4_id((None, "s")) is None
+
+
+def test_rule_ids(blog: ModuleType) -> None:
+    ids = [(None, "s"), ("2024-01-15", "s"), ("2024-01-16", "s")]  # draft, published, re-dated
+    urls = [None, "/blog/2024/01/15/s/", "/blog/2024/01/16/s/"]
+    published = {"blog:2024-01-15-s", "blog:2024-01-16-s"}
+    assert (
+        blog.rule_ids(ids, urls, 1)
+        == {
+            "D4": ({None, *published}, published),
+            "A": ({"blog:2024-01-16-s"}, {"blog:2024-01-16-s"}),  # the latest id, applied backwards
+            "B": (set(urls), set(urls[1:])),
+        }
+    )
+    never = blog.rule_ids(ids, urls, 3)
+    assert never["A"] == ({"blog:2024-01-16-s"}, set())
+    assert never["B"] == (set(urls), set())
+
+
+def test_a_drifts(blog: ModuleType) -> None:
+    ids = [("2024-01-15", "s"), ("2024-01-16", "s")]
+    assert blog.a_drifts(ids, 0)  # published as ...-15; the latest version says ...-16
+    assert not blog.a_drifts(ids, 1)  # the re-dating came before publication
+    assert not blog.a_drifts(ids, 2)  # never published
+
+
+def test_old_urls(blog: ModuleType) -> None:
+    assert blog.old_urls(["/x/", "/a/", "/b/"], 1) == ["/a/"]  # /x/ was before publication
+    assert blog.old_urls(["/a/", "/b/", "/a/"], 0) == ["/b/"]  # back to /a/: only /b/ is old
+    assert blog.old_urls(["/a/", "/a/"], 0) == []
+
+
+def test_move_kind(blog: ModuleType) -> None:
+    pr_merge = day(21)
+    assert blog.move_kind(day(21), pr_merge, "after publication") == "PR #53902"
+    assert blog.move_kind(day(5), pr_merge, "before publication") == "other, before publication"
+
+
+def test_score(blog: ModuleType) -> None:
+    ids: dict[str, tuple[set[str | None], set[str | None]]] = {
+        "whole": ({"a"}, {"a"}),
+        "split before publication": ({"b", "c"}, {"c"}),
+        "split after publication": ({"d", "e"}, {"d", "e"}),
+        "no id": ({None}, {None}),  # D4 for a post with no slug: never counts as whole
+        "never published": ({"f"}, set()),  # left out of the published column
+        "shares an id": ({"a"}, {"a"}),  # whole, but "a" is now shared by two posts
+    }
+    # every commit: whole, never published, shares an id; published: whole, split before, shares.
+    assert blog.score("rule", ids, "no") == ["rule", 3, "3 of 5", 1, "no"]

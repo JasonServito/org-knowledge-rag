@@ -37,6 +37,7 @@ from measure import (
     new_versions,
     prefetch,
     read_blobs,
+    release_row,
     split_front_matter,
 )
 from renames import REDIRECTS, aliases, norm_url, parse_redirects
@@ -175,6 +176,51 @@ def coverage(old: str, final: str, alias_urls: set[str], redirects: dict[str, st
     return "redirect" if redirects.get(old) == final else "none"
 
 
+# --- Per post: lists hold one entry per commit where the post exists, oldest first --------------
+
+
+def first_public(commits: list[datetime], published: datetime | None) -> int:
+    """Index of the commit live at publication; len(commits) if the post was never published."""
+    places = phases(commits, published)
+    return next((i for i, place in enumerate(places) if place in PUBLIC), len(commits))
+
+
+def d4_id(parts: tuple[str | None, str | None]) -> str | None:
+    """ADR-002 D4's blog:<date>-<slug>, or None when a part is missing."""
+    day, slug = parts
+    return f"blog:{day}-{slug}" if day and slug else None
+
+
+def rule_ids(
+    ids: list[tuple[str | None, str | None]], urls: list[str | None], first: int
+) -> dict[str, tuple[set[str | None], set[str | None]]]:
+    """Per rule: (ids over every commit, ids over the published commits, from `first` on).
+    Rule A gives every commit the latest commit's D4 id."""
+    d4 = [d4_id(parts) for parts in ids]
+    latest = {d4[-1]} if first < len(d4) else set()
+    return {
+        "D4": (set(d4), set(d4[first:])),
+        "A": ({d4[-1]}, latest),
+        "B": (set(urls), set(urls[first:])),
+    }
+
+
+def a_drifts(ids: list[tuple[str | None, str | None]], first: int) -> bool:
+    """Whether rule A's id at publication differs from its id now: an ingestion run at each
+    point would give the post different canonical_ids."""
+    return first < len(ids) and d4_id(ids[first]) != d4_id(ids[-1])
+
+
+def old_urls(urls: list[str | None], first: int) -> list[str | None]:
+    """URLs the post had after publication other than its final one, in order, once each."""
+    return [url for url in dict.fromkeys(urls[first:]) if url != urls[-1]]
+
+
+def move_kind(committed: datetime, pr_merged: datetime, when: str) -> str:
+    """A path change by the year-folder PR's merge commit, or another move and its timing."""
+    return f"PR #{MOVE_PR}" if committed == pr_merged else f"other, {when}"
+
+
 # --- Run --------------------------------------------------------------------------------------
 
 
@@ -241,7 +287,11 @@ def main() -> None:
 
     scoped = {path: entries for path, entries in posts.items() if in_scope(entries)}
     grep = f"--grep=^Merge pull request #{MOVE_PR} "
-    moved_at = int(git(*log[:2], "-1", grep, "--format=%ct", head, repo=website))
+    pr_merged = datetime.fromtimestamp(
+        int(git(*log[:2], "-1", grep, "--format=%ct", head, repo=website)), UTC
+    )
+    release_dates = [r["release_date"] for r in releases]
+    row_moves = 0  # versions whose release row moves if valid_from = max(commit, publication)
     changes: dict[tuple[str, str], list[str]] = defaultdict(list)  # (cause, timing) -> posts
     rules: dict[str, dict[str, tuple[set[str | None], set[str | None]]]] = defaultdict(dict)
     version_phases: dict[str, list[str]] = defaultdict(list)  # phase -> posts, one per version
@@ -259,15 +309,13 @@ def main() -> None:
             version_phases[phase].append(path)
             if phase == "live at publication" and published and t < published:
                 ahead.append((published - t).total_seconds() / 86400)
+                row_moves += release_row(t, release_dates) != release_row(published, release_dates)
 
         # Identity is checked at every commit, so moves and path-derived URLs are seen.
         present = [(t, p, meta[o]) for t, p, o in entries if o]
         ids = [fm_id(m) for _, _, m in present]
         urls = [hugo_url(m, p, permalink) for _, p, m in present]
-        present_phases = phases([t for t, _, _ in present], published)
-        first_public = next(
-            (i for i, ph in enumerate(present_phases) if ph in PUBLIC), len(present)
-        )
+        first = first_public([t for t, _, _ in present], published)
         for i in range(1, len(present)):
             when = timing(present[i][0], published)
             if ids[i] != ids[i - 1]:
@@ -275,23 +323,18 @@ def main() -> None:
                 if when == "after publication":
                     listed.append(f"id changed after publication: {ids[i - 1]} -> {ids[i]}")
             if present[i][1] != present[i - 1][1]:
-                moved_by_pr = present[i][0].timestamp() == moved_at
-                kind = f"PR #{MOVE_PR}" if moved_by_pr else f"other, {when}"
+                kind = move_kind(present[i][0], pr_merged, when)
                 same = {"same id": ids[i] == ids[i - 1], "same URL": urls[i] == urls[i - 1]}
                 moves[kind].update({"moves": 1, **same})
-                if not all(same.values()) and (moved_by_pr or when != "before publication"):
+                if not all(same.values()) and kind != "other, before publication":
                     listed.append(f"{kind} move: {ids[i - 1]} {urls[i - 1]} -> {ids[i]} {urls[i]}")
-        d4 = [f"blog:{d}-{s}" if d and s else None for d, s in ids]
-        rules["D4"][path] = set(d4), set(d4[first_public:])
-        rules["A"][path] = {d4[-1]}, ({d4[-1]} if first_public < len(present) else set())
-        rules["B"][path] = set(urls), set(urls[first_public:])
-        if first_public < len(present) and d4[first_public] != d4[-1]:
-            counts["A: latest id differs from the id at publication"] += 1
-        final = str(urls[-1])
-        old_urls = [str(u) for u in dict.fromkeys(urls[first_public:]) if u != urls[-1]]
-        counts["Hugo URL changed after publication"] += bool(old_urls)
-        for old in old_urls:
-            how = coverage(old, final, aliases(present[-1][2]), redirects)
+        for rule, pair in rule_ids(ids, urls, first).items():
+            rules[rule][path] = pair
+        counts["A: latest id differs from the id at publication"] += a_drifts(ids, first)
+        final, olds = str(urls[-1]), old_urls(urls, first)
+        counts["Hugo URL changed after publication"] += bool(olds)
+        for old in olds:
+            how = coverage(str(old), final, aliases(present[-1][2]), redirects)
             coverages[how] += 1
             listed.append(f"old URL ({how}): {old} -> {final}")
         if not present[-1][2].get("slug"):
@@ -322,7 +365,8 @@ def main() -> None:
     rows = [[ph, len(version_phases[ph]), len(set(version_phases[ph]))] for ph in PHASES]
     print(md_table(["phase", "versions", "posts"], rows))
     print(f"\nlive at publication and merged ahead of it: {len(ahead)} versions,", end=" ")
-    print(f"median {statistics.median(ahead):.1f} days, max {max(ahead):.1f}")
+    print(f"median {statistics.median(ahead):.1f} days, max {max(ahead):.1f};", end=" ")
+    print(f"{row_moves} move to a later release row if valid_from = max(commit, publication)")
 
     print("\n### L. Path changes (moves)\n")
     rows = [[kind, c["moves"], c["same id"], c["same URL"]] for kind, c in sorted(moves.items())]
