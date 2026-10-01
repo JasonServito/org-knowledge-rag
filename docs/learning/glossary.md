@@ -37,6 +37,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Lexical / full-text retrieval** | Matching on words or terms. In Postgres this uses `tsvector`/`tsquery` ranking. This is *not* BM25. |
 | **MRR** | Mean Reciprocal Rank: the average of 1 / (rank of the first relevant result). |
 | **nDCG** | Normalized Discounted Cumulative Gain: a rank-quality score that rewards relevant results appearing higher. |
+| **Oracle (for grading)** | An independent source of truth used to check a heuristic's output. S02 graded git's rename guesses against the site's redirects, Hugo aliases and gate titles. |
 | **RAG** | Retrieval-Augmented Generation: retrieve evidence, then have an LLM answer from that evidence. |
 | **Recall@K** | The fraction of relevant items that appear in the top K results. |
 | **RRF** | Reciprocal Rank Fusion: combine ranked lists with score = Σ 1/(k + rank), where k is often 60. |
@@ -55,8 +56,10 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Lockfile** | A file (`uv.lock`) recording the exact version of every dependency, including indirect ones, so every machine installs the same set. |
 | **Migration** | A versioned, ordered schema change applied by a tool (Alembic), so every environment has the same schema. |
 | **Named volume** | Docker-managed storage that outlives the container, so `make down` / `make up` keep the database's data. |
+| **Partial clone** | `git clone --filter=blob:none`: download commits and directory listings but no file contents, then fetch only the files you need. S02's corpus cache is built this way. |
 | **Permissive license (MIT)** | Lets anyone use, modify and redistribute the code, even in closed-source products, as long as they keep the copyright notice. It covers this repo's code, not the corpus. |
 | **Pre-commit hook** | A script git runs before each commit. If it fails or modifies files, the commit stops so you can review. Here it runs ruff only. |
 | **pytest marker** | A label on a test (e.g. `integration`). `pytest -m <expr>` selects or excludes tests by label. |
 | **Service container** | A Docker container GitHub Actions starts next to a CI job (here Postgres) and waits on until healthy. CI's equivalent of `make up`. |
+| **Spike** | A time-boxed, throwaway experiment that answers a question with evidence before committing to a design. Its code is rewritten, not reused. |
 | **src layout** | Package code lives under `src/<package>/`, so tests import the *installed* package and catch packaging mistakes a root-level package would hide. |

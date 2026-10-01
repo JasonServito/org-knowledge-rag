@@ -1,6 +1,6 @@
 # Architecture
 
-This page describes only what exists in the code **today** (end of S01, repo foundation). It is updated as slices land. The planned pipeline (ingestion → retrieval → generation → eval) is described in `CLAUDE.md` and `docs/product-spec.md`; none of it is built yet.
+This page describes only what exists in the code **today** (end of S02, corpus spike). S02 added no code to `src/`: only the corpus manifest and lock in `config/`, and throwaway measurement scripts in `spikes/` (see below). It is updated as slices land. The planned pipeline (ingestion → retrieval → generation → eval) is described in `CLAUDE.md` and `docs/product-spec.md`; none of it is built yet.
 
 ## Overview
 
@@ -35,6 +35,14 @@ This page describes only what exists in the code **today** (end of S01, repo fou
 
 There is no server entry point yet (no ASGI server dependency). The app runs only inside tests, through FastAPI's `TestClient`.
 
+Outside `src/`:
+
+| Path | What it does |
+|---|---|
+| `config/corpus_manifest.yaml` | Defines the Stage 1 corpus: repos, releases 1.20–1.37, per-SIG path allowlists, the traced KEPs, and the normalization strip lists (ADR-002 D6). |
+| `config/corpus_manifest.lock.yaml` | The single record of the 77 corpus SHAs: each repo's head, the website SHA per release, and the default-branch SHA at each release date. |
+| `spikes/` | S02's throwaway measurement scripts (`fetch.py`, `measure.py`, `renames.py`, `blog_identity.py`, `formats.py`, `source_formats.py`). They read a partial-clone cache outside the repo (`CORPUS_CACHE_DIR`). They're excluded from `mypy --strict`, never imported by `src/`, and to be rewritten in S04/S05. Results: `docs/research/corpus-spike-report.md`. |
+
 ## Database
 
 `compose.yaml` runs one service: the pinned `pgvector/pgvector:0.8.1-pg18` image (ADR-004), published on `127.0.0.1:5433`. Data lives in the named volume `pgdata`, so it survives `make down`. A `pg_isready` healthcheck over TCP lets `make up` block until the database accepts connections.
@@ -43,7 +51,7 @@ There is no server entry point yet (no ASGI server dependency). The app runs onl
 
 | Directory | Needs | Covers |
 |---|---|---|
-| `tests/unit/` | nothing (no network, no DB) | settings loading, URL rewriting, package import |
+| `tests/unit/` | nothing (no network, no DB) | settings loading, URL rewriting, package import; the spike scripts' pure functions (`test_spike_*.py`, replaced with the spikes in S04/S05) |
 | `tests/integration/` | `make up` + `make migrate` | the `vector` extension exists; `/health` and `/ready` return 200 with the DB up, and `/ready` returns 503 with it unreachable |
 
 `tests/integration/conftest.py` marks every test in that directory `integration`, so `make check` excludes them and `make test-int` selects only them.

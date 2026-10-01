@@ -1,9 +1,9 @@
 # S02: Corpus spike
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** pre-Stage 2 (validates ADR-002 and ADR-003)
 - **Started:** 2026-09-27
-- **Finished:**
+- **Finished:** 2026-10-01
 
 ## Outcome
 
@@ -15,10 +15,10 @@ The schema (S03) depends on how many versions, renames and status mismatches act
 
 ## Exit checks
 
-- [ ] `docs/research/corpus-spike-report.md` has: SHAs, per-release counts, distinct versions after dedup, token/chunk estimates, embedding cost estimate, rename findings, format findings.
-- [ ] The embedding cost estimate for the Stage 1 subset is acceptable to you.
-- [ ] ADR-002 and ADR-003 are Accepted (amendments noted).
-- [ ] Slice brief S02 written.
+- [x] `docs/research/corpus-spike-report.md` has: SHAs, per-release counts, distinct versions after dedup, token/chunk estimates, embedding cost estimate, rename findings, format findings.
+- [x] The embedding cost estimate for the Stage 1 subset is acceptable to you.
+- [x] ADR-002 and ADR-003 are Accepted (amendments noted).
+- [x] Slice brief S02 written.
 
 ## Scope
 
@@ -362,6 +362,28 @@ ADR-002 and ADR-003 (accept or amend).
 ## Retro (fill in at the end)
 
 - **Shipped:**
+  - All 9 tasks, in 9 PRs (#8–#16), merged 2026-09-30 to 2026-10-01.
+  - `config/corpus_manifest.yaml` (v0) and `config/corpus_manifest.lock.yaml`, the single record of the 77 corpus SHAs.
+  - 6 throwaway spike scripts in `spikes/` (1,681 non-blank lines), with 74 unit tests in 5 files (578 lines). The tests run in CI without a corpus cache. All are to be replaced in S04/S05.
+  - `docs/research/corpus-spike-report.md`: 8 sections and tables A–U, each section with hand checks. §8 is the conclusion.
+  - ADR-002 and ADR-003 Accepted, amended by 12 decisions (report §8, table U).
+  - Numbers:
+    - 1,745 documents and 3,862 versions (3,281 embeddable)
+    - 26,588–55,821 chunks at 512 tokens
+    - $0.42–$0.79 at voyage-4 (worst row $1.66), against a $5 budget
+    - 109–229 MB of vectors at 1024 dimensions
+    - a 138 MB local cache
+    - no paid API calls
 - **Surprises:**
-- **Do differently:** core tasks broke the size cap twice without stopping at the promised point (T4b, T5b).
-- **Slice brief:**
+  - **The corpus moves more than expected.** At 1.29 the feature-gate page was split into 316 per-gate files; at 1.32 343 gate files were renamed; in Feb 2026, 909 blog files moved into year folders. Path identity would have broken all three; the URL or gate name survives them.
+  - **git similarity found only 4 of the 6 docs moves** that the site's redirects declare.
+  - **"Immutable" CHANGELOG sections aren't.** 3 of the 23 sampled sections were edited later, one a factual fix 13 months after the release.
+  - **Blog posts are merged before they go live:** 317 of 416, by up to 28.5 days. Commit time would have misdated them.
+  - **Later feature-gate files rewrite earlier history** (`EventedPLEG`, `DynamicResourceAllocation`). So a release's stage has to come from that release's own snapshot.
+  - **A stray closing code fence hid 6 CHANGELOG sections** from a parser that toggles on every fence. Only a `grep -c` hand count caught it, and T3b's estimate carried the same bug (+0.17% chunks).
+  - **Cost isn't a constraint.** The worst case is 7% of Voyage's free tier.
+- **Do differently:**
+  - Core tasks broke the size cap twice without stopping at the promised point (T4b, T5b).
+  - Every spike overran its line estimate: T3a +17%, T5b +38%, T5a +102%, T4b +117%. Each needed at least one parser fix forced by the data: front-matter variants, `-` cells, patch-level ranges, the stray fence. For data-facing tasks, budget for that, and split at plan time when the estimate is near the cap, as T5 did.
+  - Cross-check every parser count against a raw count (`grep -c`, `git ls-tree`) before using it.
+- **Slice brief:** [`docs/learning/S02-corpus-spike.md`](../learning/S02-corpus-spike.md).
