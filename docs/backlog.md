@@ -97,7 +97,7 @@ Tasks:
   - Blog front-matter dates and in-place edit history; CHANGELOG section structure, plus one sampled immutability check; `kep.yaml` status typos.
   - Done when: each has a yes/no plus an example in the report.
   - Deps: T2.
-- [ ] **S02-T6 `[human]` Decide.**
+- [x] **S02-T6 `[human]` Decide.**
   - Write `docs/research/corpus-spike-report.md`; amend ADR-002 and ADR-003 if needed; set them to Accepted.
   - Done when: both ADRs are Accepted and the cost estimate fits the budget.
   - Deps: T3a, T3b, T4a, T4b, T5a, T5b.
