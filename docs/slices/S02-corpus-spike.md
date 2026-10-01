@@ -343,6 +343,13 @@ Each answered yes/no with an example:
   - The other 16 CHANGELOGs are unchanged.
   - §3's tables weren't edited. The effect on the budget is negligible.
 
+#### T6 notes (as decided, 2026-10-01)
+
+- **How:** each open question was walked through with its options and tradeoffs, and the developer chose the recommended option every time.
+- **Result:** ADR-002 and ADR-003 are Accepted. Each ends with a "Changes from the S02 spike" table.
+- **Report:** §8 records the validation answers, the 12 decisions, what the spike didn't validate, and what's handed to S03, S04/S05 and S09.
+- **Budget:** up to $5 one-off for the Stage 1 embeddings. The estimate ($0.42 realistic, $1.66 worst case) fits.
+
 ## Risks & unknowns
 
 - Repo size and clone time. Use partial clones and path filters.

@@ -1,6 +1,6 @@
 # S02 Corpus spike report
 
-*Slice: `docs/slices/S02-corpus-spike.md` · Status: in progress. T3a–T5 add their sections; T6 writes the conclusion.*
+*Slice: `docs/slices/S02-corpus-spike.md` · Status: complete. §1–§7 are the measurements (T2–T5b); §8 is the conclusion (T6).*
 
 ## 1. Snapshot (S02-T2)
 
@@ -847,3 +847,72 @@ Questions for T6, with the evidence above:
 | Vocabularies | `gh api` at the enhancements lock head: `keps/NNNN-kep-template/kep.yaml` line 9 (`status`) and lines 24–27 (the `stage` line and the deprecation comment above it), and `api/proposal.go` lines 44–51 | `STATUSES`, `TEMPLATE_STAGES` |
 | Offset without a colon | `yaml.safe_load("date: 2024-03-01T10:00:00+0000")` gives a `str`, and T4b's `front_time` reads it as 10:00 UTC. `git grep` lists 9 such dates or millisecond dates, matching the table's 8 + 1. | 8 + 1 posts |
 | In-place edit: NSA/CISA post | Added 2021-10-04 (`a72f7fac`, PR #29791) with `date: 2021-10-05`. On 2023-12-27, `8aecf063` (PR #44031) added `**Update, November 2023:**` and changed the guidance link. PR #53902 moved it with no content change (R100). | after publication, so 1 of T4b's 508 |
+
+## 8. Conclusion (S02-T6)
+
+- **Decided:** 2026-10-01, by the developer, on the questions raised in §2–§7.
+- **Result:** ADR-002 and ADR-003 are Accepted, with amendments. Each ADR ends with a "Changes from the S02 spike" table that lists what changed and the evidence for it.
+- **This report's tables stay as measured.** The decisions below change some counts slightly; the cost section says by how much.
+
+### T. ADR-002's validation items
+
+| item | answer | evidence |
+|---|---|---|
+| Files and versions per release; chunk estimate; embedding cost | 1,745 documents and 3,862 versions, 3,281 of them embeddable. 26,588–55,821 chunks at 512 tokens, $0.42–$0.79 at voyage-4. | §2 A–B, §3 C–D |
+| Do the release branches exist, and do the paths match? | Yes: `release-1.20` to `release-1.36`, with 1.37 on `main`. A release's file count matches `git ls-tree`. | §2 hand checks, §6 M |
+| Rename detection on a known Auth or Network move | The PSP page, 1.22→1.23, at 81%, confirmed by its redirect | §4 E |
+| Do blog posts have dates, and are in-place edits visible in git? | Yes. All 412 in-scope posts at the head have a front-matter date. 508 versions were committed after publication, in 272 posts. | §5 K, §7 S |
+
+### Cost against the budget
+
+- **Budget:** up to $5, one-off, to embed the Stage 1 subset once. Set by the developer at T6.
+- **The estimate fits.** It's $0.42 at voyage-4 (512-token chunks, lower bound). The most expensive row is $1.66 (voyage-4-large, 256-token chunks, upper bound), and $3.33 if characters ÷ 4 undercounts by half. Every row also fits within Voyage's 200M free tokens (§3 D).
+- **Each extra embedding model** in an ablation costs about the same again.
+- **Changes since §3, not applied to its tables:**
+  - the stray-fence recount: +96 chunks, +0.17% on the upper bound at 512 (§7 P)
+  - never-public blog versions aren't stored (ADR-002 D3): −214 of the 3,281 embeddable versions (−6.5%). The token effect wasn't computed.
+  - 7 symlinks that T3a counted as KEP documents: −7 versions (§7 R)
+  - gate-name identity: the 1.32 gate renames stop being new documents, so the lower bound drops slightly (§3 caveats)
+  - the `head` snapshot for KEPs and governance docs (ADR-002 D1) adds nothing: §2's `head` row already counts those changes.
+
+  Together these move the estimate by a few percent at most, so the budget conclusion doesn't change.
+
+### U. Decisions
+
+| # | question | decision | evidence | ADR |
+|---|---|---|---|---|
+| 1 | CHANGELOG sections are edited after they're written | Version the file by D2 at each ingestion. Text from before the first ingestion isn't reconstructed. | §7 Q | 002 D1, D3 |
+| 2 | KEP and governance changes after the latest release are missed | Add a `head` snapshot, at the lock's default-branch heads | §2, finding 4 | 002 D1 |
+| 3 | Identity of docs pages and feature gates | The URL for rendered pages (`web:<URL path>`); the gate name for gate files | §4 H, §6 O | 002 D4 |
+| 4 | Rename detection | Declared signals first: a redirect to a page that's new in that release, `aliases`, `former_titles`. git similarity at 50% as the fallback. | §4 E–G | 002 D4 |
+| 5 | Blog identity | The URL at publication, never changed; later URLs become aliases | §5 J, L | 002 D4 |
+| 6 | Blog `valid_from` | max(commit time, publication time) | §5 K | 002 D3 |
+| 7 | Never-public blog versions | Not stored: decision 6 gives them an empty window | §5 K | 002 D3 |
+| 8 | The 25 single-file KEPs at 1.20 | A known limit: separate documents from their later KEP directories | §7 R | 002 Consequences |
+| 9 | `disabled` and `GA` | Add `disabled` to `claimed_stage`. `GA` → `stable` is the only synonym; other unknown values are flagged. | §6 N, §7 R | 003 D5 |
+| 10 | KEP versions with no `stage` | "No claim": separate from low confidence, and never a `claim_mismatch` | §7 R | 003 D2 |
+| 11 | Stages that change at a patch release | Keep the per-minor key, and flag the release with `status_confidence = low` | §6 N–O | 003 D2, D5 |
+| 12 | Is the feature-gates reference reliable? (ADR-003's open question) | Answered. It's an observation, not ground truth: `observed_stage` comes from R's own snapshot, and the CHANGELOG is a second source. | §6 O | 003 D2 |
+
+The other questions in §7's "For T6":
+- **A `kep.yaml` that fails to parse:** read its first YAML document, and record any failure in the ingestion report. That's an S04-T2 parsing rule, already in the backlog; no ADR change.
+- **A §3 correction for the stray fence:** not needed (see the cost section).
+
+### Not validated by the spike
+
+These are assumptions in the accepted ADRs that the spike didn't test:
+
+- `git log --follow` for governance docs (ADR-002 D4). Never run.
+- Grouping blog versions by URL with no git rename following. Inferred from table L, not run directly (§5 J).
+- The blog publication time assumes the site builds on every merge. Not checked against the build config or logs (§5, method).
+- CHANGELOG edits: one sampled file, so there's no rate (§7 Q).
+- Token counts use characters ÷ 4, not Voyage's tokenizer (backlog, S04-T4).
+
+### Handed to later slices
+
+- **S03-T2 (domain model):**
+  - one vector per chunk row, or one per content hash (§3 caveats; already in the backlog)
+  - the CHANGELOG's release window, now that its versions are dated by ingestion (the manifest lists it under `clock: release`)
+  - `document_aliases` holds both old URLs and old gate names
+- **S04/S05:** the parsing items in the backlog's proposed additions: stray fences, front-matter variants, KEP metadata, the extensionless interviews.
+- **S09:** whether the blog ranks above governance docs; turning CHANGELOG notes into `observed_stage`; comparing a claimed `disabled` with observed stages.
