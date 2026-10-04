@@ -1,30 +1,35 @@
-## Task
+<!--
+Top section: fits on one screen (about 20 lines), plain language, no file paths or function names.
+Define each term on first use. Copy outputs from the tools; never retype them.
+-->
 
-`S0X-TY`: <title>. Slice doc: `docs/slices/S0X-*.md`
+**Where this fits:** Sources → Ingest → **Store** → Chunk → Embed → Retrieve → Answer
+**Before:** Currently the project can …
+**After:** Now it can … (specifically: …)
+**Why:** This matters because …
 
-## Brief
+**Proof**
+✅ <"done when" in plain words>: <proof>
+✅ Checks: format/lint/types · N unit · N integration · CI <link>
+✅ Break-it: <rule> broken → test failed → restored
+✅ Real data: <one-line result>
+⚠️ Not verified: <list, or "nothing">
 
-<!-- 8 lines or fewer. Core tasks may add the optional one-line Key code. -->
+**Needs your attention**
+Parked (N): <one line each>
+Greptile: N comments → N fixed, N parked, N dismissed · N/50 credits
+Questions for you: <list, or "none">
 
-- **What changed:** 1–2 lines.
-- **Decisions:** choice → alternative rejected → why, or "none".
-- **How verified:** `make check` <result>; `make test-int` <result, if DB or integration paths changed>; `make eval-smoke` <metric deltas, if retrieval or generation changed>.
-- **Interview-relevant:** 0–2 bullets, or "none".
-- **Key code** (`core` only, optional): `file:function`, …
+**Next steps for you**
+1. …
 
-<details>
-<summary>Check output</summary>
+<details><summary>Details</summary>
 
-```
-<paste the make check / make test-int output>
-```
+- Per task: what changed (1 line) · Key code `file:function` · commit
+- Decisions: choice → rejected → why
+- Claude's calls: reversible choices you can overrule
+- Interview notes: 2–3 likely questions ("How does…?", "Why X over Y?", "How do you know it works?", a likely follow-up), each with 1–2 one-line talking points. Not scripts.
+- Size: N files · ~N reviewable lines · split: no / yes (why)
+- Commands to reproduce, with trimmed outputs
 
 </details>
-
-## Checklist
-
-- [ ] Scope limited to this task; no unrelated edits
-- [ ] No new dependency, service or pattern without an ADR
-- [ ] No changes to `eval/golden_set/` (human-owned)
-- [ ] Docs/ADR updated if behavior changed or a decision was made
-- [ ] Backlog checkbox ticked

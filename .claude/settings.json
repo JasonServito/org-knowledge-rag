@@ -17,7 +17,13 @@
     ],
     "deny": [
       "Bash(git push --force *)", "Bash(git push -f *)", "Bash(rm -rf *)",
-      "Edit(./eval/golden_set/**)", "Write(./eval/golden_set/**)"
+      "Bash(git push *--force*)", "Bash(git push * -f)", "Bash(git push * -f *)",
+      "Bash(git push * +*)",
+      "Bash(git push * main)", "Bash(git push * main *)",
+      "Bash(git push *:main)", "Bash(git push *:main *)",
+      "Bash(git push *refs/heads/main*)",
+      "Bash(sudo *)",
+      "Edit(./eval/golden_set/**)"
     ],
     "ask": ["Bash(gh pr merge *)", "Bash(make down)"]
   }

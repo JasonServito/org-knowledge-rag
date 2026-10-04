@@ -1,0 +1,11 @@
+{
+  "files": [
+    { "path": "CLAUDE.md", "description": "Project rules, conventions, scope, non-goals and the reviewer rubric" },
+    { "path": "docs/architecture.md", "description": "Current architecture" },
+    { "path": "docs/decisions/README.md", "description": "ADR index, statuses and rules" },
+    { "path": "docs/decisions/ADR-001-corpus-kubernetes.md", "description": "ADR-001: the corpus is Kubernetes" },
+    { "path": "docs/decisions/ADR-002-versioning-and-identity.md", "description": "ADR-002: versioning and document identity" },
+    { "path": "docs/decisions/ADR-003-authority-and-status.md", "description": "ADR-003: source types, authority tiers, status taxonomy" },
+    { "path": "docs/decisions/ADR-004-toolchain.md", "description": "ADR-004: development toolchain" }
+  ]
+}
