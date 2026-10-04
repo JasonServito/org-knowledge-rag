@@ -192,7 +192,7 @@ Every task produces the following, briefly. It goes in the PR brief.
 - **Limits and size record:**
   - At most 2 PRs per run. A third needs the developer's OK in the sitting.
   - Record the PR size (files, reviewable lines) in every brief.
-- **Stacked PRs:** when a run is split, PR 2's base is PR 1's branch (`sNN-rNb-<name>`).
+- **Stacked PRs:** when a run is split after task TN, PR 1 gets a new branch (`sNN-rNa-<name>`) cut at TN's last commit. PR 2 is the run branch, with PR 1's branch as its base. No commits move, so nothing is force-pushed.
 - **Opening:** `git push -u origin <branch>`, then `gh pr create` with the body from `.github/pull_request_template.md`.
 - **Merging:**
   - Only after the developer says "merge" and the required CI checks (`check`, `integration`) are green.
@@ -221,6 +221,8 @@ Greptile is an AI code reviewer that comments on GitHub PRs. Its config is in `.
   gh api "repos/{owner}/{repo}/issues/comments?since=YYYY-MM-04T00:00:00Z" --paginate \
     --jq '.[] | select(.user.type == "User" and (.body | test("@greptile"))) | .id' | wc -l
   ```
+
+  Automatic reviews also cost credits, and this command misses them. Add any by hand (there should be none once the dashboard is set to Never).
 
 | Credits used | Mindset |
 |---|---|

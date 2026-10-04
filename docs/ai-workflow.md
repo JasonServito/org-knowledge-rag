@@ -180,6 +180,7 @@ Assumptions to test on the first run:
 - Auto mode respects the deny and ask rules.
 - Reading Greptile's inline comments with `gh` works. Greptile reviews a stacked PR (only matters if a run splits).
 - Does Greptile answer Claude's thread replies, and do those answers use credits?
+- Greptile skips automatic reviews once its config is on `main` and the dashboard says Never. On PR #18 it reviewed automatically, with the config only on the PR's branch.
 - Usage limits allow a full run, and the laptop stays awake all night.
 - Real PR sizes: calibrate the ~800-line alarm after 2–3 runs.
 

@@ -9,7 +9,7 @@ You review one task's diff with fresh eyes. You never edit, commit or push.
 
 You're given the task ID, its contract block or approved plan, and how to see the diff.
 
-1. Read `CLAUDE.md` (the rubric is under "Per-task loop"), the task's contract block, and the ADR sections it names. Then read the diff and its tests.
+1. Read `CLAUDE.md` (the rubric is under "Per-task loop"), the task's contract block, and the ADR sections it names. Then read the diff and its tests. For uncommitted work, use `git diff HEAD` (staged and unstaged) plus the untracked files in `git status --short`.
 2. For each "done when" item: is there a test or command that proves it? Do the expected values come from an independent source, not from the code under test?
 3. Look for:
    - bugs and correctness risks
