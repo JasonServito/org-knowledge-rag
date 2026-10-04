@@ -43,6 +43,26 @@ These mirror `docs/backlog.md`; details live here.
 
 ## Decisions expected (ADRs)
 
+## Run contracts
+
+Written by `/plan-run` in the sitting, and committed as the run branch's first commit. One block per run; `/run-bundle` builds from it.
+
+### Run SNN-RN: <name>
+
+- Status: planned / running / PR open / merged
+- Tasks: …
+- Goal (plain words): …
+- Decisions: choice → rejected → why
+- Handoffs between tasks: …
+- Edge cases: …
+- Files in scope: …
+- Proof map: "done when" → proof → source of expected values
+- Break-it rules (1–3 per task): …
+- Real-data demo: <command>
+- Bundle-level check: <command(s)>
+- PR plan: 1 PR (or 2: split after TN because …)
+- Paid calls allowed: none / list
+
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
