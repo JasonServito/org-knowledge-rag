@@ -105,13 +105,14 @@ Tasks:
 ### 🟨 S03 Domain model + migrations *(blueprint gap #3)*
 
 - **Outcome:** a schema that encodes ADR-002/003 invariants, enforced by the DB or by tested code.
+- **Slice doc:** `docs/slices/S03-domain-model.md`
 
 Tasks:
 
-- [ ] **S03-T1 `[human]` ADR-005: data access approach.**
+- [x] **S03-T1 `[human]` ADR-005: data access approach.**
   - SQLAlchemy Core vs. psycopg with raw SQL. Discuss in chat first.
   - Deps: S02.
-- [ ] **S03-T2 `[core]` Write `docs/domain-model.md`.**
+- [x] **S03-T2 `[core]` Write `docs/domain-model.md`.**
   - Entities, keys, constraints, and validity-window invariants. For example: at most one current version per `canonical_id`; windows of the same document don't overlap.
   - Done when: the developer has approved it.
   - Question from S02-T3b: store one vector per chunk row, or one per unique content hash that chunks reference?
@@ -275,7 +276,7 @@ ADRs are decided when their slice starts, not earlier.
 | ADR | Topic | Slice |
 |---|---|---|
 | 004 | Toolchain | S01 (Accepted) |
-| 005 | Data access approach | S03 |
+| 005 | Data access approach | S03 (Accepted) |
 | 006 | Generation model, structured output, tracing | S04 |
 | 007 | Golden-set schema and labeling | S06 |
 | 008 | Reranker model and candidate count | S08 |
@@ -304,3 +305,4 @@ ADRs are decided when their slice starts, not earlier.
 - **S04-T2: KEP metadata parsing.** Skip symlinks (mode `120000`): 7 `.md` files in the SIG KEP dirs point into KEP directories. Read the first YAML document: KEP-1205's 1.20 `kep.yaml` ends with `---` and fails `safe_load`. Accept front-matter dates as `date`, `datetime` or `str`: PyYAML returns a string for offsets without a colon (`+0000`), used by 8 posts. (Found in S02-T5b.)
 - **Playwright end-to-end tests + screenshots for the S17 Next.js UI.** Reason: verify UI behavior once a UI exists. Evaluate in the S17 sitting. (Workflow review 2026-10-04.)
 - **Cloud runs test (`claude --cloud`).** Reason: lets the laptop stay off on run nights. Check Docker Postgres, the corpus cache, and that the merge gate still holds. Trigger: keeping the laptop on becomes a burden. (Workflow review 2026-10-04.)
+- **S04 sitting: the chunk-header field list decides the embedding storage shape.** Reason: if the S04-T3 header holds no per-version field (release window, tier, status), switch `embeddings` to one vector per unique text, keyed by `(content_hash, model)`: 52% fewer vectors, and the table doubles as the S04-T4 cache. The product spec's header list (must-have 2) would need amending. Decide before S04-T4 stores any vectors. (`docs/domain-model.md`, revisit triggers; S03-R1 sitting.)
