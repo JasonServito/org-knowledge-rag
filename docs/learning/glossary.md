@@ -50,6 +50,8 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **ADR amendment vs. superseding ADR** | An amendment is a dated section that clarifies an accepted ADR without changing its decision. If the decision itself changes, a new ADR replaces (supersedes) the old one. |
 | **Database driver** | The library that speaks Postgres's network protocol (here psycopg 3). Alembic and SQLAlchemy sit on top of it. |
 | **Editable install** | Installing a package as a link to its source directory, so code edits take effect without reinstalling. `uv sync` does this for the project. |
+| **Exclusion constraint** | A Postgres constraint that rejects a row if it "collides" with an existing one under given operators. Here: same document (`=`) and overlapping date ranges (`&&`) means no two versions are live at once. Needs the `btree_gist` extension to compare plain columns with `=`. |
+| **Half-open interval `[from, until)`** | Includes its start, excludes its end. Back-to-back windows then touch without overlapping, so an instant belongs to exactly one version. Release windows are inclusive `[from, until]` instead. |
 | **Healthcheck** | A command Docker runs repeatedly inside a container to decide whether it is healthy (here, `pg_isready`). `docker compose up --wait` blocks on it. |
 | **Idempotent** | Running an operation twice has the same effect as running it once. This is required for ingestion and queue workers. |
 | **Liveness vs. readiness** | Liveness means "the process is up". Readiness means "it can serve traffic, because its dependencies are reachable". |
@@ -60,6 +62,8 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Permissive license (MIT)** | Lets anyone use, modify and redistribute the code, even in closed-source products, as long as they keep the copyright notice. It covers this repo's code, not the corpus. |
 | **Pre-commit hook** | A script git runs before each commit. If it fails or modifies files, the commit stops so you can review. Here it runs ruff only. |
 | **pytest marker** | A label on a test (e.g. `integration`). `pytest -m <expr>` selects or excludes tests by label. |
+| **Savepoint** | A checkpoint inside a transaction (a nested `conn.transaction()` in psycopg). Rolling back to it undoes only the failed statement, so a test can expect an error and keep going. |
 | **Service container** | A Docker container GitHub Actions starts next to a CI job (here Postgres) and waits on until healthy. CI's equivalent of `make up`. |
 | **Spike** | A time-boxed, throwaway experiment that answers a question with evidence before committing to a design. Its code is rewritten, not reused. |
 | **src layout** | Package code lives under `src/<package>/`, so tests import the *installed* package and catch packaging mistakes a root-level package would hide. |
+| **Upsert** | Insert a row, or update it if its key already exists (`INSERT … ON CONFLICT … DO UPDATE`). Makes a seed idempotent. |

@@ -1,9 +1,9 @@
 # S03: Domain model + migrations
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** pre-Stage 2 (readiness gap #3: the domain model)
 - **Started:** 2026-10-04
-- **Finished:**
+- **Finished:** 2026-10-04
 
 ## Outcome
 
@@ -15,12 +15,12 @@ S04 ingestion needs a place to write documents, versions, chunks and vectors. S0
 
 ## Exit checks
 
-- [ ] `docs/domain-model.md` approved by the developer (S03-T2).
-- [ ] ADR-005 Accepted (S03-T1).
-- [ ] Migration `0002` round-trips: `alembic downgrade 0001` then `alembic upgrade head`, with no errors and no domain tables left after the downgrade.
-- [ ] `make test-int` has at least one test per rule in the domain model, each asserting the exact database error (or the code check) for a deliberate violation.
-- [ ] `make seed` run twice leaves 18 `releases` rows (1.20–1.37) and changes nothing the second time.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] `docs/domain-model.md` approved by the developer (S03-T2).
+- [x] ADR-005 Accepted (S03-T1).
+- [x] Migration `0002` round-trips: `alembic downgrade 0001` then `alembic upgrade head`, with no errors and no domain tables left after the downgrade.
+- [x] `make test-int` has at least one test per rule in the domain model, each asserting the exact database error (or the code check) for a deliberate violation.
+- [x] `make seed` run twice leaves 18 `releases` rows (1.20–1.37) and changes nothing the second time.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -86,7 +86,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S03-R1: domain model storage
 
-- **Status:** running
+- **Status:** PR open
 - **Branch:** `s03-r1-domain-model`
 - **Tasks, in this order:** S03-T3 (migration `0002`) → S03-T5 (seed `releases`) → S03-T4 (data-access layer). T1 and T2 were completed in the sitting (ADR-005 Accepted; `docs/domain-model.md` approved).
 - **Closes the slice:** yes. `/slice-retro` is the run's last commit, unless a task parks; then no retro.
@@ -234,7 +234,24 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - T1 and T2 in the sitting; T3, T5 and T4 in one run (S03-R1), as 2 stacked PRs (split for size).
+  - Migration `0002`: 6 tables, 28 named constraints, `btree_gist`. It round-trips down to `0001` and back, locally and as a new CI step.
+  - The 10 data-access functions of the domain model: 396 lines of source, plus the 161-line migration.
+  - `make seed`: 18 releases (1.20–1.37). Two runs give the same checksum (`bc890d45…`).
+  - 15 rules: 12 enforced by the database, 3 by code (R3, R10, R13). Every rule has a test that breaks it and asserts the constraint name or the error.
+  - 55 new tests (13 unit, 42 integration). Totals: 94 unit, 45 integration.
+  - 6 break-it checks, each failing the intended test.
+  - No paid API calls. No new dependencies (PyYAML moved from dev to runtime, per decision 6).
 - **Surprises:**
+  - **The sitting's v1.30 post times were 6 hours off.** The contract says 14:56:34Z and 15:01:40Z; the commits are at 20:56:34Z and 21:01:40Z. The T4 builder caught it in the website clone. The tests keep the contract's values (parked).
+  - **R10 guards only the date window.** `close_version` can still move a release `until` set at insert, e.g. a CHANGELOG's `[30, 30]` to `[30, 31]`.
+  - **Postgres checks CHECKs before the exclusion constraint,** so `from > until` fails R5 with a clean `CheckViolation`, not a range-constructor error.
 - **What didn't work / negative results:**
+  - **The size alarm tripped:** 1,425 reviewable lines. After the planned split, PR 2 is still about 931 lines, 613 of them rule and window tests.
+  - **The 3 R15 tests never showed red.** Their constraints shipped in T3, before the tests existed.
+  - **Tests use real canonical ids** (PSP page, v1.30 post). Once S04 ingests those documents into the dev DB, `make test-int` will fail locally with `UniqueViolation`; CI is unaffected.
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S03-*.md`
+  - Estimate test lines at plan time for rule-heavy tasks: 15 rules became 37 tests and 613 lines, enough on their own to trip the 800-line alarm.
+  - Read "real data" timestamps with an explicit time zone (`TZ=UTC git log --date=iso-strict-local`) in the sitting.
+  - Decide how tests are isolated from ingested data before S04's first ingestion writes real ids.
+- **Slice brief:** [`docs/learning/S03-domain-model.md`](../learning/S03-domain-model.md)
