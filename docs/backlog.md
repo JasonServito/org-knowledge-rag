@@ -125,7 +125,7 @@ Tasks:
   - Tables: `releases`, `documents`, `document_aliases`, `document_versions`, `chunks`, `embeddings` (keyed by model).
   - Done when: it migrates up and down cleanly.
   - Deps: T2.
-- [ ] **S03-T4 `[core]` Data-access layer.**
+- [x] **S03-T4 `[core]` Data-access layer.**
   - Done when: integration tests prove every invariant in the domain model (for example, an overlapping window is rejected).
   - Deps: T3.
 - [x] **S03-T5 `[commodity]` Seed the `releases` table.**
