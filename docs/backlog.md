@@ -128,7 +128,7 @@ Tasks:
 - [ ] **S03-T4 `[core]` Data-access layer.**
   - Done when: integration tests prove every invariant in the domain model (for example, an overlapping window is rejected).
   - Deps: T3.
-- [ ] **S03-T5 `[commodity]` Seed the `releases` table.**
+- [x] **S03-T5 `[commodity]` Seed the `releases` table.**
   - Loaded from the manifest (version, release date, end-of-life).
   - Done when: re-running the seed is idempotent.
   - Deps: T3.

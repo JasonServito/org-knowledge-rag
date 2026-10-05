@@ -1,5 +1,5 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate
+.PHONY: fmt check test-int up down migrate seed
 
 # Apply ruff's safe lint fixes (including import sorting), then format.
 fmt:
@@ -28,3 +28,7 @@ down:
 # Apply all pending Alembic migrations. Safe to re-run: applied revisions are skipped.
 migrate:
 	uv run alembic upgrade head
+
+# Load the releases from the corpus manifest into the database. Safe to re-run: it upserts.
+seed:
+	uv run python -m orgknow.ingestion.seed

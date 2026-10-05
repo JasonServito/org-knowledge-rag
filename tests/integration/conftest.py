@@ -1,8 +1,11 @@
 """Shared setup for integration tests. They need the real database: run `make up` first."""
 
+from collections.abc import Iterator
 from pathlib import Path
 
+import psycopg
 import pytest
+from psycopg.rows import TupleRow
 
 from orgknow.settings import Settings
 
@@ -21,3 +24,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 @pytest.fixture
 def settings() -> Settings:
     return Settings()
+
+
+@pytest.fixture
+def conn(settings: Settings) -> Iterator[psycopg.Connection[TupleRow]]:
+    """A connection whose writes are all rolled back when the test ends, pass or fail.
+
+    For an expected violation, use a nested `with conn.transaction():` (a savepoint) inside
+    `pytest.raises`, so the failed statement doesn't abort the rest of the test.
+    """
+    with psycopg.connect(settings.database_url) as conn, conn.transaction(force_rollback=True):
+        yield conn
