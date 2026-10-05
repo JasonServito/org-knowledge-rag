@@ -34,11 +34,18 @@ git clone https://github.com/JasonServito/org-knowledge-rag.git
 cd org-knowledge-rag
 cp .env.example .env        # local settings; the defaults match compose.yaml
 uv sync                     # Python 3.12 + all dependencies, exactly as pinned in uv.lock
-make up                     # start Postgres + pgvector and wait until it's healthy
+make up                     # start Postgres + pgvector, wait until it's healthy, create the test database
 make migrate                # apply Alembic migrations (safe to re-run)
 make check                  # format check, lint, mypy --strict, unit tests
-make test-int               # integration tests against the local database
+make test-int               # integration tests against a separate test database (orgknow_test)
 uv run pre-commit install   # run ruff on every commit
+```
+
+To load the corpus scope (S04: SIG Auth docs 1.24 to 1.37, plus KEP-2579), first create the partial clones of the corpus repos with `spikes/fetch.py` (set `CORPUS_CACHE_DIR`, outside this repo), then:
+
+```bash
+make seed                   # load the releases from the corpus manifest (safe to re-run)
+make ingest                 # read the scope at the locked SHAs and store one version per content change (safe to re-run)
 ```
 
 Postgres listens on host port **5433** (not the default 5432), bound to localhost, so it doesn't clash with another Postgres on your machine. `make down` stops it; the data is kept in a named Docker volume.

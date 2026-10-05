@@ -1,7 +1,9 @@
-"""Read the corpus manifest (config/corpus_manifest.yaml)."""
+"""Read the corpus manifest (config/corpus_manifest.yaml) and its lock file."""
 
+from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
+from typing import Any
 
 # PyYAML ships no type hints, so safe_load returns Any: everything it returns is checked below.
 import yaml  # type: ignore[import-untyped]
@@ -9,13 +11,20 @@ import yaml  # type: ignore[import-untyped]
 from orgknow.db.models import Release
 
 
+def _read_yaml(path: Path) -> dict[str, Any]:
+    # safe_load builds only plain values (dicts, lists, strings, dates), never Python objects.
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must hold a YAML mapping")
+    return data
+
+
 def load_releases(path: Path) -> list[Release]:
     """Return the manifest's releases, oldest first, after checking the list is complete.
 
     A malformed entry raises pydantic's ValidationError; a broken rule raises ValueError.
     """
-    # safe_load builds only plain values (dicts, lists, strings, dates), never Python objects.
-    block = yaml.safe_load(path.read_text(encoding="utf-8"))["releases"]
+    block = _read_yaml(path)["releases"]
     first, latest = block["first"], block["latest"]
     releases = [
         Release(
@@ -45,3 +54,87 @@ def load_releases(path: Path) -> list[Release]:
                 f"is not after {prev.version} ({prev.release_date})"
             )
     return releases
+
+
+def load_normalization(path: Path) -> dict[str, frozenset[str]]:
+    """Return the front-matter keys to strip before hashing, per kind, lowercased (ADR-002 D2).
+
+    Hugo matches keys case-insensitively, so the lists are compared lowercased. Raises
+    ValueError if a list strips a `never_strip` key (identity, time or lifecycle).
+    """
+    block = _read_yaml(path)["normalization"]
+    never = {str(key).lower() for key in block["never_strip"]}
+    strip = {
+        str(kind): frozenset(str(key).lower() for key in keys)
+        for kind, keys in block["strip_front_matter"].items()
+    }
+    bad = sorted({key for keys in strip.values() for key in keys if key in never})
+    if bad:
+        raise ValueError(f"strip_front_matter lists never_strip keys: {bad}")
+    return strip
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """One locked commit to read: a release branch head, or a default branch at a date."""
+
+    release: int | None  # minor of the release (24 for v1.24); None for the `head` snapshot
+    ref: str  # branch, e.g. release-1.24, main or master
+    sha: str
+
+    @property
+    def label(self) -> str:
+        return "head" if self.release is None else f"1.{self.release}"
+
+
+@dataclass(frozen=True)
+class Scope:
+    """What `make ingest` reads: a named subset of the manifest at the lock's SHAs."""
+
+    name: str
+    docs_repo: str
+    docs_paths: tuple[str, ...]  # a path ending in "/" is a directory prefix
+    docs_snapshots: tuple[Snapshot, ...]  # one per release, from the scope's first release
+    kep_repo: str
+    keps: tuple[tuple[int, str], ...]  # (KEP number, its directory)
+    kep_snapshots: tuple[Snapshot, ...]  # default branch at each release date, then head
+
+
+def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
+    """Resolve the manifest's `scopes.<name>` against its sources and the lock's SHAs.
+
+    Docs are read from each release's branch, from the scope's `from_release` to the latest.
+    KEPs are read from the default branch at every release date, plus `head` (ADR-002 D1).
+    """
+    manifest = _read_yaml(manifest_path)
+    lock = _read_yaml(lock_path)
+    scopes = manifest["scopes"]
+    if name not in scopes:
+        raise ValueError(f"unknown scope {name!r}; the manifest has: {', '.join(scopes)}")
+    scope = scopes[name]
+    versions = [str(entry["version"]) for entry in manifest["releases"]["list"]]
+
+    docs = manifest["sources"]["docs_page"]
+    docs_paths = tuple(path for sig in scope["docs_page"]["sigs"] for path in docs["sigs"][sig])
+    from_release = scope["docs_page"]["from_release"]
+    if from_release not in versions:
+        raise ValueError(f"scope {name!r}: from_release {from_release} is not a manifest release")
+    docs_snapshots = tuple(
+        Snapshot(
+            int(v.removeprefix("1.")),
+            lock["website_releases"][v]["ref"],
+            lock["website_releases"][v]["sha"],
+        )
+        for v in versions[versions.index(from_release) :]
+    )
+
+    kep = manifest["sources"]["kep"]
+    kep_repo = str(kep["repo"])
+    keps = tuple((int(number), str(kep["traced"][number])) for number in scope["kep"]["traced"])
+    branch = lock["repos"][kep_repo]["default_branch"]
+    dated = lock["release_date_snapshots"][kep_repo]
+    kep_snapshots = (
+        *(Snapshot(int(v.removeprefix("1.")), branch, dated[v]["sha"]) for v in versions),
+        Snapshot(None, branch, lock["repos"][kep_repo]["head"]),
+    )
+    return Scope(name, str(docs["repo"]), docs_paths, docs_snapshots, kep_repo, keps, kep_snapshots)

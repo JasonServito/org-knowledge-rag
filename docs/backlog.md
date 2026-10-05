@@ -144,7 +144,7 @@ Tasks:
 
 - [ ] **S04-T1 `[human]` ADR-006: generation model/provider and tracing.**
   - Covers the LLM for generation, structured-output method, and Langfuse Cloud setup.
-- [ ] **S04-T2 `[core]` Slice-scope ingestion.**
+- [x] **S04-T2 `[core]` Slice-scope ingestion.**
   - Snapshots → normalize/hash → versions with windows → stored.
   - Done when: a re-run creates 0 new versions (idempotent).
   - Deps: S03.

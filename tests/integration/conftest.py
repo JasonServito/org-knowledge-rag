@@ -1,5 +1,6 @@
 """Shared setup for integration tests. They need the real database: run `make up` first."""
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -27,7 +28,15 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings()
+    """Settings pointed at the test database, never the dev database (S04-R1 decision 1).
+
+    `make test-int` sets TEST_DATABASE_URL after migrating that database. There is no fallback:
+    running against the dev database would collide with its ingested rows.
+    """
+    test_database_url = os.environ.get("TEST_DATABASE_URL")
+    if not test_database_url:
+        pytest.fail("TEST_DATABASE_URL is unset: run the integration tests with `make test-int`")
+    return Settings(database_url=test_database_url)
 
 
 @pytest.fixture

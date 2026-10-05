@@ -20,14 +20,13 @@ class Release(BaseModel):
         return int(self.version.removeprefix("1."))
 
 
-class NewVersion(BaseModel):
-    """A `document_versions` row to insert: every column except the generated `id`.
+class VersionData(BaseModel):
+    """A version's columns except its document and id: what ingestion derives from snapshots.
 
     The table's CHECKs, not this model, validate hashes and windows (ADR-005 D2). The model
     only refuses naive datetimes, which the database would silently read in its own time zone.
     """
 
-    document_id: int
     content_hash: str
     source_path: str
     snapshot_repo: str
@@ -40,6 +39,12 @@ class NewVersion(BaseModel):
     claimed_status: str | None = None
     claimed_stage: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class NewVersion(VersionData):
+    """A `document_versions` row to insert: every column except the generated `id`."""
+
+    document_id: int
 
 
 class Version(NewVersion):
