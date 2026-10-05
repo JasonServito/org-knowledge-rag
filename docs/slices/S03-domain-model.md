@@ -86,7 +86,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S03-R1: domain model storage
 
-- **Status:** running
+- **Status:** PR open
 - **Branch:** `s03-r1-domain-model`
 - **Tasks, in this order:** S03-T3 (migration `0002`) → S03-T5 (seed `releases`) → S03-T4 (data-access layer). T1 and T2 were completed in the sitting (ADR-005 Accepted; `docs/domain-model.md` approved).
 - **Closes the slice:** yes. `/slice-retro` is the run's last commit, unless a task parks; then no retro.
