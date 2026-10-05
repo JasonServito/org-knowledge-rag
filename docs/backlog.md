@@ -102,7 +102,7 @@ Tasks:
   - Done when: both ADRs are Accepted and the cost estimate fits the budget.
   - Deps: T3a, T3b, T4a, T4b, T5a, T5b.
 
-### 🟨 S03 Domain model + migrations *(blueprint gap #3)*
+### ✅ S03 Domain model + migrations *(blueprint gap #3)*
 
 - **Outcome:** a schema that encodes ADR-002/003 invariants, enforced by the DB or by tested code.
 - **Slice doc:** `docs/slices/S03-domain-model.md`
@@ -134,7 +134,7 @@ Tasks:
   - Deps: T3.
 - **Not in this slice:** the `search_vector` column (S07), `observed_lifecycle` (S09), and the relationships/decisions tables (S13).
 
-### ⬜ S04 First vertical slice: PSP → PSA *(Stage 2, narrowed)*
+### 🟨 S04 First vertical slice: PSP → PSA *(Stage 2, narrowed)*
 
 - **Outcome:** `orgknow ask "<question>"` returns a cited, structured answer over SIG Auth docs at v1.24 and the latest release, plus KEP-2579.
 - **Tests:** seeds #6–#10 (golden seeds in `docs/research/corpus_validation_gate.md` Appendix A).
@@ -306,3 +306,5 @@ ADRs are decided when their slice starts, not earlier.
 - **Playwright end-to-end tests + screenshots for the S17 Next.js UI.** Reason: verify UI behavior once a UI exists. Evaluate in the S17 sitting. (Workflow review 2026-10-04.)
 - **Cloud runs test (`claude --cloud`).** Reason: lets the laptop stay off on run nights. Check Docker Postgres, the corpus cache, and that the merge gate still holds. Trigger: keeping the laptop on becomes a burden. (Workflow review 2026-10-04.)
 - **S04 sitting: the chunk-header field list decides the embedding storage shape.** Reason: if the S04-T3 header holds no per-version field (release window, tier, status), switch `embeddings` to one vector per unique text, keyed by `(content_hash, model)`: 52% fewer vectors, and the table doubles as the S04-T4 cache. The product spec's header list (must-have 2) would need amending. Decide before S04-T4 stores any vectors. (`docs/domain-model.md`, revisit triggers; S03-R1 sitting.)
+- **S04 sitting: isolate integration tests from ingested data.** Reason: S03's tests create documents with real canonical ids (the PSP page, the v1.30 post). Once S04-T2 commits those documents to the dev DB, `create_document` in the tests raises `UniqueViolation` and `make test-int` fails locally (CI starts empty). Options: a separate test database, or test-only ids. (Found in S03-T4.)
+- **Decide whether R10 also freezes a release `until` set at insert.** Reason: `close_version` refuses to move a closed date window, but it overwrites `valid_until_release` on any open version. A CHANGELOG version inserted as `[30, 30]` becomes `[30, 31]` if the caller passes 31. S04-T2 must pass R; nothing enforces it. (Found in S03-T4 review.)
