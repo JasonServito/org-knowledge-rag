@@ -53,4 +53,9 @@ jobs:
       - run: make migrate
       - name: make migrate (again; must be a no-op)
         run: make migrate
+      # Proves every downgrade undoes its upgrade: down to 0001, then back up to head.
+      - name: Migration round trip (down to 0001, then up)
+        run: |
+          uv run alembic downgrade 0001
+          make migrate
       - run: make test-int

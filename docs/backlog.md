@@ -121,7 +121,7 @@ Tasks:
 
     See `docs/research/corpus-spike-report.md` §3.
   - Deps: T1.
-- [ ] **S03-T3 `[core]` Migration `0002`.**
+- [x] **S03-T3 `[core]` Migration `0002`.**
   - Tables: `releases`, `documents`, `document_aliases`, `document_versions`, `chunks`, `embeddings` (keyed by model).
   - Done when: it migrates up and down cleanly.
   - Deps: T2.
