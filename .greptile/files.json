@@ -6,6 +6,8 @@
     { "path": "docs/decisions/ADR-001-corpus-kubernetes.md", "description": "ADR-001: the corpus is Kubernetes" },
     { "path": "docs/decisions/ADR-002-versioning-and-identity.md", "description": "ADR-002: versioning and document identity" },
     { "path": "docs/decisions/ADR-003-authority-and-status.md", "description": "ADR-003: source types, authority tiers, status taxonomy" },
-    { "path": "docs/decisions/ADR-004-toolchain.md", "description": "ADR-004: development toolchain" }
+    { "path": "docs/decisions/ADR-004-toolchain.md", "description": "ADR-004: development toolchain" },
+    { "path": "docs/decisions/ADR-005-data-access.md", "description": "ADR-005: data access approach and where rules are enforced" },
+    { "path": "docs/domain-model.md", "description": "Domain model: tables, rules R1-R15 and data-access functions" }
   ]
 }
