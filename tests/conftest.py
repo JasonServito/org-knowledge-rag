@@ -2,10 +2,12 @@
 
 import os
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
+
+from orgknow.embeddings.embedder import DIMENSIONS, EmbedResult, InputType
 
 
 class GitRepo:
@@ -51,3 +53,21 @@ class GitRepo:
 def make_git_repo(tmp_path: Path) -> Callable[[str], GitRepo]:
     """Build a repo at tmp_path/<name>; a folder of them stands in for CORPUS_CACHE_DIR."""
     return lambda name: GitRepo(tmp_path / name)
+
+
+class FakeEmbedder:
+    """The `Embedder` protocol with no network: records every call, returns a fixed vector."""
+
+    model = "fake-model"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[InputType, list[str]]] = []
+
+    def embed(self, texts: Sequence[str], input_type: InputType) -> EmbedResult:
+        self.calls.append((input_type, list(texts)))
+        return EmbedResult(vectors=[[0.5] * DIMENSIONS for _ in texts], total_tokens=len(texts))
+
+
+@pytest.fixture
+def fake_embedder() -> FakeEmbedder:
+    return FakeEmbedder()

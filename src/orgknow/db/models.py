@@ -71,3 +71,10 @@ class VersionToChunk(BaseModel):
     snapshot_repo: str
     snapshot_sha: str
     metadata: dict[str, Any]
+
+
+class TextToEmbed(BaseModel):
+    """A chunk text with no vector yet for a model. Many chunks can share it (same hash)."""
+
+    content_hash: str
+    text: str

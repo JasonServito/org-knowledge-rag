@@ -151,7 +151,7 @@ Tasks:
 - [x] **S04-T3 `[core]` Markdown chunker.**
   - Structure-aware (heading path), with a deterministic metadata header.
   - Done when: unit tests pass on fixtures, including table and code-block preservation.
-- [ ] **S04-T4 `[commodity]` Embedding interface.**
+- [x] **S04-T4 `[commodity]` Embedding interface.**
   - Voyage provider, content-hash cache, and a fake for tests.
   - Done when: a second run makes 0 API calls.
 - [ ] **S04-T5 `[core]` Dense retrieval.**
