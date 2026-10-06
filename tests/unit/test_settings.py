@@ -103,3 +103,35 @@ def test_retrieval_top_k_outside_1_to_40_is_refused(k: int) -> None:
 
 def test_retrieval_top_k_of_40_is_accepted() -> None:
     assert Settings(_env_file=None, database_url="x", retrieval_top_k=40).retrieval_top_k == 40
+
+
+def test_generation_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "GENERATION_MODEL",
+        "GENERATION_EFFORT",
+        "GENERATION_MAX_TOKENS",
+        "ANTHROPIC_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # ADR-006 D1 and the S04-R2 contract, "Claude's calls", Settings.
+    assert settings.generation_model == "claude-opus-5-5"
+    assert settings.generation_effort == "medium"
+    assert settings.generation_max_tokens == 16_000
+    assert settings.anthropic_api_key is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("generation_effort", "turbo"),
+        ("generation_max_tokens", 0),
+        ("generation_max_tokens", 21_334),
+    ],
+)
+def test_bad_generation_settings_are_refused(field: str, value: object) -> None:
+    # 21,333 is the SDK's limit for a non-streaming call (anthropic 1.11, checked 2026-10-06).
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: value})

@@ -8,7 +8,9 @@ authors = [{ name = "Jason Servito" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.20.0",
+    "anthropic>=1.11.0",
     "fastapi>=0.141.1",
+    "httpx2>=2.13.1",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyyaml>=6.0.3",
@@ -50,7 +52,6 @@ markers = [
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.13.1",
     "mypy>=2.3.1",
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",

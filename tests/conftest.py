@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from orgknow.embeddings.embedder import DIMENSIONS, EmbedResult, InputType
+from orgknow.generation.schema import Generation, ModelAnswer, TokenUsage
 
 
 class GitRepo:
@@ -71,3 +72,18 @@ class FakeEmbedder:
 @pytest.fixture
 def fake_embedder() -> FakeEmbedder:
     return FakeEmbedder()
+
+
+class FakeGenerator:
+    """The `Generator` protocol with no network: records every call, returns a canned output."""
+
+    usage = TokenUsage(input_tokens=1000, output_tokens=300, thinking_tokens=200)
+
+    def __init__(self, output: ModelAnswer | None, stop_reason: str | None = "end_turn") -> None:
+        self.output = output
+        self.stop_reason = stop_reason
+        self.calls: list[tuple[str, str]] = []  # (system, prompt) per call
+
+    def generate(self, system: str, prompt: str) -> Generation:
+        self.calls.append((system, prompt))
+        return Generation(output=self.output, stop_reason=self.stop_reason, usage=self.usage)

@@ -159,7 +159,7 @@ Tasks:
   - pgvector cosine search with an HNSW index; returns chunks with version/window/tier metadata.
   - Done when: an integration test on fixtures passes.
   - Deps: T2–T4.
-- [ ] **S04-T6 `[core]` Generation.**
+- [x] **S04-T6 `[core]` Generation.**
   - Structured output (`answer`, `answer_status`, `evidence[]`, `insufficient_evidence_reason`) plus a citation validator.
   - Done when: a citation outside the retrieved set is rejected in tests.
   - Deps: T1, T5.

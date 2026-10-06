@@ -1,9 +1,13 @@
 """Configuration read from environment variables, falling back to a local `.env` file."""
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The API's effort levels: how much the model reasons before it answers (ADR-006 D1).
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
 class Settings(BaseSettings):
@@ -47,3 +51,12 @@ class Settings(BaseSettings):
     # default `hnsw.ef_search`: an HNSW index scan returns at most that many rows. No similarity
     # threshold: the top k are always returned.
     retrieval_top_k: int = Field(default=10, ge=1, le=40)
+    # The answer step (ADR-006 D1). Opus 5.5 always reasons, and effort sets how much; there is
+    # no temperature (Opus 5.5 rejects it). Reasoning counts toward the max tokens and is billed
+    # as output. At most 21,333: above that, the SDK refuses a non-streaming call (it expects
+    # it to take over 10 minutes).
+    generation_model: str = "claude-opus-5-5"
+    generation_effort: Effort = "medium"
+    generation_max_tokens: int = Field(default=16_000, ge=1, le=21_333)
+    # No key: the answer step can't run (tests use a fake generator).
+    anthropic_api_key: SecretStr | None = None
