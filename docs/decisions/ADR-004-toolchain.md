@@ -67,3 +67,11 @@ The S03-R1 sitting decided ADR-005 and the releases seed (S03-T5). Added with th
 
 - **`btree_gist`** (a Postgres contrib extension, shipped with Postgres and in the pinned image as version 1.8): enabled by migration `0002`. The "no overlapping validity windows" exclusion constraint needs it to compare `document_id` with `=` inside a GiST index (ADR-005 D2). Rejected: checking overlaps in Python, which any other writer would skip.
 - **PyYAML moves to the runtime dependencies in S03-T5,** one slice earlier than the 2026-09-29 amendment planned. The releases seed is the first `src/` code that reads the manifest. Still `yaml.safe_load` only.
+
+## Amendment 2026-10-06
+
+ADR-006 (decided in the S04-R2 sitting) picks the generation client and the tracing SDK. Added with the developer's approval:
+
+- **`anthropic`** (runtime): the official Python SDK, used for `messages.parse` structured outputs (ADR-006 D2). It adds 4 packages. Rejected: raw HTTP via `urllib`, which would hand-maintain schema conversion, retries and error types.
+- **`httpx2` moves to the runtime dependencies:** `anthropic` 1.x is built on it. It was dev-only (the 2026-09-26 amendment, for FastAPI's `TestClient`).
+- **`langfuse`** (runtime): the Langfuse Python SDK v4, which confirms the Tracing row above (ADR-006 D3). It adds 17 packages, including the OpenTelemetry SDK, protobuf and `httpx`. Rejected: OTLP JSON posted with `urllib` (our own trace builder, replaced by S11's LangGraph integration anyway) and the legacy ingestion API (sunset 2026-11-16).

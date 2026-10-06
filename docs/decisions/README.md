@@ -9,8 +9,9 @@ An ADR records **one decision**, why it was made, and what it costs. ADRs are th
 | [001](ADR-001-corpus-kubernetes.md) | Corpus is Kubernetes | Accepted |
 | [002](ADR-002-versioning-and-identity.md) | Versioning and document identity | Accepted (amended in S02) |
 | [003](ADR-003-authority-and-status.md) | Source types, authority tiers, status taxonomy | Accepted (amended in S02) |
-| [004](ADR-004-toolchain.md) | Development toolchain | Accepted (amended through S03) |
+| [004](ADR-004-toolchain.md) | Development toolchain | Accepted (amended through S04) |
 | [005](ADR-005-data-access.md) | Data access approach | Accepted |
+| [006](ADR-006-generation-and-tracing.md) | Generation model, structured output, tracing | Accepted |
 
 The queue of upcoming ADRs is in `docs/backlog.md`.
 

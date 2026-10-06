@@ -48,7 +48,7 @@ These mirror `docs/backlog.md`; details live here.
 ### S04-T1: ADR-006, generation model/provider and tracing `[human]`
 
 - **Goal:** choose the generation LLM and provider, the structured-output method, and the Langfuse Cloud setup.
-- **Done when:** ADR-006 is Accepted. Decided in the S04-R2 sitting.
+- **Done when:** ADR-006 is Accepted. Decided in the S04-R2 sitting (2026-10-06): `docs/decisions/ADR-006-generation-and-tracing.md`.
 
 ### S04-T2: Slice-scope ingestion `[core]`
 
@@ -80,7 +80,7 @@ These mirror `docs/backlog.md`; details live here.
 
 - **Goal:** pgvector cosine search with an HNSW index, returning chunks with their version, window and source metadata.
 - **Done when:** an integration test on fixtures passes.
-- **Notes / pointers:** ADR-003 D3 tiers depend on the target release and `effective_stage`. The R2 sitting decides whether T5 returns a base tier or leaves tiers to S09.
+- **Notes / pointers:** ADR-003 D3 tiers depend on the target release and `effective_stage`. The R2 sitting left tiers to S09 (run S04-R2, decision 5).
 - **Deps:** T2–T4.
 
 ### S04-T6: Generation `[core]`
@@ -110,7 +110,7 @@ These mirror `docs/backlog.md`; details live here.
 ## Decisions expected (ADRs)
 
 - **R1 sitting:** test isolation; chunk header and embedding storage shape; chunking rules; Markdown parser; embedding model and HTTP client. Each new dependency needs an ADR-004 amendment.
-- **ADR-006 (T1):** generation model, structured output, tracing. Decided in the R2 sitting.
+- **ADR-006 (T1):** generation model, structured output, tracing. Accepted in the R2 sitting (2026-10-06).
 
 ## Run contracts
 
@@ -118,7 +118,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S04-R1: indexing path
 
-- **Status:** PR open
+- **Status:** merged (PRs #21 and #22)
 - **Branch:** `s04-r1-indexing`. PR 1's branch `s04-r1a-ingestion` is cut at T2's last commit.
 - **Tasks, in this order:** S04-T2 (ingestion, starting with the test database) → S04-T3 (chunker) → S04-T4 (embeddings + migration `0003`).
 - **Closes the slice:** no. T1 and T5–T8 remain (S04-R2, after its own sitting).
@@ -366,6 +366,271 @@ Section: Exemptions
 - Record each PR's size in its brief.
 
 **Paid calls allowed:** Voyage embeddings with voyage-4-large only, up to **2M tokens** for the whole run (the slice is about 0.5M after de-duplication). That covers one full `make embed`, re-runs, and the token-count check. All within the 200M free tokens. No LLM calls. The developer sets `VOYAGE_API_KEY` in `.env` and a payment method on the Voyage account before the run. If the key is missing, T4's real demo parks and its tests run on the fake.
+
+### Run S04-R2: answer path
+
+- **Status:** planned
+- **Branch:** `s04-r2-answer-path`. PR 1's branch `s04-r2a-retrieval` is cut at T5's last commit.
+- **Tasks, in this order:** S04-T0 (tidy-ups, not a backlog task: the sitting's triage) → S04-T5 (dense retrieval) → S04-T6 (generation) → S04-T7 (CLI `ask` + Langfuse trace).
+- **Closes the slice:** no. T8 (`[human]`, seeds #6–#10) and the retro remain.
+- **Goal (plain words):** answer a question from the stored chunks.
+  - Embed the question, then find the 10 nearest chunk texts with an HNSW index.
+  - Show each text once, with every release window it was valid in.
+  - Ask Claude Opus 5.5 for a structured answer that cites chunk ids, or says `insufficient_evidence`.
+  - Reject any citation that wasn't retrieved, in plain code.
+  - Print the JSON and leave one Langfuse trace per ask.
+
+#### Decisions (made in the sitting, 2026-10-06)
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| S1 | `CLAUDE.md`: before merging a stacked PR 1, retarget PR 2 to `main` | Unchanged rule | `--delete-branch` closed PR #22 when PR #21's branch was deleted |
+| S2 | R1 questions: KEP dates stay commit time (S05 → merge time); ingest checks `releases` read-only (T0); the claim-synonym setting stays; HTML-table rule 5 in the S05 sitting; strip `{#id}` anchors in S05 before S06; the dev-DB rebuild is covered by CI and the test DB | Fixing each now | Each is outside T5–T7, or measured as low impact on the seeds; see `docs/backlog.md`, Proposed additions |
+| S3 | Triage of the other 26 R1 parked items: 8 folded into T0, 8 → Proposed additions (S05), 2 merged into existing items, 2 confirmed as built (body-only 512 limit; KEP chunks from the README only), 7 dropped | One by one | Recorded in the backlog |
+| S4 | Bundle: T0 → T5 → T6 → T7; ADR-006 (T1) decided here | T5 alone; T5–T8 | Retrieval and generation are one read path; T8 is human |
+| ADR-006 D1 | Claude Opus 5.5 (`claude-opus-5-5`) at `medium` effort, both from settings; T8 logs reasoning tokens; the model is confirmed in writing before the S06 baseline | Sonnet 5.5; Haiku 4.5 | Strongest at "insufficient evidence"; ~$2 in S04; S06 can switch on T8's numbers |
+| ADR-006 D2 | `anthropic` SDK, `messages.parse` with a Pydantic model, behind a `Generator` protocol + fake; refusal and `max_tokens` are typed errors | `urllib`; prompt + parse + retry | Conventional; the SDK converts the schema; the validator still guards ids |
+| ADR-006 D3 | `langfuse` SDK v4: one trace per ask; no keys → "tracing off"; flush before exit; T8 saves trace ids | OTLP JSON via `urllib`; legacy ingestion API (sunset 2026-11-16) | S11's LangGraph integration needs the SDK; +17 packages accepted |
+| 4 | One result per distinct text: cite the chunk in the newest version holding it; list every release window of the versions holding it | One row per chunk; newest window only | 1,016 of 1,583 texts sit in 2+ chunks; 2 texts skip a release (34, 36, 37+), so one span would lie |
+| 5 | No authority tier in S04; results carry `source_type`, release windows and KEP claims | A base tier (`docs_page` → 1, `kep` → 5) | ADR-003 tiers need a target release and observed stages (S09) |
+| 6 | `RETRIEVAL_TOP_K` = 10 (validated ≤ 40, pgvector's default `ef_search`); HNSW `m=16`, `ef_construction=64` (pgvector defaults); no similarity threshold | k = 5; k = 20 | Matches Recall@10; defaults matched exact search on 20 real queries (200 of 200) |
+| 7 | Answer schema: the model returns `answer_status`, `answer`, `evidence` (chunk ids), `insufficient_evidence_reason`; code fills each citation in from the database (pinned below), with a GitHub URL at the snapshot commit | Ids + a verified quote | Smallest; AC2 exact; provenance can't be invented. Quotes fit S06's faithfulness metric |
+| 8 | A rejected answer becomes `insufficient_evidence` with reason `citation_validation_failed: [ids]`; the rejected answer stays in the trace | Drop bad ids; retry once; fail | AC2 holds by construction; no extra paid call; fabrication stays countable |
+| 9 | 2 stacked PRs (below) | 1 PR | ~1,000 reviewable lines; natural seam between retrieve and answer |
+
+**Claude's calls (overrulable):**
+- **Layout:**
+  - `src/orgknow/db/retrieval.py`: the search SQL.
+  - `src/orgknow/retrieval/dense.py`: embed the question, then search. Its `main()` is the T5 demo, like `ingest`/`embed`.
+  - `src/orgknow/generation/`: `schema.py` (models), `prompt.py`, `generator.py` (protocol + `AnthropicGenerator`), `validate.py` (validator + fill-in).
+  - `src/orgknow/cli.py`: `ask`, plus the Langfuse spans; it's the only caller.
+- **CLI:** `argparse` (no dependency); `[project.scripts] orgknow = "orgknow.cli:main"`.
+  - JSON goes to stdout; "tracing off" and errors go to stderr.
+  - Exit codes: 0 when an answer prints (either status), 1 on an error, 2 on bad usage.
+- **Settings (with defaults, documented in `.env.example`):**
+  - `RETRIEVAL_TOP_K` (10)
+  - `GENERATION_MODEL` (`claude-opus-5-5`), `GENERATION_EFFORT` (`medium`), `GENERATION_MAX_TOKENS` (16,000; reasoning counts toward it)
+  - `ANTHROPIC_API_KEY` (`SecretStr`, optional)
+  - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` (`SecretStr`), `LANGFUSE_BASE_URL`, all optional
+  - No key → `ask` stops with a clear message; no Langfuse keys → tracing off.
+- **SDK defaults kept:** timeout and `max_retries` (2). No `temperature` (Opus 5.5 rejects it).
+- **Prompt:** a module constant. Answer only from the evidence; cite chunk ids; if the evidence doesn't support an answer, return `insufficient_evidence` with a reason; never invent rationale the corpus doesn't contain (blueprint §18).
+- **Fill-in details:**
+  - `title` uses the chunker's title logic.
+  - `section` = the heading path joined with ` > `, `null` when empty.
+  - KEP claims come from the newest version holding the text.
+  - Release minors are printed as `"1.N"`.
+
+#### Pinned formats
+
+**Migration `0004`:** `CREATE INDEX embeddings_embedding_hnsw_idx ON embeddings USING hnsw (embedding vector_cosine_ops)`. The downgrade drops it.
+
+**Search SQL shape (`db/retrieval.py`; one fixed query, ADR-005):**
+
+```sql
+WITH nearest AS (          -- index-ordered: ORDER BY the distance alone, or HNSW isn't used
+    SELECT e.content_hash, e.embedding <=> %(query)s::vector AS distance
+    FROM embeddings e
+    WHERE e.model = %(model)s
+      AND EXISTS (SELECT 1 FROM chunks c WHERE c.content_hash = e.content_hash)
+    ORDER BY e.embedding <=> %(query)s::vector
+    LIMIT %(k)s
+)
+-- then: join chunks → document_versions → documents per text; pick the newest version's chunk;
+-- aggregate every (valid_from_release, valid_until_release) ordered by valid_from_release;
+-- final ORDER BY distance, content_hash (deterministic ties among the k rows)
+```
+
+**Retrieval hit (T5 → T6)**, a Pydantic model:
+- `chunk_id`, `content_hash`, `distance` (cosine distance, 0–2), `text`
+- `canonical_id`, `source_type`, `heading_path`
+- `release_windows: list[tuple[int, int | None]]` (minors, ordered)
+- `claimed_status`, `claimed_stage`
+- `snapshot_repo`, `snapshot_sha`, `source_path`, plus the version `metadata` (title)
+
+**Evidence block in the prompt (one per hit):**
+
+```
+[chunk 4182] valid in releases: 1.24–1.29, 1.31–now
+<chunk text, which starts with its Source/Title/Document/Section header>
+```
+
+KEP hits add the line `claimed: <status>/<stage>` after the window line.
+
+**`ask` output (stdout):**
+
+```json
+{"question": "...", "answer_status": "answered", "answer": "...",
+ "evidence": [{"chunk_id": 4182, "document": "web:/docs/concepts/security/pod-security-admission/",
+   "title": "Pod Security Admission", "section": "Exemptions", "source_type": "docs_page",
+   "release_windows": [["1.30", null]], "claimed_status": null, "claimed_stage": null,
+   "source_url": "https://github.com/kubernetes/website/blob/<snapshot_sha>/<source_path>"}],
+ "insufficient_evidence_reason": null, "model": "claude-opus-5-5", "trace_id": null}
+```
+
+- `source_url` = the manifest's `repos.<snapshot_repo>.url` + `/blob/<snapshot_sha>/<source_path>`.
+- `evidence` keeps the model's order; duplicate ids are collapsed.
+- `trace_id` is `null` when tracing is off.
+
+**Validator (decision 8):** the answer is rejected when
+- any cited id is not a retrieved `chunk_id`, or
+- `answered` has 0 citations, or
+- `insufficient_evidence` has an empty reason.
+
+A rejection becomes `answer_status: insufficient_evidence`, `answer: ""`, `evidence: []`, with reason `citation_validation_failed: [<ids or rule>]`. An `insufficient_evidence` answer may keep valid citations.
+
+**Trace (one per ask):** name `ask`.
+- Input: the question.
+- Span `retrieve`: k, the model, and hits as (chunk id, distance).
+- Generation `generate`: model, effort, prompt, raw parsed output, `usage` (input, output and reasoning tokens where reported), stop reason.
+- Span `validate`: the result and any rejected ids.
+- Output: the final JSON.
+
+#### Handoffs between tasks
+
+- **T0 → T5:** nothing; T0 is independent.
+- **T5 → T6:** `search(conn, question_vector, model, k) -> list[Hit]` and `retrieve(question, embedder, conn, settings) -> list[Hit]` (embeds with `input_type="query"`).
+- **T6 → T7:**
+  - `answer(question, hits, generator, settings) -> Answer`: prompt, call, validate, fill in.
+  - It returns a typed failure (`GenerationError`) for a refusal or a cut-off; it never raises anything else on model output.
+- **T7 → T8:** `uv run orgknow ask "<q>"` prints the JSON. T8 saves it under `eval/results/s04/` with the trace id.
+
+#### Edge cases (from the pre-mortem; all must be handled or tested)
+
+- **T0 (releases check):**
+  - The releases table missing a manifest release, or holding a different date → exit non-zero with "run `make seed`", before any git read.
+  - Extra rows in the table aren't an error.
+- **T5:**
+  - k > 40 → refused by settings (HNSW returns at most `ef_search` rows).
+  - An orphan vector (no chunk) and another model's vector are never returned.
+  - A text in versions with a gap → windows listed separately, never merged into one span.
+  - Equal distances → ordered by `content_hash`.
+  - The question is embedded with `input_type="query"`.
+  - An empty table → an empty list, not an error.
+- **T6:**
+  - Refusal, or `stop_reason: max_tokens` → `GenerationError` with the stop reason.
+  - The fake generator returns canned outputs (valid, out-of-set id, 0 citations, empty reason).
+  - Unit tests make no network calls.
+  - Duplicate cited ids are collapsed.
+  - 0 hits → `insufficient_evidence` without calling the model (reason `no evidence retrieved`).
+- **T7:**
+  - No `ANTHROPIC_API_KEY` → a clear message, exit 1.
+  - No Langfuse keys → "tracing off" on stderr, exit 0.
+  - Secrets never appear in stdout, stderr or the trace.
+  - Flush before exit, including on the error path.
+  - An empty question → exit 2.
+- **SQL:** no string-built SQL (ADR-005); the reviewer checks by hand.
+
+#### Files in scope
+
+- **T0 (tidy-ups):**
+  - `src/orgknow/ingestion/ingest.py`: read-only releases check; summary wording (R1 parked 22-#6)
+  - `src/orgknow/db/releases.py`: a read listing releases
+  - `src/orgknow/ingestion/normalize.py`: BOM as `"﻿"`
+  - `src/orgknow/settings.py`: `PositiveInt` batch limits
+  - `docs/domain-model.md`: data-access table (`list_versions`, `VersionData`, `versions_without_chunks`, `texts_without_embedding`, `delete_orphan_embeddings`)
+  - This slice doc: R1 break-it 4 wording ("R3 `ValueError`")
+  - `tests/fixtures/README.md`: source and CC BY 4.0 attribution
+  - `tests/integration/test_version_windows.py`: v1.30 times 20:56:34Z and 21:01:40Z
+  - The test typed `Any` → `FakeEmbedder`
+  - `tests/integration/test_ingest.py` / `test_releases.py`
+  - `docs/backlog.md`: remove the v1.30 item once done
+- **T5:**
+  - `src/orgknow/db/migrations/versions/0004_embeddings_hnsw.py`
+  - `src/orgknow/db/retrieval.py`, `src/orgknow/db/models.py` (`Hit`)
+  - `src/orgknow/retrieval/dense.py`
+  - `src/orgknow/settings.py`, `.env.example`
+  - `tests/unit/`, `tests/integration/` (including `test_migrations.py`)
+  - `docs/domain-model.md` (the index is no longer open; add `search`)
+- **T6:**
+  - `src/orgknow/generation/` (new)
+  - `src/orgknow/settings.py`, `.env.example`
+  - `pyproject.toml` + `uv.lock` (`anthropic`; `httpx2` moves to runtime)
+  - `tests/unit/`, `tests/conftest.py` (fake generator)
+- **T7:**
+  - `src/orgknow/cli.py` (new)
+  - `pyproject.toml` (`[project.scripts]`, `langfuse`) + `uv.lock`
+  - `src/orgknow/settings.py`, `.env.example`
+  - `README.md` (the `ask` command)
+  - `tests/integration/` (CLI with fakes)
+  - `docs/architecture.md` (end of run)
+- **Every task:** `docs/backlog.md` (tick), this contract's Status line.
+- **Out of scope:**
+  - lexical search, RRF, rerank, tiers, query modes, conflicts
+  - any change to chunking, ingestion rules or the manifest
+  - FastAPI `/query`
+  - `eval/golden_set/` and `eval/results/` (T8 is the developer's)
+
+#### Proof map
+
+| Task | Done when / rule | Proof | Source of expected values |
+|---|---|---|---|
+| T0 | Ingest no longer writes `releases` | Integration: a row deleted or re-dated → exit non-zero, message names `make seed`, 0 rows written anywhere; matching table → ingests | Hand-edited rows |
+| T0 | v1.30 times | Test constants equal 20:56:34Z and 21:01:40Z | `git log` times recorded in the S03 backlog item |
+| T0 | Batch limits | `Settings(embed_batch_max_texts=0)` is refused | — |
+| T5 | Index (migration `0004`) | Test: `pg_indexes` shows `embeddings_embedding_hnsw_idx` using `hnsw` with `vector_cosine_ops`; round trip 0004 → 0003 → 0004 on the test DB | pgvector docs |
+| T5 | **Integration test on fixtures (done when)** | 4 texts with unit vectors `e1`, `(e1+e2)/√2`, `e2`, `−e1`; query `e1` → order and distances 0, 0.2929, 1, 2 (±1e-6) | Hand arithmetic: 1 − cos θ |
+| T5 | Expansion (decision 4) | One text in versions [24,24] and [26, open], skipping 25 → 1 hit; `chunk_id` = the chunk in the [26, open] version; windows `[(24,24),(26,None)]` | Hand-written fixture |
+| T5 | Filters | An orphan vector nearer than everything isn't returned; a `model='other'` vector isn't returned | — |
+| T5 | Settings and query mode | `RETRIEVAL_TOP_K=41` refused; the fake embedder recorded `input_type="query"` | Decision 6 |
+| T5 | Real data | With the index: for 20 real vectors used as queries, the top 10 with `enable_indexscan=off` = the top 10 with the index; `EXPLAIN` shows the index scan (with `enable_seqscan=off`) | The sitting: 200 of 200 |
+| T6 | **Out-of-set citation rejected (done when)** | Unit: hits 1, 2, 3; the fake cites 2 and 999 → `insufficient_evidence`, reason `citation_validation_failed: [999]`, `evidence` empty | Hand-written |
+| T6 | AC1 / AC3 rules | 0 citations → rejected; empty reason → rejected; a valid answer citing 1 and 3 passes, with evidence in that order | Decision 8 |
+| T6 | Fill-in | One fixture hit → the exact evidence object, including `source_url` `https://github.com/kubernetes/website/blob/<sha>/<path>` | Pinned format; manifest `repos` |
+| T6 | Prompt | The exact evidence block for one docs hit and one KEP hit | Pinned format |
+| T6 | Failure states | Stop reasons `refusal` and `max_tokens` → `GenerationError` (pure function over the stop reason) | SDK docs |
+| T6 | 0 hits | No model call (the fake records 0 calls) → `insufficient_evidence`, `no evidence retrieved` | — |
+| T7 | `ask` works offline | Integration: fake embedder + fake generator + test DB → stdout parses into the output model; exit 0 | Pinned format |
+| T7 | No keys / secrets | No Langfuse keys → stderr has "tracing off", exit 0; a fake secret string is absent from stdout and stderr | — |
+| T7 | Errors | Fake `GenerationError` → one stderr line, exit 1, no traceback; an empty question → exit 2 | — |
+
+#### Break-it rules
+
+- **T0:** make the releases check always pass → its test fails.
+- **T5:**
+  1. **Most important.** Group by chunk instead of text → the expansion test fails.
+  2. Order by distance descending → the order test fails.
+  3. Drop the `model` filter → the filter test fails.
+- **T6:**
+  1. **Most important.** Remove the "cited id in retrieved set" check → the done-when test fails.
+  2. Remove the 0-citation rule → its test fails.
+- **T7:** remove the no-keys path → the offline CLI test fails.
+- After every restore, `git status --short` is clean (new files: compare sha256).
+
+#### Real-data demos
+
+- **T0:** `make ingest` on the ingested dev DB → `New versions: 0`, with no releases write. Re-date one release in a throwaway transaction or the test DB → the "run `make seed`" exit.
+- **T5:**
+  - `uv run python -m orgknow.retrieval.dense "What enforces pod security standards in-tree?"` → the top 10 (document, section, windows, distance). 1 Voyage query call.
+  - The index-vs-exact check above, and `EXPLAIN`.
+- **T6 + T7:**
+  - `uv run orgknow ask "What enforces pod security standards in-tree?"` (seed #6)
+  - `uv run orgknow ask "What objections were raised in the \"3-Tier Pod Security Proposal\" doc comments?"` (seed #10)
+  - Show each JSON, its `usage` (with reasoning tokens) and its trace id.
+  - Fetch one trace back through the Langfuse API to prove the flush.
+  - 2 Opus calls; re-runs only if a fix needs them.
+
+#### Bundle-level check
+
+1. `make check`
+2. `make migrate`; round trip 0004 → 0003 → 0004 on the test DB
+3. `make test-int`, with the dev DB fully ingested and embedded
+4. The two `ask` demos, plus the trace fetch
+5. `git status --short` clean after every break-it restore
+
+#### PR plan
+
+- **2 stacked PRs** (natural seam, decided in the sitting; estimate ~1,000 reviewable lines):
+  - **PR 1:** `s04-r2a-retrieval`, cut at T5's last commit: the contract, ADR-006, the ADR-004 amendment, the `CLAUDE.md` fix, T0, T5 ("chunks are findable").
+  - **PR 2:** `s04-r2-answer-path`, based on PR 1: T6 + T7 ("ask answers").
+- Merge with the new rule: retarget PR 2 to `main` before merging PR 1.
+- Greptile once per PR (4 → 6 of 50). Record each PR's size in its brief.
+
+**Paid calls allowed:**
+- **Voyage:** query embeddings only, ≤ 50 calls (~1K tokens, free tier). No document re-embedding.
+- **Anthropic:** `claude-opus-5-5` only, ≤ 15 asks, hard cap **$3** (expected ~$0.20 for the 2 demos).
+- **Langfuse Cloud:** Hobby (free) tier.
+- The developer sets `ANTHROPIC_API_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` in `.env` before the run. A missing key parks that demo; the tests run on fakes.
 
 ## Retro (fill in at the end)
 
