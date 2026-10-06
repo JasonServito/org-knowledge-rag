@@ -45,6 +45,9 @@ jobs:
           --health-retries 15
     env:
       DATABASE_URL: postgresql://orgknow:orgknow@localhost:5433/orgknow
+      # Locally `make test-int` uses a separate `orgknow_test` database; CI's service database
+      # holds no ingested data, so the tests use it directly.
+      TEST_DATABASE_URL: postgresql://orgknow:orgknow@localhost:5433/orgknow
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0

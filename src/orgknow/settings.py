@@ -16,3 +16,13 @@ class Settings(BaseSettings):
     # A relative path is resolved from the working directory; the make targets run from the
     # repo root.
     corpus_manifest_path: Path = Path("config/corpus_manifest.yaml")
+    # The SHAs ingestion reads, written by spikes/fetch.py.
+    corpus_lock_path: Path = Path("config/corpus_manifest.lock.yaml")
+    # The partial clones of the corpus repos (spikes/fetch.py), one folder per manifest repo.
+    # Outside this repo. Ingestion expands `~`.
+    corpus_cache_dir: Path = Path("~/corpus_cache/org-knowledge-rag")
+    # The manifest `scopes:` entry `make ingest` reads.
+    ingest_scope: str = "s04"
+    # KEP claim synonyms, applied to claimed_status and claimed_stage. ADR-003 D5 allows only
+    # this one; any other unknown value is stored as written.
+    claim_synonyms: dict[str, str] = {"GA": "stable"}

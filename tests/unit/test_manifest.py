@@ -4,9 +4,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from orgknow.ingestion.manifest import load_releases
+from orgknow.ingestion.manifest import Snapshot, load_normalization, load_releases, load_scope
 
 REAL_MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
+REAL_LOCK = Path(__file__).parents[2] / "config" / "corpus_manifest.lock.yaml"
 
 # Three real entries from the manifest. Each bad list below changes one thing.
 R24 = '{version: "1.24", release_date: 2022-05-03, end_of_life: 2023-07-28}'
@@ -73,3 +74,78 @@ def test_rejects_a_version_not_shaped_1_n(tmp_path: Path, version: str) -> None:
 
     with pytest.raises(ValidationError, match="version"):
         load_releases(_write_manifest(tmp_path, [R24, bad, R26]))
+
+
+# --- Scopes and the lock (S04-R1 sitting, pinned `scopes:` block) -------------------------------
+
+
+def test_loads_the_s04_scope_at_the_locked_shas() -> None:
+    scope = load_scope(REAL_MANIFEST, REAL_LOCK, "s04")
+
+    # Expected values read by hand from config/corpus_manifest.yaml (sources.docs_page.sigs.auth,
+    # sources.kep.traced) and config/corpus_manifest.lock.yaml.
+    assert scope.docs_repo == "website"
+    assert scope.docs_paths == (
+        "content/en/docs/concepts/security/",
+        "content/en/docs/reference/access-authn-authz/",
+        "content/en/docs/concepts/policy/pod-security-policy.md",
+        "content/en/docs/tasks/configure-pod-container/enforce-standards-admission-controller.md",
+        "content/en/docs/tasks/configure-pod-container/enforce-standards-namespace-labels.md",
+        "content/en/docs/tasks/configure-pod-container/migrate-from-psp.md",
+        "content/en/docs/setup/best-practices/enforcing-pod-security-standards.md",
+    )
+    # Every release 1.24 -> 1.37; the latest has no release branch, so it is `main`.
+    assert [s.release for s in scope.docs_snapshots] == list(range(24, 38))
+    assert scope.docs_snapshots[0] == Snapshot(
+        24, "release-1.24", "98e2db7d9cc710554b486ad56274e362af03b438"
+    )
+    assert scope.docs_snapshots[-1] == Snapshot(
+        37, "main", "256a1f49419171f6c7fbdb1857146da1c63eb533"
+    )
+    assert scope.kep_repo == "enhancements"
+    assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
+    # Master at each release date 1.20 -> 1.37, then head.
+    assert [s.release for s in scope.kep_snapshots] == [*range(20, 38), None]
+    assert scope.kep_snapshots[0] == Snapshot(
+        20, "master", "2df83383d452cf5dd029de73e1963543dbf37998"
+    )
+    assert scope.kep_snapshots[-1] == Snapshot(
+        None, "master", "4be81e27aef5d252972fd02b5a9479a18982dfe5"
+    )
+    assert scope.kep_snapshots[-1].label == "head"
+    assert scope.docs_snapshots[0].label == "1.24"
+
+
+def test_an_unknown_scope_is_refused() -> None:
+    with pytest.raises(ValueError, match=r"unknown scope 's99'; the manifest has: s04"):
+        load_scope(REAL_MANIFEST, REAL_LOCK, "s99")
+
+
+def test_loads_the_strip_lists_lowercased() -> None:
+    strip = load_normalization(REAL_MANIFEST)
+
+    # From config/corpus_manifest.yaml, normalization.strip_front_matter (linkTitle lowercased).
+    assert strip["docs_page"] == {
+        "reviewers",
+        "weight",
+        "linktitle",
+        "no_list",
+        "simple_list",
+        "hide_summary",
+        "aliases",
+    }
+    assert strip["kep_yaml"] == {"reviewers", "approvers", "editor", "last-updated"}
+
+
+def test_a_strip_list_with_a_never_strip_key_is_refused(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(
+        "normalization:\n"
+        "  never_strip: [title, date]\n"
+        "  strip_front_matter:\n"
+        "    docs_page: [reviewers, Title]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"never_strip keys: \['title'\]"):
+        load_normalization(manifest)

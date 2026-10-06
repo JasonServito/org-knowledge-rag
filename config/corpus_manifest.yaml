@@ -190,3 +190,10 @@ normalization:
     blog_post: [layout, math]
     kep_yaml: [reviewers, approvers, editor, last-updated]
     prr_yaml: []  # only kep-number plus stage -> approver maps; the stage keys are lifecycle data
+
+# Named subsets for slices that ingest less than the whole manifest (S04-R1 sitting).
+# `make ingest` reads one (INGEST_SCOPE, default s04). S05 ingests the full manifest.
+scopes:
+  s04:
+    docs_page: {sigs: [auth], from_release: "1.24"}
+    kep: {traced: [2579]}

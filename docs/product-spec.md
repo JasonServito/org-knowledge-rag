@@ -14,7 +14,7 @@ An engineer asks a question about Kubernetes release process, authentication/sec
 ## Must-haves (Phase 1)
 
 1. Manifest-driven ingestion of the ADR-002 subset. It must be reproducible and incremental (content-hash dedup).
-2. Structure-aware chunks with deterministic metadata headers (source type, release window, tier, status).
+2. Structure-aware chunks with deterministic metadata headers (source type, title, document id, heading path). Release window, tier and status are attached to each retrieved chunk from the database at answer time, not embedded (amended 2026-10-04, S04-R1 sitting: they change when a newer version arrives, or depend on the question).
 3. Dense retrieval, then lexical retrieval plus RRF, then a cross-encoder reranker. Each is added as its own ablation step.
 4. Query modes: CURRENT, HISTORY, CHANGE, WHY. Unanswerable questions are handled by the grader.
 5. Temporal filtering and authority adjustment per ADR-003.

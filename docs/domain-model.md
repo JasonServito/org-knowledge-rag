@@ -1,8 +1,8 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04)
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
-- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5)
+- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1)
 
 This is the spec for the tables, their rules, and the write functions S04 ingestion calls. If code and this doc disagree, fix one of them in the same PR.
 
@@ -81,19 +81,41 @@ This is the spec for the tables, their rules, and the write functions S04 ingest
 | `document_version_id` | `bigint` NOT NULL → `document_versions`, ON DELETE CASCADE | Re-chunking a version deletes its old chunks |
 | `ordinal` | `integer` NOT NULL | Position in the version, from 0 (CHECK `>= 0`). UNIQUE with `document_version_id` |
 | `heading_path` | `text[]` NOT NULL | Headings above the chunk, outermost first; `{}` for text before the first heading |
-| `text` | `text` NOT NULL | Exactly the text that is embedded: header + body (header contents: S04-T3) |
-| `content_hash` | `text` NOT NULL | SHA-256 of `text`, computed by the write function, never passed in |
+| `text` | `text` NOT NULL | Exactly the text that is embedded: header + body (see "Chunk header") |
+| `content_hash` | `text` NOT NULL | SHA-256 of `text`, computed by the write function, never passed in. Indexed (migration `0003`): vectors are looked up by it |
 
 ### `embeddings`
 
+Changed by migration `0003` (S04-R1 sitting, decision 4): **one vector per unique chunk text per model**, not one per chunk.
+
 | Column | Type | Notes |
 |---|---|---|
-| `chunk_id` | `bigint` NOT NULL → `chunks`, ON DELETE CASCADE | |
-| `model` | `text` NOT NULL | Embedding model name, from settings |
+| `content_hash` | `text` NOT NULL | The `chunks.content_hash` of the embedded text. 64 lowercase hex characters (CHECK). No foreign key: many chunks share one text |
+| `model` | `text` NOT NULL | Embedding model name, from settings (`voyage-4-large` in S04) |
 | `embedding` | `vector(1024)` NOT NULL | |
-| | PK `(chunk_id, model)` | One vector per chunk per model, so model ablations don't overwrite each other (ADR-002) |
+| | PK `(content_hash, model)` | One vector per text per model, so model ablations don't overwrite each other (ADR-002) |
 
-The vector search index (HNSW, one partial index per model) comes with dense retrieval (S04-T5).
+- **Why per text:** the chunk header holds no per-version field, so a section unchanged between versions has byte-identical text. On the S04 scope, 69% of sections repeat unchanged; per chunk, identical vectors would tie and crowd a top-k search.
+- **The table is the embedding cache:** only hashes with no row for the model are sent to the API.
+- **Orphans:** a vector whose hash no chunk uses any more (only after the chunker changes) is deleted by `make embed`. Retrieval joins to `chunks`, so an orphan can never be cited.
+- **A search hit is one text.** R2 decides how it expands to the chunks and versions holding that text.
+
+The vector search index (HNSW) comes with dense retrieval (S04-T5).
+
+### Chunk header
+
+Every chunk's `text` is a header, a blank line, then the body. The header holds only fields that are the same in every version of a document (S04-R1 sitting, decision 4):
+
+```
+Source: <source_type>
+Title: <title>
+Document: <canonical_id>
+Section: <heading path joined with " > ">
+```
+
+- **Title:** the front-matter `title`; for a KEP, `KEP-<number>: <kep.yaml title>`.
+- **Section:** omitted when the heading path is empty (text before the first heading).
+- **Not in the header:** release window, `version_status`, tier. They change when a newer version arrives, or depend on the question (ADR-003 D3), so they're attached to each retrieved chunk from these tables at answer time (product spec must-have 2, amended).
 
 ## Rules
 
@@ -114,7 +136,7 @@ Each rule has an integration test that breaks it on purpose and asserts the exac
 | R11 | Hashes are well-formed: `content_hash` 64 hex, `snapshot_sha` 40 hex | CHECK | `CheckViolation` |
 | R12 | A chunk position is unique within its version | UNIQUE | `UniqueViolation` |
 | R13 | A chunk's `content_hash` is the SHA-256 of its `text` | Code in `add_chunks` (computes it) | (tested against a known SHA-256 value) |
-| R14 | One vector per (chunk, model), with exactly 1024 numbers | PK + `vector(1024)` | `UniqueViolation`; `DataException` |
+| R14 | One vector per (content hash, model), with exactly 1024 numbers and a well-formed hash | PK + `vector(1024)` + CHECK | `UniqueViolation`; `DataException`; `CheckViolation` |
 | R15 | A release is well-formed: `version` matches `minor`, end of life after release, release dates unique | CHECK + UNIQUE | `CheckViolation`, `UniqueViolation` |
 
 **Superseding a version** is two writes in one transaction: close the current version, then insert the new one. In the other order, R8 rejects the insert.
@@ -137,7 +159,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 | `insert_version(conn, version) -> id` | Insert one version |
 | `close_version(conn, version_id, valid_until_release, valid_until_date)` | Close an open version (R10) |
 | `add_chunks(conn, version_id, chunks) -> ids` | Insert chunks; computes each `content_hash` (R13) |
-| `add_embedding(conn, chunk_id, model, embedding)` | Insert one vector, sent as a `'[…]'::vector` literal |
+| `add_embedding(conn, content_hash, model, embedding)` | Insert one vector, sent as a `'[…]'::vector` literal (signature changed by `0003`) |
 | `versions_at_release(conn, document_id, release) -> list` | Versions whose release window includes `release` (inclusive). Can be several for date-scoped sources |
 | `version_at_time(conn, document_id, at) -> version \| None` | The version whose date window contains `at` (half-open) |
 
@@ -147,14 +169,33 @@ The two read functions hold the window conventions in one place, and their tests
 
 | When | What | Why |
 |---|---|---|
-| S04 sitting (S04-T3 header) | Switch `embeddings` to one vector per unique text, keyed by `(content_hash, model)`, if the chunk header holds no per-version field | Then identical sections share text, and per-text storage is 52% smaller and doubles as the cache. With per-version header fields, it saves nothing. No vectors exist before S04-T4, so switching then costs one migration |
+| ~~S04 sitting (S04-T3 header)~~ | **Done (S04-R1 sitting):** the header holds no per-version field, so `embeddings` is keyed by `(content_hash, model)` (migration `0003`) | Identical sections share text: 69% of sections repeat on the S04 scope, 52% on the full corpus (spike §3) |
+| S05 sitting | The hand-written Markdown scanner (S04-R1 decision 6), re-checked against markdown-it on the new sources | It matched CommonMark on all S04 data, but CHANGELOG list-item headings already differ (2 in `CHANGELOG-1.36`) |
 | S09 sitting | ADR-005's plain-SQL choice, if retrieval needs more than ~4 combined query variants | See ADR-005 |
 | S15 | `btree_gist` on the RDS instance | Verified on the local image only |
 | Kubernetes 2.0 | The `releases.minor` key | Assumes major version 1 |
 
+## How windows are derived (S04-R1 sitting)
+
+- **A release date means 00:00 UTC** of the `releases.release_date`.
+- **Release-scoped sources (docs):** ingestion reads every release in scope, oldest first.
+  - A version starts at the first release whose snapshot has its content: `valid_from_release` = R, `valid_from_date` = R's release date.
+  - It closes at the first later release R2 whose snapshot differs or lacks the file: `valid_until_release` = R2 − 1, `valid_until_date` = R2's release date.
+  - The first version of a page starts at the scope's first release (24 in S04), even if the page is older. S05 re-ingests from an empty database.
+- **Date-scoped sources (KEPs):** snapshots are `main` at each release date, plus `head`.
+  - A new version's `valid_from_date` is the committer time, in UTC, of the **last** commit touching the document's files between the previous snapshot and this one. The stored text was exactly live from then; edits in between are folded into the previous version's window.
+  - The previous version closes at that same instant.
+  - `valid_from_release` = the latest release on or before `valid_from_date`. `valid_until_release` = the latest release strictly before `valid_until_date`.
+- **A KEP version covers README + `kep.yaml`:** both are hashed together (with the `kep_yaml` strip list), so a `kep.yaml`-only change is a new version. `claimed_status` and `claimed_stage` come from that version's `kep.yaml`, with `GA` → `stable` the only mapping (ADR-003 D5). The raw `kep.yaml` is kept in `metadata`.
+- **Re-ingest (compare and extend):** ingestion computes each document's full history from the snapshots, then compares it with the stored versions.
+  - None stored → insert them all.
+  - Equal → change nothing.
+  - Stored is a prefix (a new release arrived) → close the open version, insert the new ones.
+  - Anything else → report a history mismatch for that document, leave it untouched, and exit non-zero.
+
 ## Handed to S04
 
-- How each source's windows are derived, including what time of day a release date stands for.
-- What a KEP version covers: `claimed_status` sits on the version, so a `kep.yaml`-only change must still produce a new KEP version.
-- Re-ingest idempotency, a `current_version` read, and an index on `chunks.content_hash` for the embedding cache.
-- The chunk header's contents, and the HNSW index.
+- ~~How each source's windows are derived~~ (see above).
+- ~~What a KEP version covers~~ (see above).
+- ~~Re-ingest idempotency~~ (see above) and ~~an index on `chunks.content_hash`~~ (migration `0003`).
+- ~~The chunk header's contents~~ (see "Chunk header"). Still open: the HNSW index (S04-T5).

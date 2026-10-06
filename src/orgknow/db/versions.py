@@ -75,6 +75,23 @@ def close_version(
         raise ValueError(f"version {version_id} is not open: it doesn't exist or is already closed")
 
 
+def list_versions(conn: psycopg.Connection[TupleRow], document_id: int) -> list[Version]:
+    """Return all versions of a document, oldest first (R8: date windows never overlap)."""
+    with conn.cursor(row_factory=class_row(Version)) as cur:
+        cur.execute(
+            """
+            SELECT id, document_id, content_hash, source_path, snapshot_repo, snapshot_ref,
+                   snapshot_sha, valid_from_release, valid_until_release, valid_from_date,
+                   valid_until_date, claimed_status, claimed_stage, metadata
+            FROM document_versions
+            WHERE document_id = %(document_id)s
+            ORDER BY valid_from_date
+            """,
+            {"document_id": document_id},
+        )
+        return cur.fetchall()
+
+
 def versions_at_release(
     conn: psycopg.Connection[TupleRow], document_id: int, release: int
 ) -> list[Version]:

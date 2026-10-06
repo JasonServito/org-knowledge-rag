@@ -1,0 +1,230 @@
+"""Ingest a manifest scope: read files at the locked SHAs, derive versions, store them.
+
+Run with `make ingest` (INGEST_SCOPE, default s04). Safe to re-run: each document's derived
+history is compared with what's stored (`plan_changes`), so a re-run writes nothing.
+
+1. Read (git): every snapshot of the scope. A git failure stops here, before any write.
+2. Derive (pure): per document, normalize and hash each snapshot, then build its versions.
+   A document that can't be parsed is reported and left out; the others continue.
+3. Store (DB): one transaction per document. A history mismatch is reported, leaves that
+   document untouched, and makes the exit code non-zero.
+"""
+
+import logging
+import sys
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+import psycopg
+from psycopg.rows import TupleRow
+
+from orgknow.db.documents import add_alias, create_document, resolve_document
+from orgknow.db.models import NewVersion, Release, VersionData
+from orgknow.db.releases import upsert_releases
+from orgknow.db.versions import close_version, insert_version, list_versions
+from orgknow.ingestion.git_reader import commit_times, read_files
+from orgknow.ingestion.history import (
+    HistoryMismatch,
+    Observed,
+    date_history,
+    plan_changes,
+    release_history,
+)
+from orgknow.ingestion.identity import alias_id, docs_canonical_id, kep_canonical_id
+from orgknow.ingestion.manifest import Scope, load_normalization, load_releases, load_scope
+from orgknow.ingestion.normalize import docs_state, kep_state
+from orgknow.settings import Settings
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Document:
+    """One document's derived history, ready to store."""
+
+    canonical_id: str
+    source_type: str
+    versions: list[VersionData]
+    aliases: list[str]
+
+
+@dataclass
+class Summary:
+    documents: dict[str, int] = field(default_factory=dict)  # by source type
+    new_documents: int = 0
+    new_versions: int = 0
+    closed_versions: int = 0
+    unchanged_documents: int = 0
+    skipped: list[str] = field(default_factory=list)  # files, with the reason
+    failures: list[str] = field(default_factory=list)  # documents, with the reason
+
+
+def collect_docs(
+    scope: Scope,
+    cache_dir: Path,
+    strip: frozenset[str],
+    releases: Sequence[Release],
+    summary: Summary,
+) -> list[Document]:
+    """Read the scope's docs pages at every release and derive their versions."""
+    snapshots = scope.docs_snapshots
+    files, skipped = read_files(cache_dir / scope.docs_repo, scope.docs_paths, snapshots, (".md",))
+    summary.skipped += skipped
+    documents = []
+    for path, contents in sorted(files.items()):
+        try:
+            states = [None if raw is None else docs_state(path, raw, strip) for raw in contents]
+            observed = [Observed(s, state) for s, state in zip(snapshots, states, strict=True)]
+            aliases = {alias_id(a) for state in states if state is not None for a in state.aliases}
+            documents.append(
+                Document(
+                    docs_canonical_id(path),
+                    "docs_page",
+                    release_history(scope.docs_repo, observed, releases),
+                    sorted(aliases),
+                )
+            )
+        except ValueError as exc:
+            summary.failures.append(f"{path}: {exc}")
+    return documents
+
+
+def collect_keps(
+    scope: Scope,
+    cache_dir: Path,
+    strip: frozenset[str],
+    synonyms: Mapping[str, str],
+    releases: Sequence[Release],
+    summary: Summary,
+) -> list[Document]:
+    """Read each KEP's README + kep.yaml at every snapshot and derive its versions."""
+    repo = cache_dir / scope.kep_repo
+    snapshots = scope.kep_snapshots
+    documents = []
+    for number, directory in scope.keps:
+        readme, kep_yaml = f"{directory}README.md", f"{directory}kep.yaml"
+        files, skipped = read_files(repo, [readme, kep_yaml], snapshots, (".md", ".yaml"))
+        summary.skipped += skipped
+        readmes = files.get(readme, [None] * len(snapshots))
+        kep_yamls = files.get(kep_yaml, [None] * len(snapshots))
+        # Commit times are read only where the files changed since the previous snapshot.
+        times: list[tuple[datetime, ...]] = []
+        for i, snapshot in enumerate(snapshots):
+            previous = (None, None) if i == 0 else (readmes[i - 1], kep_yamls[i - 1])
+            since = None if i == 0 else snapshots[i - 1].sha
+            changed = (readmes[i], kep_yamls[i]) != previous
+            found = commit_times(repo, since, snapshot.sha, [readme, kep_yaml]) if changed else []
+            times.append(tuple(found))
+        try:
+            observed = [
+                Observed(snapshot, kep_state(readme, r, k, strip, synonyms), found)
+                for snapshot, r, k, found in zip(snapshots, readmes, kep_yamls, times, strict=True)
+            ]
+            versions = date_history(scope.kep_repo, observed, releases)
+            if not versions:
+                raise ValueError(f"{directory} is in no snapshot")
+            documents.append(Document(kep_canonical_id(number), "kep", versions, []))
+        except ValueError as exc:
+            summary.failures.append(f"KEP {number}: {exc}")
+    return documents
+
+
+def store_document(
+    conn: psycopg.Connection[TupleRow], document: Document, summary: Summary
+) -> None:
+    """Create the document if it's new, then close/insert versions and add aliases, in one
+    transaction. Raises HistoryMismatch or ValueError (rolled back) for the caller to report."""
+    with conn.transaction():
+        document_id = resolve_document(conn, document.canonical_id)
+        is_new = document_id is None
+        if document_id is None:
+            document_id = create_document(conn, document.canonical_id, document.source_type)
+        plan = plan_changes(list_versions(conn, document_id), document.versions)
+        # Close first: the new version's open window would overlap the old one (R8).
+        if plan.close is not None:
+            close_version(
+                conn,
+                plan.close.version_id,
+                plan.close.valid_until_release,
+                plan.close.valid_until_date,
+            )
+        for version in plan.insert:
+            insert_version(conn, NewVersion(document_id=document_id, **version.model_dump()))
+        for alias in document.aliases:
+            owner = resolve_document(conn, alias)
+            if owner is None:
+                add_alias(conn, document_id, alias)
+            elif owner != document_id:
+                raise ValueError(f"alias {alias} already points to document {owner}")
+    if is_new:
+        summary.new_documents += 1
+    if plan.close is not None:
+        summary.closed_versions += 1
+    if plan.close is None and not plan.insert:
+        summary.unchanged_documents += 1
+    summary.new_versions += len(plan.insert)
+
+
+def ingest(
+    conn: psycopg.Connection[TupleRow],
+    scope: Scope,
+    cache_dir: Path,
+    releases: Sequence[Release],
+    strip: Mapping[str, frozenset[str]],
+    synonyms: Mapping[str, str],
+) -> Summary:
+    """Read, derive and store every document of `scope`. Each document commits on its own."""
+    summary = Summary()
+    documents = [
+        *collect_docs(scope, cache_dir, strip["docs_page"], releases, summary),
+        *collect_keps(scope, cache_dir, strip["kep_yaml"], synonyms, releases, summary),
+    ]
+    for document in documents:
+        try:
+            store_document(conn, document, summary)
+        except (HistoryMismatch, ValueError) as exc:
+            summary.failures.append(f"{document.canonical_id}: {exc}")
+            continue
+        count = summary.documents.get(document.source_type, 0)
+        summary.documents[document.source_type] = count + 1
+    return summary
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    settings = Settings()
+    releases = load_releases(settings.corpus_manifest_path)
+    strip = load_normalization(settings.corpus_manifest_path)
+    scope = load_scope(
+        settings.corpus_manifest_path, settings.corpus_lock_path, settings.ingest_scope
+    )
+    cache_dir = settings.corpus_cache_dir.expanduser()
+    # autocommit: each `conn.transaction()` block is its own committed transaction.
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        # Windows are derived from the manifest's release dates; store those same dates.
+        with conn.transaction():
+            upsert_releases(conn, releases)
+        summary = ingest(conn, scope, cache_dir, releases, strip, settings.claim_synonyms)
+
+    for line in summary.skipped:
+        log.info("skipped %s", line)
+    for line in summary.failures:
+        log.error("FAILED %s", line)
+    by_type = ", ".join(
+        f"{n} {source_type}" for source_type, n in sorted(summary.documents.items())
+    )
+    print(
+        f"Scope {scope.name}: {sum(summary.documents.values())} documents stored ({by_type}).\n"
+        f"New documents: {summary.new_documents}. New versions: {summary.new_versions}. "
+        f"Closed versions: {summary.closed_versions}. "
+        f"Unchanged documents: {summary.unchanged_documents}.\n"
+        f"Skipped files: {len(summary.skipped)}. Failed documents: {len(summary.failures)}."
+    )
+    if summary.failures:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
