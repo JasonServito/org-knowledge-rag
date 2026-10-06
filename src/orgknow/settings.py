@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,9 +37,9 @@ class Settings(BaseSettings):
     # Vectors are stored under this name, so a new model embeds everything again.
     embedding_model: str = "voyage-4-large"
     # One request holds at most this many texts and estimated tokens (characters / 4). A single
-    # text over the token budget is sent alone.
-    embed_batch_max_texts: int = 128
-    embed_batch_max_tokens: int = 60_000
+    # text over the token budget is sent alone. Both must be at least 1.
+    embed_batch_max_texts: PositiveInt = 128
+    embed_batch_max_tokens: PositiveInt = 60_000
     # `make embed` refuses to start when the texts it would send exceed this many estimated
     # tokens: a guard against embedding far more than planned (CLAUDE.md, spending).
     embed_max_tokens_per_run: int = 2_000_000

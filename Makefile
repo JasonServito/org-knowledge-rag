@@ -45,7 +45,8 @@ seed:
 
 # Read the scope's files (INGEST_SCOPE, default s04) at the locked SHAs and store their versions,
 # then chunk every version that has no chunks yet. Free and local; safe to re-run (a re-run adds
-# 0 versions and 0 chunks). Needs `make up`, `make migrate`.
+# 0 versions and 0 chunks). Needs `make up`, `make migrate`, `make seed`: it only reads `releases`,
+# and stops before reading git if a manifest release is missing there or has other dates.
 ingest:
 	uv run python -m orgknow.ingestion.ingest
 

@@ -17,7 +17,7 @@ from psycopg.rows import TupleRow
 
 from orgknow.db.documents import resolve_document
 from orgknow.db.versions import list_versions
-from orgknow.ingestion.ingest import Summary, ingest
+from orgknow.ingestion.ingest import ReleasesMismatch, Summary, ingest
 from orgknow.ingestion.manifest import Scope, Snapshot, load_normalization, load_releases
 
 Conn = psycopg.Connection[TupleRow]
@@ -129,6 +129,58 @@ def _windows(conn: Conn, canonical_id: str) -> list[tuple[Any, ...]]:
 def repos(make_git_repo: Callable[[str], Any]) -> tuple[Any, list[Snapshot], list[Snapshot]]:
     website, docs_snapshots = _website(make_git_repo)
     return website, docs_snapshots, _enhancements(make_git_repo)
+
+
+def _releases(conn: Conn) -> list[tuple[Any, ...]]:
+    return conn.execute(
+        "SELECT minor, version, release_date, end_of_life_date FROM releases ORDER BY minor"
+    ).fetchall()
+
+
+def _row_counts(conn: Conn) -> tuple[Any, ...] | None:
+    return conn.execute(
+        """
+        SELECT (SELECT count(*) FROM documents), (SELECT count(*) FROM document_aliases),
+               (SELECT count(*) FROM document_versions), (SELECT count(*) FROM chunks),
+               (SELECT count(*) FROM embeddings)
+        """
+    ).fetchone()
+
+
+# Hand edits of the seeded 1.30 row (manifest: released 2024-04-17, end of life 2025-07-15).
+@pytest.mark.parametrize(
+    ("edit", "problem"),
+    [
+        ("DELETE FROM releases WHERE minor = 30", "1.30 is missing"),
+        (
+            "UPDATE releases SET release_date = '2024-04-18' WHERE minor = 30",
+            "1.30 differs (table: 2024-04-18 to 2025-07-15; manifest: 2024-04-17 to 2025-07-15)",
+        ),
+    ],
+    ids=["deleted", "re-dated"],
+)
+def test_a_releases_table_unlike_the_manifest_stops_before_any_write(
+    conn: Conn, tmp_path: Path, repos: Any, edit: str, problem: str
+) -> None:
+    _, docs_snapshots, kep_snapshots = repos
+    conn.execute(edit)
+    before = (_releases(conn), _row_counts(conn))
+
+    with pytest.raises(ReleasesMismatch, match="run `make seed`") as raised:
+        _ingest(conn, tmp_path, _scope(docs_snapshots, kep_snapshots))
+
+    assert problem in str(raised.value)
+    # Nothing written anywhere: the edited releases row is left as it was, and no rows appear.
+    assert (_releases(conn), _row_counts(conn)) == before
+
+
+def test_the_releases_check_runs_before_any_git_read(conn: Conn, tmp_path: Path) -> None:
+    conn.execute("DELETE FROM releases WHERE minor = 30")
+    scope = _scope([Snapshot(24, "release-1.24", "0" * 40)], [])
+
+    # No repos under this cache dir: any git read would raise GitError instead.
+    with pytest.raises(ReleasesMismatch, match=r"1\.30 is missing"):
+        _ingest(conn, tmp_path / "no-repos", scope)
 
 
 def test_docs_windows_on_real_files(conn: Conn, tmp_path: Path, repos: Any) -> None:

@@ -1,15 +1,18 @@
 """Ingest a manifest scope: read files at the locked SHAs, derive versions, store them, chunk them.
 
-Run with `make ingest` (INGEST_SCOPE, default s04). Safe to re-run: each document's derived
-history is compared with what's stored (`plan_changes`), and only versions with no chunks are
-chunked, so a re-run writes nothing.
+Run with `make ingest` (INGEST_SCOPE, default s04), after `make seed`. Safe to re-run: each
+document's derived history is compared with what's stored (`plan_changes`), and only versions
+with no chunks are chunked, so a re-run writes nothing.
 
-1. Read (git): every snapshot of the scope. A git failure stops here, before any write.
-2. Derive (pure): per document, normalize and hash each snapshot, then build its versions.
+1. Check (DB, read-only): the `releases` table must hold every manifest release with the same
+   dates, since windows are derived from them. Otherwise stop, before any git read or write,
+   and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
+2. Read (git): every snapshot of the scope. A git failure stops here, before any write.
+3. Derive (pure): per document, normalize and hash each snapshot, then build its versions.
    A document that can't be parsed is reported and left out; the others continue.
-3. Store (DB): one transaction per document. A history mismatch is reported, leaves that
+4. Store (DB): one transaction per document. A history mismatch is reported, leaves that
    document untouched, and makes the exit code non-zero.
-4. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
+5. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
    (`chunker.py`), one transaction per version.
 """
 
@@ -26,7 +29,7 @@ from psycopg.rows import TupleRow
 from orgknow.db.chunks import add_chunks, versions_without_chunks
 from orgknow.db.documents import add_alias, create_document, resolve_document
 from orgknow.db.models import NewVersion, Release, VersionData
-from orgknow.db.releases import upsert_releases
+from orgknow.db.releases import list_releases
 from orgknow.db.versions import close_version, insert_version, list_versions
 from orgknow.ingestion.chunker import chunk_version
 from orgknow.ingestion.git_reader import commit_times, read_file, read_files
@@ -63,8 +66,30 @@ class Summary:
     closed_versions: int = 0
     unchanged_documents: int = 0
     new_chunks: int = 0
-    skipped: list[str] = field(default_factory=list)  # files, with the reason
-    failures: list[str] = field(default_factory=list)  # documents, with the reason
+    skipped: list[str] = field(default_factory=list)  # files or versions, with the reason
+    failures: list[str] = field(default_factory=list)  # documents or versions, with the reason
+
+
+class ReleasesMismatch(Exception):
+    """The `releases` table lacks a manifest release or holds other dates for it."""
+
+
+def release_problems(manifest: Sequence[Release], stored: Sequence[Release]) -> list[str]:
+    """Each manifest release the table lacks, or holds with other dates (both compared). Rows
+    the manifest doesn't list are not a problem."""
+    by_version = {release.version: release for release in stored}
+    problems = []
+    for release in manifest:
+        row = by_version.get(release.version)
+        if row is None:
+            problems.append(f"{release.version} is missing")
+        elif row != release:
+            problems.append(
+                f"{release.version} differs (table: {row.release_date} to "
+                f"{row.end_of_life_date}; manifest: {release.release_date} to "
+                f"{release.end_of_life_date})"
+            )
+    return problems
 
 
 def collect_docs(
@@ -182,8 +207,16 @@ def ingest(
     synonyms: Mapping[str, str],
     max_tokens: int,
 ) -> Summary:
-    """Read, derive and store every document of `scope`, then chunk every version with no
-    chunks. Each document, and each version's chunks, commits on its own."""
+    """Check the `releases` table, then read, derive and store every document of `scope`, then
+    chunk every version with no chunks. Each document, and each version's chunks, commits on its
+    own. Raises ReleasesMismatch, before any git read or write, if the table lacks one of
+    `releases` or holds other dates for it."""
+    problems = release_problems(releases, list_releases(conn))
+    if problems:
+        raise ReleasesMismatch(
+            "run `make seed` first. The releases table doesn't match the manifest: "
+            + "; ".join(problems)
+        )
     summary = Summary()
     documents = [
         *collect_docs(scope, cache_dir, strip["docs_page"], releases, summary),
@@ -207,7 +240,7 @@ def chunk_versions(
     """Chunk every stored version that has no chunks yet, one transaction per version.
 
     Each version's raw file is re-read from git at its snapshot. A version with chunks is never
-    re-chunked, so a re-run adds none. A git failure stops here, like in step 1.
+    re-chunked, so a re-run adds none. A git failure stops here, like in step 2.
     """
     for version in versions_without_chunks(conn):
         where = f"{version.canonical_id} (version {version.id})"
@@ -240,18 +273,18 @@ def main() -> None:
     cache_dir = settings.corpus_cache_dir.expanduser()
     # autocommit: each `conn.transaction()` block is its own committed transaction.
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        # Windows are derived from the manifest's release dates; store those same dates.
-        with conn.transaction():
-            upsert_releases(conn, releases)
-        summary = ingest(
-            conn,
-            scope,
-            cache_dir,
-            releases,
-            strip,
-            settings.claim_synonyms,
-            settings.chunk_max_tokens,
-        )
+        try:
+            summary = ingest(
+                conn,
+                scope,
+                cache_dir,
+                releases,
+                strip,
+                settings.claim_synonyms,
+                settings.chunk_max_tokens,
+            )
+        except ReleasesMismatch as exc:
+            sys.exit(f"Nothing ingested: {exc}.")  # exit code 1, message on stderr
 
     for line in summary.skipped:
         log.info("skipped %s", line)
@@ -266,7 +299,8 @@ def main() -> None:
         f"Closed versions: {summary.closed_versions}. "
         f"Unchanged documents: {summary.unchanged_documents}.\n"
         f"New chunks: {summary.new_chunks}.\n"
-        f"Skipped files: {len(summary.skipped)}. Failed documents: {len(summary.failures)}."
+        f"Skipped: {len(summary.skipped)} files or versions. "
+        f"Failed: {len(summary.failures)} documents or versions."
     )
     if summary.failures:
         sys.exit(1)

@@ -146,24 +146,29 @@ Each rule has an integration test that breaks it on purpose and asserts the exac
 - `claimed_status` and `claimed_stage` appear only on KEP versions.
 - Re-ingesting creates no new versions.
 
-## Data-access functions (S03-T4, S03-T5)
+## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0)
 
 All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transaction to the caller (ADR-005). Inputs are Pydantic models, with timezone-aware datetimes only.
 
 | Function | Does |
 |---|---|
 | `upsert_releases(conn, releases)` | Insert new releases, update the dates of existing ones, never delete (T5) |
+| `list_releases(conn) -> list` | Every stored release, oldest first. Read-only: `make ingest` compares it with the manifest and stops with "run `make seed`" on a missing or re-dated release (S04-T0) |
 | `create_document(conn, canonical_id, source_type) -> id` | R3 check against aliases, then insert |
 | `add_alias(conn, document_id, alias)` | R3 check against canonical ids, then insert |
 | `resolve_document(conn, id_or_alias) -> id \| None` | Look up by `canonical_id` or alias |
-| `insert_version(conn, version) -> id` | Insert one version |
+| `insert_version(conn, version) -> id` | Insert one version: a `NewVersion`, which is `VersionData` (the columns ingestion derives from snapshots) plus `document_id` |
 | `close_version(conn, version_id, valid_until_release, valid_until_date)` | Close an open version (R10) |
 | `add_chunks(conn, version_id, chunks) -> ids` | Insert chunks; computes each `content_hash` (R13) |
+| `versions_without_chunks(conn) -> list` | Every version with no chunks yet, oldest id first, with its document's `canonical_id` and source type: what `make ingest` chunks (S04-R1) |
+| `texts_without_embedding(conn, model) -> list` | Each distinct chunk text (hash + text) with no vector for `model`, ordered by hash: what `make embed` sends (S04-R1) |
 | `add_embedding(conn, content_hash, model, embedding)` | Insert one vector, sent as a `'[…]'::vector` literal (signature changed by `0003`) |
+| `delete_orphan_embeddings(conn) -> count` | Delete every vector, of any model, whose hash no chunk has (S04-R1) |
+| `list_versions(conn, document_id) -> list` | All versions of a document, oldest first: what re-ingest compares with (S04-R1) |
 | `versions_at_release(conn, document_id, release) -> list` | Versions whose release window includes `release` (inclusive). Can be several for date-scoped sources |
 | `version_at_time(conn, document_id, at) -> version \| None` | The version whose date window contains `at` (half-open) |
 
-The two read functions hold the window conventions in one place, and their tests cover both edges of a window.
+`versions_at_release` and `version_at_time` hold the window conventions in one place, and their tests cover both edges of a window.
 
 ## Revisit triggers
 

@@ -78,3 +78,10 @@ def test_the_voyage_key_is_hidden_when_settings_are_printed(
     assert settings.voyage_api_key.get_secret_value() == "pa-secret-value"
     assert "pa-secret-value" not in repr(settings)
     assert "pa-secret-value" not in str(settings)
+
+
+@pytest.mark.parametrize("field", ["embed_batch_max_texts", "embed_batch_max_tokens"])
+def test_a_batch_limit_of_zero_is_refused(field: str) -> None:
+    # `batch_texts` would read 0 texts as "no limit" and 0 tokens as one request per text.
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: 0})

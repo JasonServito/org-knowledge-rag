@@ -319,7 +319,7 @@ Section: Exemptions
   1. **Most important.** Make a re-run always insert (bypass `plan_changes`) → the idempotency test fails.
   2. Date a KEP version by the first commit → the KEP v4 test fails (it expects 2022-09-22T08:28:05Z).
   3. Close a docs version at `until` = R2 instead of R2 − 1 → the PSP window test fails.
-  - Also: point `make test-int` at the dev database after `make ingest` → S03's PSP test fails with `UniqueViolation`. Restore.
+  - Also: point `make test-int` at the dev database after `make ingest` → S03's PSP test fails with R3 `ValueError`. Restore.
 - **T3:**
   1. Remove the Hugo `highlight` rule → the `authorization.md` test fails.
   2. Remove the indentation rule → the stray-fence test fails.
@@ -369,7 +369,7 @@ Section: Exemptions
 
 ### Run S04-R2: answer path
 
-- **Status:** planned
+- **Status:** in progress (run started 2026-10-06; T0 done)
 - **Branch:** `s04-r2-answer-path`. PR 1's branch `s04-r2a-retrieval` is cut at T5's last commit.
 - **Tasks, in this order:** S04-T0 (tidy-ups, not a backlog task: the sitting's triage) → S04-T5 (dense retrieval) → S04-T6 (generation) → S04-T7 (CLI `ask` + Langfuse trace).
 - **Closes the slice:** no. T8 (`[human]`, seeds #6–#10) and the retro remain.
@@ -526,7 +526,7 @@ A rejection becomes `answer_status: insufficient_evidence`, `answer: ""`, `evide
 - **T0 (tidy-ups):**
   - `src/orgknow/ingestion/ingest.py`: read-only releases check; summary wording (R1 parked 22-#6)
   - `src/orgknow/db/releases.py`: a read listing releases
-  - `src/orgknow/ingestion/normalize.py`: BOM as `"﻿"`
+  - `src/orgknow/ingestion/normalize.py`: BOM as `"\ufeff"`
   - `src/orgknow/settings.py`: `PositiveInt` batch limits
   - `docs/domain-model.md`: data-access table (`list_versions`, `VersionData`, `versions_without_chunks`, `texts_without_embedding`, `delete_orphan_embeddings`)
   - This slice doc: R1 break-it 4 wording ("R3 `ValueError`")

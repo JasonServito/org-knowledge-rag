@@ -10,6 +10,7 @@ from typing import Any
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
+from tests.conftest import FakeEmbedder
 
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import create_document
@@ -44,7 +45,7 @@ def _page(conn: Conn, canonical_id: str, texts: list[str]) -> None:
     add_chunks(conn, insert_version(conn, version), chunks)
 
 
-def _embed(conn: Conn, embedder: Any, max_tokens_per_run: int = 2_000_000) -> Summary:
+def _embed(conn: Conn, embedder: FakeEmbedder, max_tokens_per_run: int = 2_000_000) -> Summary:
     # The default batch limits: 128 texts and 60,000 estimated tokens.
     return embed_missing(conn, embedder, 128, 60_000, max_tokens_per_run)
 
@@ -53,7 +54,7 @@ def _vectors(conn: Conn) -> list[tuple[Any, ...]]:
     return conn.execute("SELECT content_hash, model FROM embeddings ORDER BY 1, 2").fetchall()
 
 
-def test_a_second_run_makes_no_api_calls(conn: Conn, fake_embedder: Any) -> None:
+def test_a_second_run_makes_no_api_calls(conn: Conn, fake_embedder: FakeEmbedder) -> None:
     # Two pages share texts 100-199: 400 chunks, 300 distinct texts.
     _page(conn, "web:/test/page-a/", [f"text {i}" for i in range(0, 200)])
     _page(conn, "web:/test/page-b/", [f"text {i}" for i in range(100, 300)])
@@ -80,7 +81,7 @@ def test_a_second_run_makes_no_api_calls(conn: Conn, fake_embedder: Any) -> None
     assert joined == (400,)
 
 
-def test_orphan_vectors_are_deleted(conn: Conn, fake_embedder: Any) -> None:
+def test_orphan_vectors_are_deleted(conn: Conn, fake_embedder: FakeEmbedder) -> None:
     _page(conn, "web:/test/page/", ["kept"])
     row = conn.execute("SELECT content_hash FROM chunks WHERE text = 'kept'").fetchone()
     assert row is not None
@@ -97,7 +98,9 @@ def test_orphan_vectors_are_deleted(conn: Conn, fake_embedder: Any) -> None:
     assert fake_embedder.calls == []  # "kept" already had its vector
 
 
-def test_a_run_above_the_cap_refuses_before_any_call(conn: Conn, fake_embedder: Any) -> None:
+def test_a_run_above_the_cap_refuses_before_any_call(
+    conn: Conn, fake_embedder: FakeEmbedder
+) -> None:
     # 40 characters = 10 estimated tokens each: 20 in all, one above a cap of 19.
     _page(conn, "web:/test/page/", ["x" * 40, "y" * 40])
     add_embedding(conn, ORPHAN_HASH, "fake-model", [0.5] * 1024)
