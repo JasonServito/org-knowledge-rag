@@ -49,6 +49,14 @@ make ingest                 # read the scope at the locked SHAs, store one versi
 make embed                  # embed each chunk text with no vector yet; paid, needs VOYAGE_API_KEY (a re-run sends 0 requests)
 ```
 
+Then ask a question. Each ask is paid (one Voyage call and one Claude call) and needs `VOYAGE_API_KEY` and `ANTHROPIC_API_KEY`:
+
+```bash
+uv run orgknow ask "What enforces pod security standards in-tree?"
+```
+
+It prints one line of JSON: `answered` with citations (each with its release windows and a GitHub link at the snapshot commit), or `insufficient_evidence` with a reason. With `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` set, each ask also leaves one Langfuse trace, whose id is the JSON's `trace_id`. Without them, it prints "tracing off" and still answers. Exit codes: 0 when an answer prints, 1 on an error, 2 on bad usage.
+
 Postgres listens on host port **5433** (not the default 5432), bound to localhost, so it doesn't clash with another Postgres on your machine. `make down` stops it; the data is kept in a named Docker volume.
 
 ## Development environment

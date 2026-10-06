@@ -11,7 +11,9 @@ Effort = Literal["low", "medium", "high", "xhigh", "max"]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # hide_input_in_errors: a validation error (e.g. a missing DATABASE_URL) would otherwise echo
+    # every value it was given, API keys included, in its message.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     # Plain libpq form, e.g. postgresql://user:password@host:port/dbname. No default: a
     # missing value should fail at startup, not silently point at some database.
@@ -60,3 +62,9 @@ class Settings(BaseSettings):
     generation_max_tokens: int = Field(default=16_000, ge=1, le=21_333)
     # No key: the answer step can't run (tests use a fake generator).
     anthropic_api_key: SecretStr | None = None
+    # Langfuse tracing (ADR-006 D3): one trace per `ask`. Either key unset: tracing off, and `ask`
+    # still runs. The public key is a SecretStr too, so neither key is ever printed.
+    langfuse_public_key: SecretStr | None = None
+    langfuse_secret_key: SecretStr | None = None
+    # Langfuse Cloud's EU region, the SDK's default. The US region: https://us.cloud.langfuse.com.
+    langfuse_base_url: str = "https://cloud.langfuse.com"

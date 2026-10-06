@@ -1,6 +1,6 @@
 # Architecture
 
-This page describes only what exists in the code **today** (S04-R1, indexing path). S03 added the domain tables, the functions that write and read them, and the releases seed. S04-R1 added the indexing path: `make ingest` stores versions and chunks for the S04 scope, and `make embed` stores one vector per distinct chunk text. Nothing reads the vectors yet: dense retrieval is S04-T5. It is updated as slices land. The planned pipeline (ingestion → retrieval → generation → eval) is described in `CLAUDE.md` and `docs/product-spec.md`.
+This page describes only what exists in the code **today** (S04-R2, answer path). S03 added the domain tables, the functions that write and read them, and the releases seed. S04-R1 added the indexing path: `make ingest` stores versions and chunks for the S04 scope, and `make embed` stores one vector per distinct chunk text. S04-R2 added the answer path: `orgknow ask` embeds the question, finds the nearest chunk texts with an HNSW index, asks Claude for a structured answer that cites chunk ids, rejects any citation that wasn't retrieved, and prints the answer as JSON, with one Langfuse trace per ask. There is no lexical search, rerank or authority scoring yet. It is updated as slices land. The planned pipeline (ingestion → retrieval → generation → eval) is described in `CLAUDE.md` and `docs/product-spec.md`.
 
 ## Overview
 
@@ -35,17 +35,38 @@ This page describes only what exists in the code **today** (S04-R1, indexing pat
   ◄── partial clones (CORPUS_CACHE_DIR)
 ```
 
+The answer path, `orgknow ask "<question>"` (`cli.py`):
+
+```
+  question
+     │
+     ▼
+  retrieve (retrieval/dense.py) ── VoyageEmbedder, input_type "query" ──► Voyage API
+     │  search (db/retrieval.py): the RETRIEVAL_TOP_K (10) nearest texts by cosine distance,
+     │  through the HNSW index; each text once, with every release window it was valid in
+     ▼
+  answer (generation/generator.py) ── AnthropicGenerator, messages.parse ──► Anthropic API
+     │  prompt (generation/prompt.py): one evidence block per hit
+     │  validate (generation/validate.py): reject any cited id that wasn't retrieved;
+     │  fill each citation in from its hit (title, section, windows, GitHub URL)
+     ▼
+  answer JSON on stdout; "tracing off" and errors on stderr
+
+  Langfuse (only in cli.py, only with both keys): one trace per ask, named `ask`,
+  with retrieve, generate and validate under it; flushed before the command exits
+```
+
 ## Components
 
 | Path | What it does |
 |---|---|
-| `src/orgknow/settings.py` | `Settings` (pydantic-settings) reads `DATABASE_URL` (required, plain `postgresql://` form), `DB_CONNECT_TIMEOUT_S`, the corpus paths (`CORPUS_MANIFEST_PATH`, `CORPUS_LOCK_PATH`, `CORPUS_CACHE_DIR`), `INGEST_SCOPE` (default `s04`), `CLAIM_SYNONYMS`, `CHUNK_MAX_TOKENS` (512) and the embedding settings (`VOYAGE_API_KEY`, `VOYAGE_API_URL`, `EMBEDDING_MODEL`, batch and per-run token limits) from the environment, falling back to `.env`. It is built inside factories, never at import time. |
+| `src/orgknow/settings.py` | `Settings` (pydantic-settings) reads `DATABASE_URL` (required, plain `postgresql://` form), `DB_CONNECT_TIMEOUT_S`, the corpus paths (`CORPUS_MANIFEST_PATH`, `CORPUS_LOCK_PATH`, `CORPUS_CACHE_DIR`), `INGEST_SCOPE` (default `s04`), `CLAIM_SYNONYMS`, `CHUNK_MAX_TOKENS` (512), the embedding settings (`VOYAGE_API_KEY`, `VOYAGE_API_URL`, `EMBEDDING_MODEL`, batch and per-run token limits), `RETRIEVAL_TOP_K` (10, at most 40), the generation settings (`GENERATION_MODEL` `claude-opus-5-5`, `GENERATION_EFFORT` `medium`, `GENERATION_MAX_TOKENS` 16,000, `ANTHROPIC_API_KEY`) and the tracing settings (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`) from the environment, falling back to `.env`. Keys are `SecretStr`. It is built inside factories, never at import time. |
 | `src/orgknow/api/app.py` | `create_app(settings=None)` builds the FastAPI app. `GET /health` is liveness: always 200, never touches the database. `GET /ready` is readiness: 200 if the database answers, otherwise 503. |
 | `src/orgknow/db/health.py` | `is_reachable()` opens a fresh psycopg connection with a timeout and runs `SELECT 1`. |
 | `src/orgknow/db/url.py` | `with_psycopg_driver()` rewrites `postgresql://` to `postgresql+psycopg://`, the form SQLAlchemy needs. Only Alembic uses it. |
-| `src/orgknow/db/migrations/` | Alembic environment and hand-written migrations (raw SQL, no autogenerate, no offline mode). `0001` enables `vector`. `0002` enables `btree_gist` and creates the 6 domain tables with 28 named constraints. `0003` re-keys `embeddings` by `(content_hash, model)` and indexes `chunks.content_hash`; its downgrade recreates `0002`'s empty table (vectors are a cache). |
-| `src/orgknow/db/models.py` | Pydantic models at the data-access boundary (ADR-005): `Release`, `VersionData` / `NewVersion` / `Version` (timezone-aware datetimes only), `NewChunk` (no hash field), and the read results `VersionToChunk` and `TextToEmbed`. |
-| `src/orgknow/db/releases.py` | `upsert_releases`: inserts new releases and updates the dates of existing ones; never deletes. |
+| `src/orgknow/db/migrations/` | Alembic environment and hand-written migrations (raw SQL, no autogenerate, no offline mode). `0001` enables `vector`. `0002` enables `btree_gist` and creates the 6 domain tables with 28 named constraints. `0003` re-keys `embeddings` by `(content_hash, model)` and indexes `chunks.content_hash`; its downgrade recreates `0002`'s empty table (vectors are a cache). `0004` adds the HNSW index on `embeddings.embedding` (`vector_cosine_ops`, pgvector's default build settings). |
+| `src/orgknow/db/models.py` | Pydantic models at the data-access boundary (ADR-005): `Release`, `VersionData` / `NewVersion` / `Version` (timezone-aware datetimes only), `NewChunk` (no hash field), and the read results `VersionToChunk`, `TextToEmbed` and `Hit` (one retrieved chunk text: its cited chunk, distance, release windows, KEP claims and snapshot). |
+| `src/orgknow/db/releases.py` | `upsert_releases`: inserts new releases and updates the dates of existing ones; never deletes. `list_releases`: the stored releases, oldest first (ingest's read-only check). |
 | `src/orgknow/db/documents.py` | `create_document`, `add_alias`, `resolve_document`. The two writes check the other table first (rule R3). |
 | `src/orgknow/db/versions.py` | `insert_version`, `close_version` (only an open version, R10), `list_versions` (a document's versions, oldest first), and the two reads that hold the window conventions: `versions_at_release` (inclusive) and `version_at_time` (half-open). |
 | `src/orgknow/db/chunks.py` | `versions_without_chunks`, `add_chunks` (computes each `content_hash` as SHA-256 of the text, R13), `texts_without_embedding` (distinct texts with no vector for a model: the embedding cache check), `add_embedding` (by `content_hash`; sends the vector as pgvector's text form) and `delete_orphan_embeddings` (vectors whose hash no chunk has). |
@@ -60,10 +81,17 @@ This page describes only what exists in the code **today** (S04-R1, indexing pat
 | `src/orgknow/embeddings/voyage.py` | `VoyageEmbedder`: one POST per batch with `urllib` (no SDK), 1024 dimensions, retries on 429/5xx only; pure `request_body` and `parse_response` (reorders by `index`, refuses wrong lengths). |
 | `src/orgknow/embeddings/embed.py` | `make embed`: lists texts with no vector, refuses to start above `EMBED_MAX_TOKENS_PER_RUN`, deletes orphan vectors, then sends batches of at most 128 texts and 60,000 estimated tokens (one transaction per batch). |
 | `src/orgknow/ingestion/seed.py` | `make seed`: validates the release list, then upserts it in one transaction. |
+| `src/orgknow/db/retrieval.py` | `search`: one fixed query. The `k` texts nearest a question vector among one model's vectors (index-ordered by cosine distance, so HNSW is used; vectors no chunk uses are skipped), then each text expanded to the chunks holding it: the chunk in the newest version is cited, and every version's release window is listed, never merged. Ties are ordered by `content_hash`. |
+| `src/orgknow/retrieval/dense.py` | `retrieve`: embeds the question with `input_type="query"`, then calls `search` with `RETRIEVAL_TOP_K`. Its `main()` prints the top hits (a demo). |
+| `src/orgknow/generation/schema.py` | The answer models: `ModelAnswer` (what the model returns: status, answer, cited chunk ids, reason), `Evidence` (one filled-in citation), `Answer` (what `ask` prints) and `AnswerTrace` (what the trace records about the model call; never printed). |
+| `src/orgknow/generation/prompt.py` | The fixed system prompt and the user message: one evidence block per hit (chunk id, release windows, a KEP's claimed status and stage, the chunk text), then the question. Pure functions. |
+| `src/orgknow/generation/generator.py` | `answer`: prompt, one model call, validate, fill in. No hits: `insufficient_evidence` without a call. `AnthropicGenerator` calls `messages.parse` with the answer schema and the effort setting, behind the `Generator` protocol. A refusal, a cut-off or output off the schema raises `GenerationError` with the stop reason. |
+| `src/orgknow/generation/validate.py` | The citation validator: an answer citing an id that wasn't retrieved, an `answered` with no citations or an `insufficient_evidence` with no reason becomes `insufficient_evidence` with reason `citation_validation_failed: [...]`. `fill_in` builds each citation from its hit, with a GitHub URL at the snapshot commit. Pure functions. |
+| `src/orgknow/cli.py` | `orgknow ask "<question>"` (argparse; the `orgknow` console script). `main` checks the keys and builds the real Voyage, Anthropic and Langfuse clients; `ask` retrieves, answers and prints the JSON. Without both Langfuse keys it prints "tracing off" and builds no Langfuse client. Expected failures (a `GenerationError`, the Anthropic SDK's API errors, the Voyage client's errors) print one stderr line and exit 1; an empty question exits 2. The only caller of Langfuse: the trace holds the question, `retrieve` (k, model, chunk ids and distances), `generate` (model, effort, prompt, output, token usage, stop reason), `validate` (result, rejected ids) and the final JSON, and never the settings or a key. |
 
 Every data-access function takes a `psycopg.Connection` and leaves the transaction to the caller (ADR-005). `src/orgknow/db/` is the only place with SQL, and every query is a fixed string with parameters.
 
-There is no server entry point yet (no ASGI server dependency). The app runs only inside tests, through FastAPI's `TestClient`.
+There is no server entry point yet (no ASGI server dependency). The app runs only inside tests, through FastAPI's `TestClient`. The command-line entry point is the `orgknow` console script (`[project.scripts]` in `pyproject.toml`).
 
 Outside `src/`:
 
@@ -88,7 +116,7 @@ The schema is specified in `docs/domain-model.md`:
 | `chunks` | The embedded text of each version, by position | unique position per version; deleted with their version |
 | `embeddings` | One `vector(1024)` per distinct chunk text per model (key `(content_hash, model)`); the table is the embedding cache | exactly 1024 numbers; well-formed hash; vectors no chunk uses are deleted by `make embed` |
 
-There is no vector index yet (HNSW arrives with dense retrieval, S04-T5).
+`embeddings.embedding` has an HNSW index for cosine distance (`0004`). On 20 real queries it returned the same top 10 as an exact scan (200 of 200).
 
 After `make seed`, `make ingest` and `make embed` on the S04 scope, the dev database holds 44 documents (43 docs pages, KEP-2579), 220 versions, 4,967 chunks with 1,583 distinct texts, and 1,583 `voyage-4-large` vectors.
 
@@ -96,10 +124,10 @@ After `make seed`, `make ingest` and `make embed` on the S04 scope, the dev data
 
 | Directory | Needs | Covers |
 |---|---|---|
-| `tests/unit/` | nothing (no network, no DB) | settings loading, URL rewriting, package import; the manifest's release-list, scope and strip-list checks; naive datetimes rejected by the models; normalization and hashing, canonical ids, version histories and `plan_changes` (real KEP-2579 snapshots), the git reader on a tiny local repo; the chunker on real corpus excerpts; embedding batching, request and response handling, and the run cap; the spike scripts' pure functions (`test_spike_*.py`) |
-| `tests/integration/` | `make up` (`make test-int` migrates the test database) | the extensions and 6 tables exist, and `0003`'s key and index; `/health` and `/ready`; the releases upsert is idempotent; one test per domain-model rule (R1–R15), plus the allowed cases and the window edges on real PSP-page and v1.30-post data; ingestion of real fixture files from a tiny git repo (windows, alias, idempotent re-run, close + insert, mismatch); embedding with a call-counting fake (a second run makes 0 calls; orphan cleanup; the run cap) |
+| `tests/unit/` | nothing (no network, no DB) | settings loading, URL rewriting, package import; the manifest's release-list, scope and strip-list checks; naive datetimes rejected by the models; normalization and hashing, canonical ids, version histories and `plan_changes` (real KEP-2579 snapshots), the git reader on a tiny local repo; the chunker on real corpus excerpts; embedding batching, request and response handling, and the run cap; the answer step with the fake generator and a mocked Anthropic transport (validator, fill-in, prompt blocks, refusal and cut-off errors, no model call without hits); the spike scripts' pure functions (`test_spike_*.py`) |
+| `tests/integration/` | `make up` (`make test-int` migrates the test database) | the extensions and 6 tables exist, `0003`'s key and index, and `0004`'s HNSW index; `/health` and `/ready`; the releases upsert is idempotent and `list_releases` reads it back; one test per domain-model rule (R1–R15), plus the allowed cases and the window edges on real PSP-page and v1.30-post data; ingestion of real fixture files from a tiny git repo (windows, alias, idempotent re-run, close + insert, mismatch), and its read-only releases check (a missing or re-dated release stops it before any write or git read); embedding with a call-counting fake (a second run makes 0 calls; orphan cleanup; the run cap); dense retrieval (order and distances, one hit per text with every window, orphan and other-model vectors skipped, ties, `input_type="query"`); `orgknow ask` with the fakes (the printed JSON, "tracing off" with no Langfuse keys and no secret printed, one-line errors with exit 1, an empty question exits 2, a missing API key exits 1) |
 
-`tests/integration/conftest.py` marks every test in that directory `integration`, so `make check` excludes them and `make test-int` selects only them. Integration tests connect only to `TEST_DATABASE_URL` (the `orgknow_test` database that `make up` creates), so data ingested into the dev database never collides with test rows. The `conn` fixture rolls back every test's writes, and `seeded_releases` loads the 18 releases inside that transaction, so tests work on an empty or a seeded database. `tests/conftest.py` holds the `make_git_repo` fixture (a tiny git repo with controlled committer dates) and the fake embedder. `tests/fixtures/` holds small real corpus files, pinned.
+`tests/integration/conftest.py` marks every test in that directory `integration`, so `make check` excludes them and `make test-int` selects only them. Integration tests connect only to `TEST_DATABASE_URL` (the `orgknow_test` database that `make up` creates), so data ingested into the dev database never collides with test rows. The `conn` fixture rolls back every test's writes, and `seeded_releases` loads the 18 releases inside that transaction, so tests work on an empty or a seeded database. `tests/conftest.py` holds the `make_git_repo` fixture (a tiny git repo with controlled committer dates), the fake embedder and the fake generator. No test calls Voyage, Anthropic or Langfuse. `tests/fixtures/` holds small real corpus files, pinned.
 
 ## Verification loop
 

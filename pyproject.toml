@@ -11,10 +11,14 @@ dependencies = [
     "anthropic>=1.11.0",
     "fastapi>=0.141.1",
     "httpx2>=2.13.1",
+    "langfuse>=4.17.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyyaml>=6.0.3",
 ]
+
+[project.scripts]
+orgknow = "orgknow.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]

@@ -163,7 +163,7 @@ Tasks:
   - Structured output (`answer`, `answer_status`, `evidence[]`, `insufficient_evidence_reason`) plus a citation validator.
   - Done when: a citation outside the retrieved set is rejected in tests.
   - Deps: T1, T5.
-- [ ] **S04-T7 `[commodity]` CLI `ask` command + Langfuse trace per query.**
+- [x] **S04-T7 `[commodity]` CLI `ask` command + Langfuse trace per query.**
   - Deps: T6.
 - [ ] **S04-T8 `[human]` Run seeds #6–#10.**
   - Save the outputs to `eval/results/s04/` and write failure notes. Temporal confusion is expected; that's the motivation for S09.

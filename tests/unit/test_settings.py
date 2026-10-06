@@ -21,6 +21,18 @@ def test_missing_database_url_fails_fast(monkeypatch: pytest.MonkeyPatch) -> Non
         Settings(_env_file=None)
 
 
+def test_a_settings_error_never_shows_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    # S04-T7 edge case: secrets never appear on stderr. A missing DATABASE_URL fails validation,
+    # and the error message must not echo the other values it was given.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(ValidationError) as error:
+        Settings(_env_file=None, anthropic_api_key="sk-ant-FAKESECRET")
+
+    assert "database_url" in str(error.value)
+    assert "FAKESECRET" not in str(error.value)
+
+
 def test_ingestion_settings_default_to_the_s04_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.example:5432/app")
     for name in ("CORPUS_CACHE_DIR", "CORPUS_LOCK_PATH", "INGEST_SCOPE", "CLAIM_SYNONYMS"):
