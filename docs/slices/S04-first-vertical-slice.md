@@ -369,7 +369,7 @@ Section: Exemptions
 
 ### Run S04-R2: answer path
 
-- **Status:** in progress (run started 2026-10-06; T0, T5, T6, T7 done)
+- **Status:** PR open (PRs: retrieval, then the answer path, stacked)
 - **Branch:** `s04-r2-answer-path`. PR 1's branch `s04-r2a-retrieval` is cut at T5's last commit.
 - **Tasks, in this order:** S04-T0 (tidy-ups, not a backlog task: the sitting's triage) → S04-T5 (dense retrieval) → S04-T6 (generation) → S04-T7 (CLI `ask` + Langfuse trace).
 - **Closes the slice:** no. T8 (`[human]`, seeds #6–#10) and the retro remain.
