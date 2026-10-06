@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,3 +27,19 @@ class Settings(BaseSettings):
     # KEP claim synonyms, applied to claimed_status and claimed_stage. ADR-003 D5 allows only
     # this one; any other unknown value is stored as written.
     claim_synonyms: dict[str, str] = {"GA": "stable"}
+    # The largest chunk body, in tokens estimated as characters / 4 (S04-R1 decision 5). A code
+    # block or paragraph longer than this is still never cut: it becomes a chunk on its own.
+    chunk_max_tokens: int = 512
+    # `make embed` (S04-R1 decision 7). No key: `make embed` stops with a message; tests use a
+    # fake. SecretStr shows "**********" when settings are printed or logged.
+    voyage_api_key: SecretStr | None = None
+    voyage_api_url: str = "https://api.voyageai.com/v1/embeddings"
+    # Vectors are stored under this name, so a new model embeds everything again.
+    embedding_model: str = "voyage-4-large"
+    # One request holds at most this many texts and estimated tokens (characters / 4). A single
+    # text over the token budget is sent alone.
+    embed_batch_max_texts: int = 128
+    embed_batch_max_tokens: int = 60_000
+    # `make embed` refuses to start when the texts it would send exceed this many estimated
+    # tokens: a guard against embedding far more than planned (CLAUDE.md, spending).
+    embed_max_tokens_per_run: int = 2_000_000

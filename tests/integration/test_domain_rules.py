@@ -2,7 +2,7 @@
 
 Every test writes through `conn`, so nothing is committed. An expected database error runs in
 a nested `conn.transaction()` (a savepoint); the test checks the error class and the
-constraint name from migration 0002. A code rule (R3, R10) raises ValueError instead.
+constraint name from migrations 0002 and 0003. A code rule (R3, R10) raises ValueError instead.
 """
 
 from datetime import UTC, date, datetime
@@ -53,12 +53,6 @@ def _version(document_id: int, **changes: Any) -> NewVersion:
         "valid_from_date": D30,
     }
     return NewVersion(**(fields | changes))
-
-
-def _chunk(conn: Conn) -> int:
-    version_id = insert_version(conn, _version(_document(conn)))
-    [chunk_id] = add_chunks(conn, version_id, [NewChunk(ordinal=0, heading_path=[], text="abc")])
-    return chunk_id
 
 
 # --- R1-R4: identity -------------------------------------------------------------------------
@@ -274,29 +268,35 @@ def test_r13_chunk_hash_is_the_sha256_of_its_text(conn: Conn) -> None:
     assert row == ("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",)
 
 
-def test_r14_one_vector_per_chunk_and_model(conn: Conn) -> None:
-    chunk_id = _chunk(conn)
-    add_embedding(conn, chunk_id, "model-a", [0.5] * 1024)
-    # Allowed: the same chunk under a second model (an ablation doesn't overwrite).
-    add_embedding(conn, chunk_id, "model-b", [0.5] * 1024)
+def test_r14_one_vector_per_text_and_model(conn: Conn) -> None:
+    # No chunk needed: vectors are keyed by text hash, with no foreign key (migration 0003).
+    add_embedding(conn, HASH_A, "model-a", [0.5] * 1024)
+    # Allowed: the same text under a second model (an ablation doesn't overwrite).
+    add_embedding(conn, HASH_A, "model-b", [0.5] * 1024)
 
     with pytest.raises(errors.UniqueViolation) as exc_info, conn.transaction():
-        add_embedding(conn, chunk_id, "model-a", [0.25] * 1024)
+        add_embedding(conn, HASH_A, "model-a", [0.25] * 1024)
 
     assert exc_info.value.diag.constraint_name == "embeddings_pkey"
 
 
 def test_r14_vector_has_exactly_1024_numbers(conn: Conn) -> None:
-    chunk_id = _chunk(conn)
-
     with (
         pytest.raises(errors.DataException, match="expected 1024 dimensions") as exc_info,
         conn.transaction(),
     ):
-        add_embedding(conn, chunk_id, "model-a", [0.5] * 1023)
+        add_embedding(conn, HASH_A, "model-a", [0.5] * 1023)
 
     # Exactly DataException (SQLSTATE 22000), not one of its subclasses.
     assert exc_info.type is errors.DataException
+
+
+def test_r14_hash_must_be_well_formed(conn: Conn) -> None:
+    # 40 hex characters: a git SHA, not a SHA-256.
+    with pytest.raises(errors.CheckViolation) as exc_info, conn.transaction():
+        add_embedding(conn, SHA, "model-a", [0.5] * 1024)
+
+    assert exc_info.value.diag.constraint_name == "embeddings_content_hash_check"
 
 
 # --- R15: releases -----------------------------------------------------------------------------

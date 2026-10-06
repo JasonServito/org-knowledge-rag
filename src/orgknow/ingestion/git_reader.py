@@ -73,6 +73,11 @@ def read_files(
     return files, skipped
 
 
+def read_file(repo: Path, sha: str, path: str) -> bytes:
+    """The content of `path` at commit `sha`, e.g. to re-read a stored version's file."""
+    return _git(repo, "cat-file", "blob", f"{sha}:{path}")
+
+
 def parse_commit_time(text: str) -> datetime:
     """A `%cI` committer time (ISO 8601 with the committer's offset) as a UTC datetime."""
     at = datetime.fromisoformat(text)

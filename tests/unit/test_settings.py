@@ -33,3 +33,48 @@ def test_ingestion_settings_default_to_the_s04_scope(monkeypatch: pytest.MonkeyP
     assert settings.corpus_lock_path == Path("config/corpus_manifest.lock.yaml")
     assert settings.corpus_cache_dir == Path("~/corpus_cache/org-knowledge-rag")
     assert settings.claim_synonyms == {"GA": "stable"}
+
+
+def test_chunk_max_tokens_defaults_to_512(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.example:5432/app")
+    monkeypatch.delenv("CHUNK_MAX_TOKENS", raising=False)
+
+    # S04-R1 decision 5 and "Claude's calls", Settings.
+    assert Settings(_env_file=None).chunk_max_tokens == 512
+
+
+def test_embedding_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.example:5432/app")
+    for name in (
+        "VOYAGE_API_KEY",
+        "VOYAGE_API_URL",
+        "EMBEDDING_MODEL",
+        "EMBED_BATCH_MAX_TEXTS",
+        "EMBED_BATCH_MAX_TOKENS",
+        "EMBED_MAX_TOKENS_PER_RUN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None)
+
+    # S04-R1 decision 7 and "Claude's calls", Settings; the URL is Voyage's API reference.
+    assert settings.voyage_api_key is None
+    assert settings.voyage_api_url == "https://api.voyageai.com/v1/embeddings"
+    assert settings.embedding_model == "voyage-4-large"
+    assert settings.embed_batch_max_texts == 128
+    assert settings.embed_batch_max_tokens == 60_000
+    assert settings.embed_max_tokens_per_run == 2_000_000
+
+
+def test_the_voyage_key_is_hidden_when_settings_are_printed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.example:5432/app")
+    monkeypatch.setenv("VOYAGE_API_KEY", "pa-secret-value")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.voyage_api_key is not None
+    assert settings.voyage_api_key.get_secret_value() == "pa-secret-value"
+    assert "pa-secret-value" not in repr(settings)
+    assert "pa-secret-value" not in str(settings)

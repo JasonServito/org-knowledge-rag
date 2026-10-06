@@ -1,13 +1,16 @@
-"""Ingest a manifest scope: read files at the locked SHAs, derive versions, store them.
+"""Ingest a manifest scope: read files at the locked SHAs, derive versions, store them, chunk them.
 
 Run with `make ingest` (INGEST_SCOPE, default s04). Safe to re-run: each document's derived
-history is compared with what's stored (`plan_changes`), so a re-run writes nothing.
+history is compared with what's stored (`plan_changes`), and only versions with no chunks are
+chunked, so a re-run writes nothing.
 
 1. Read (git): every snapshot of the scope. A git failure stops here, before any write.
 2. Derive (pure): per document, normalize and hash each snapshot, then build its versions.
    A document that can't be parsed is reported and left out; the others continue.
 3. Store (DB): one transaction per document. A history mismatch is reported, leaves that
    document untouched, and makes the exit code non-zero.
+4. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
+   (`chunker.py`), one transaction per version.
 """
 
 import logging
@@ -20,11 +23,13 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import TupleRow
 
+from orgknow.db.chunks import add_chunks, versions_without_chunks
 from orgknow.db.documents import add_alias, create_document, resolve_document
 from orgknow.db.models import NewVersion, Release, VersionData
 from orgknow.db.releases import upsert_releases
 from orgknow.db.versions import close_version, insert_version, list_versions
-from orgknow.ingestion.git_reader import commit_times, read_files
+from orgknow.ingestion.chunker import chunk_version
+from orgknow.ingestion.git_reader import commit_times, read_file, read_files
 from orgknow.ingestion.history import (
     HistoryMismatch,
     Observed,
@@ -57,6 +62,7 @@ class Summary:
     new_versions: int = 0
     closed_versions: int = 0
     unchanged_documents: int = 0
+    new_chunks: int = 0
     skipped: list[str] = field(default_factory=list)  # files, with the reason
     failures: list[str] = field(default_factory=list)  # documents, with the reason
 
@@ -174,8 +180,10 @@ def ingest(
     releases: Sequence[Release],
     strip: Mapping[str, frozenset[str]],
     synonyms: Mapping[str, str],
+    max_tokens: int,
 ) -> Summary:
-    """Read, derive and store every document of `scope`. Each document commits on its own."""
+    """Read, derive and store every document of `scope`, then chunk every version with no
+    chunks. Each document, and each version's chunks, commits on its own."""
     summary = Summary()
     documents = [
         *collect_docs(scope, cache_dir, strip["docs_page"], releases, summary),
@@ -189,7 +197,36 @@ def ingest(
             continue
         count = summary.documents.get(document.source_type, 0)
         summary.documents[document.source_type] = count + 1
+    chunk_versions(conn, cache_dir, max_tokens, summary)
     return summary
+
+
+def chunk_versions(
+    conn: psycopg.Connection[TupleRow], cache_dir: Path, max_tokens: int, summary: Summary
+) -> None:
+    """Chunk every stored version that has no chunks yet, one transaction per version.
+
+    Each version's raw file is re-read from git at its snapshot. A version with chunks is never
+    re-chunked, so a re-run adds none. A git failure stops here, like in step 1.
+    """
+    for version in versions_without_chunks(conn):
+        where = f"{version.canonical_id} (version {version.id})"
+        raw = read_file(
+            cache_dir / version.snapshot_repo, version.snapshot_sha, version.source_path
+        )
+        try:
+            chunks = chunk_version(
+                version.canonical_id, version.source_type, version.metadata, raw, max_tokens
+            )
+        except ValueError as exc:
+            summary.failures.append(f"{where}: {exc}")
+            continue
+        if not chunks:
+            summary.skipped.append(f"{where} {version.source_path}: no text to chunk")
+            continue
+        with conn.transaction():
+            add_chunks(conn, version.id, chunks)
+        summary.new_chunks += len(chunks)
 
 
 def main() -> None:
@@ -206,7 +243,15 @@ def main() -> None:
         # Windows are derived from the manifest's release dates; store those same dates.
         with conn.transaction():
             upsert_releases(conn, releases)
-        summary = ingest(conn, scope, cache_dir, releases, strip, settings.claim_synonyms)
+        summary = ingest(
+            conn,
+            scope,
+            cache_dir,
+            releases,
+            strip,
+            settings.claim_synonyms,
+            settings.chunk_max_tokens,
+        )
 
     for line in summary.skipped:
         log.info("skipped %s", line)
@@ -220,6 +265,7 @@ def main() -> None:
         f"New documents: {summary.new_documents}. New versions: {summary.new_versions}. "
         f"Closed versions: {summary.closed_versions}. "
         f"Unchanged documents: {summary.unchanged_documents}.\n"
+        f"New chunks: {summary.new_chunks}.\n"
         f"Skipped files: {len(summary.skipped)}. Failed documents: {len(summary.failures)}."
     )
     if summary.failures:

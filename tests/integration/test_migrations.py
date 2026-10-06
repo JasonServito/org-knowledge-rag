@@ -36,3 +36,27 @@ def test_domain_tables_exist(settings: Settings) -> None:
 
     missing = DOMAIN_TABLES - {name for (name,) in rows}
     assert not missing, f"domain tables missing: {sorted(missing)}; run `make migrate`"
+
+
+def test_embeddings_are_keyed_by_text_and_model(settings: Settings) -> None:
+    # Migration 0003 (S04-R1 decision 4): one vector per (content_hash, model), and an index
+    # on chunks.content_hash for looking vectors up by chunk text.
+    with psycopg.connect(settings.database_url) as conn:
+        primary_key = conn.execute(
+            """
+            SELECT k.column_name
+            FROM information_schema.table_constraints t
+            JOIN information_schema.key_column_usage k
+              ON k.constraint_schema = t.constraint_schema AND k.constraint_name = t.constraint_name
+            WHERE t.table_name = 'embeddings' AND t.constraint_type = 'PRIMARY KEY'
+            ORDER BY k.ordinal_position
+            """
+        ).fetchall()
+        index = conn.execute(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'chunks_content_hash_idx'"
+        ).fetchone()
+
+    assert primary_key == [("content_hash",), ("model",)]
+    assert index == (
+        "CREATE INDEX chunks_content_hash_idx ON public.chunks USING btree (content_hash)",
+    )
