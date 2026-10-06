@@ -43,7 +43,8 @@ migrate:
 seed:
 	uv run python -m orgknow.ingestion.seed
 
-# Read the scope's files (INGEST_SCOPE, default s04) at the locked SHAs and store their versions.
-# Free and local; safe to re-run (a re-run adds 0 versions). Needs `make up`, `make migrate`.
+# Read the scope's files (INGEST_SCOPE, default s04) at the locked SHAs and store their versions,
+# then chunk every version that has no chunks yet. Free and local; safe to re-run (a re-run adds
+# 0 versions and 0 chunks). Needs `make up`, `make migrate`.
 ingest:
 	uv run python -m orgknow.ingestion.ingest

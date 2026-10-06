@@ -59,3 +59,15 @@ class NewChunk(BaseModel):
     ordinal: int
     heading_path: list[str]
     text: str
+
+
+class VersionToChunk(BaseModel):
+    """A stored version with no chunks yet: where to re-read its file, and its header fields."""
+
+    id: int
+    canonical_id: str
+    source_type: str
+    source_path: str
+    snapshot_repo: str
+    snapshot_sha: str
+    metadata: dict[str, Any]

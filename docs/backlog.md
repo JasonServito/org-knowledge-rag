@@ -148,7 +148,7 @@ Tasks:
   - Snapshots → normalize/hash → versions with windows → stored.
   - Done when: a re-run creates 0 new versions (idempotent).
   - Deps: S03.
-- [ ] **S04-T3 `[core]` Markdown chunker.**
+- [x] **S04-T3 `[core]` Markdown chunker.**
   - Structure-aware (heading path), with a deterministic metadata header.
   - Done when: unit tests pass on fixtures, including table and code-block preservation.
 - [ ] **S04-T4 `[commodity]` Embedding interface.**

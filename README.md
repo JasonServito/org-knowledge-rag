@@ -45,7 +45,7 @@ To load the corpus scope (S04: SIG Auth docs 1.24 to 1.37, plus KEP-2579), first
 
 ```bash
 make seed                   # load the releases from the corpus manifest (safe to re-run)
-make ingest                 # read the scope at the locked SHAs and store one version per content change (safe to re-run)
+make ingest                 # read the scope at the locked SHAs, store one version per content change, chunk new versions (safe to re-run)
 ```
 
 Postgres listens on host port **5433** (not the default 5432), bound to localhost, so it doesn't clash with another Postgres on your machine. `make down` stops it; the data is kept in a named Docker volume.

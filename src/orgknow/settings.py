@@ -26,3 +26,6 @@ class Settings(BaseSettings):
     # KEP claim synonyms, applied to claimed_status and claimed_stage. ADR-003 D5 allows only
     # this one; any other unknown value is stored as written.
     claim_synonyms: dict[str, str] = {"GA": "stable"}
+    # The largest chunk body, in tokens estimated as characters / 4 (S04-R1 decision 5). A code
+    # block or paragraph longer than this is still never cut: it becomes a chunk on its own.
+    chunk_max_tokens: int = 512

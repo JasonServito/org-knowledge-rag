@@ -113,7 +113,7 @@ def _scope(docs_snapshots: list[Snapshot], kep_snapshots: list[Snapshot]) -> Sco
 
 
 def _ingest(conn: Conn, tmp_path: Path, scope: Scope) -> Summary:
-    return ingest(conn, scope, tmp_path, RELEASES, STRIP, {"GA": "stable"})
+    return ingest(conn, scope, tmp_path, RELEASES, STRIP, {"GA": "stable"}, 512)
 
 
 def _windows(conn: Conn, canonical_id: str) -> list[tuple[Any, ...]]:
@@ -251,3 +251,53 @@ def test_a_changed_history_is_reported_and_the_other_documents_still_ingest(
     assert all(": history mismatch: " in line for line in summary.failures)
     assert summary.unchanged_documents == 2  # RBAC and the KEP
     assert _version_rows(conn) == stored  # the mismatched documents are untouched
+
+
+def test_every_version_is_chunked_once(conn: Conn, tmp_path: Path, repos: Any) -> None:
+    _, docs_snapshots, kep_snapshots = repos
+    scope = _scope(docs_snapshots, kep_snapshots)
+
+    first = _ingest(conn, tmp_path, scope)
+    rows_after_first = _chunk_rows(conn)
+    second = _ingest(conn, tmp_path, scope)
+
+    assert first.new_chunks == len(rows_after_first) > 0
+    unchunked = conn.execute(
+        "SELECT count(*) FROM document_versions v "
+        "WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.document_version_id = v.id)"
+    ).fetchone()
+    assert unchunked == (0,)  # all 13 versions
+    assert second.new_chunks == 0
+    assert second.failures == []
+    assert _chunk_rows(conn) == rows_after_first
+
+
+def _chunk_rows(conn: Conn) -> list[tuple[Any, ...]]:
+    return conn.execute(
+        "SELECT id, document_version_id, ordinal, heading_path, content_hash "
+        "FROM chunks ORDER BY id"
+    ).fetchall()
+
+
+def test_kep_chunks_are_read_from_each_versions_readme(
+    conn: Conn, tmp_path: Path, repos: Any
+) -> None:
+    _, docs_snapshots, kep_snapshots = repos
+
+    _ingest(conn, tmp_path, _scope(docs_snapshots, kep_snapshots))
+
+    texts = conn.execute(
+        """
+        SELECT c.text FROM chunks c
+        JOIN document_versions v ON v.id = c.document_version_id
+        JOIN documents d ON d.id = v.document_id
+        WHERE d.canonical_id = 'kep:2579'
+        ORDER BY v.valid_from_date, c.ordinal
+        """
+    ).fetchall()
+    # The READMEs committed in _enhancements at each version's snapshot; the title is kep.yaml's.
+    header = (
+        "Source: kep\nTitle: KEP-2579: PSP Replacement Policy\nDocument: kep:2579\n"
+        "Section: KEP-2579\n\n"
+    )
+    assert texts == [(header + "fix typo",), (header + "implemented",)]

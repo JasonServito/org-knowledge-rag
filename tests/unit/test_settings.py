@@ -33,3 +33,11 @@ def test_ingestion_settings_default_to_the_s04_scope(monkeypatch: pytest.MonkeyP
     assert settings.corpus_lock_path == Path("config/corpus_manifest.lock.yaml")
     assert settings.corpus_cache_dir == Path("~/corpus_cache/org-knowledge-rag")
     assert settings.claim_synonyms == {"GA": "stable"}
+
+
+def test_chunk_max_tokens_defaults_to_512(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.example:5432/app")
+    monkeypatch.delenv("CHUNK_MAX_TOKENS", raising=False)
+
+    # S04-R1 decision 5 and "Claude's calls", Settings.
+    assert Settings(_env_file=None).chunk_max_tokens == 512

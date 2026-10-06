@@ -1,12 +1,29 @@
-"""Writes to `chunks` and `embeddings`."""
+"""Writes to `chunks` and `embeddings`, and the read listing versions still to chunk."""
 
 import hashlib
 from collections.abc import Sequence
 
 import psycopg
-from psycopg.rows import TupleRow
+from psycopg.rows import TupleRow, class_row
 
-from orgknow.db.models import NewChunk
+from orgknow.db.models import NewChunk, VersionToChunk
+
+
+def versions_without_chunks(conn: psycopg.Connection[TupleRow]) -> list[VersionToChunk]:
+    """Return every version that has no chunks yet, oldest id first, with its document's canonical
+    id and source type. A version's chunks are written in one transaction: it has all or none."""
+    with conn.cursor(row_factory=class_row(VersionToChunk)) as cur:
+        cur.execute(
+            """
+            SELECT v.id, d.canonical_id, d.source_type, v.source_path, v.snapshot_repo,
+                   v.snapshot_sha, v.metadata
+            FROM document_versions v
+            JOIN documents d ON d.id = v.document_id
+            WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.document_version_id = v.id)
+            ORDER BY v.id
+            """
+        )
+        return cur.fetchall()
 
 
 def add_chunks(
