@@ -118,7 +118,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S04-R1: indexing path
 
-- **Status:** running
+- **Status:** PR open
 - **Branch:** `s04-r1-indexing`. PR 1's branch `s04-r1a-ingestion` is cut at T2's last commit.
 - **Tasks, in this order:** S04-T2 (ingestion, starting with the test database) → S04-T3 (chunker) → S04-T4 (embeddings + migration `0003`).
 - **Closes the slice:** no. T1 and T5–T8 remain (S04-R2, after its own sitting).
