@@ -85,3 +85,21 @@ def test_a_batch_limit_of_zero_is_refused(field: str) -> None:
     # `batch_texts` would read 0 texts as "no limit" and 0 tokens as one request per text.
     with pytest.raises(ValidationError, match=field):
         Settings(_env_file=None, database_url="x", **{field: 0})
+
+
+def test_retrieval_top_k_defaults_to_10(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RETRIEVAL_TOP_K", raising=False)
+
+    # S04-R2 decision 6.
+    assert Settings(_env_file=None, database_url="x").retrieval_top_k == 10
+
+
+@pytest.mark.parametrize("k", [0, 41])
+def test_retrieval_top_k_outside_1_to_40_is_refused(k: int) -> None:
+    # 40 is pgvector's default hnsw.ef_search: an HNSW index scan returns at most that many rows.
+    with pytest.raises(ValidationError, match="retrieval_top_k"):
+        Settings(_env_file=None, database_url="x", retrieval_top_k=k)
+
+
+def test_retrieval_top_k_of_40_is_accepted() -> None:
+    assert Settings(_env_file=None, database_url="x", retrieval_top_k=40).retrieval_top_k == 40

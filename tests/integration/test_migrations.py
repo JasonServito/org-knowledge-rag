@@ -60,3 +60,17 @@ def test_embeddings_are_keyed_by_text_and_model(settings: Settings) -> None:
     assert index == (
         "CREATE INDEX chunks_content_hash_idx ON public.chunks USING btree (content_hash)",
     )
+
+
+def test_embeddings_have_an_hnsw_cosine_index(settings: Settings) -> None:
+    # Migration 0004 (S04-R2 decision 6): an HNSW index for the cosine operator `<=>`, with
+    # pgvector's default m and ef_construction, so the definition has no WITH clause.
+    with psycopg.connect(settings.database_url) as conn:
+        index = conn.execute(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'embeddings_embedding_hnsw_idx'"
+        ).fetchone()
+
+    assert index == (
+        "CREATE INDEX embeddings_embedding_hnsw_idx ON public.embeddings "
+        "USING hnsw (embedding vector_cosine_ops)",
+    )

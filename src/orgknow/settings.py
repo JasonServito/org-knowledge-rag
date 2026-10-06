@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import PositiveInt, SecretStr
+from pydantic import Field, PositiveInt, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,3 +43,7 @@ class Settings(BaseSettings):
     # `make embed` refuses to start when the texts it would send exceed this many estimated
     # tokens: a guard against embedding far more than planned (CLAUDE.md, spending).
     embed_max_tokens_per_run: int = 2_000_000
+    # How many chunk texts dense retrieval returns (S04-R2 decision 6). At most 40, pgvector's
+    # default `hnsw.ef_search`: an HNSW index scan returns at most that many rows. No similarity
+    # threshold: the top k are always returned.
+    retrieval_top_k: int = Field(default=10, ge=1, le=40)

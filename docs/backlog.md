@@ -155,7 +155,7 @@ Tasks:
 - [x] **S04-T4 `[commodity]` Embedding interface.**
   - Voyage provider, content-hash cache, and a fake for tests.
   - Done when: a second run makes 0 API calls.
-- [ ] **S04-T5 `[core]` Dense retrieval.**
+- [x] **S04-T5 `[core]` Dense retrieval.**
   - pgvector cosine search with an HNSW index; returns chunks with version/window/tier metadata.
   - Done when: an integration test on fixtures passes.
   - Deps: T2–T4.
