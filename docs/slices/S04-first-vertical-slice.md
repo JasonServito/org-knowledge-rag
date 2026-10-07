@@ -1,9 +1,9 @@
 # S04: First vertical slice: PSP → PSA
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 2, narrowed (the full manifest is S05)
 - **Started:** 2026-10-04
-- **Finished:**
+- **Finished:** 2026-10-07
 
 ## Outcome
 
@@ -17,13 +17,13 @@
 
 ## Exit checks
 
-- [ ] `make ingest` run twice: the second run adds 0 versions and 0 chunks. The version count is explained against the 231 distinct raw files of the scope (normalization can only merge, never split).
-- [ ] A second embedding run makes 0 Voyage calls.
-- [ ] `orgknow ask` answers seeds #6–#10 with schema-valid output, and a test proves a citation outside the retrieved set is rejected.
-- [ ] Every `ask` produces a Langfuse trace.
-- [ ] Seed outputs and failure notes are in `eval/results/s04/` (T8).
-- [ ] ADR-006 Accepted.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] `make ingest` run twice: the second run adds 0 versions and 0 chunks. The version count is explained against the 231 distinct raw files of the scope (normalization can only merge, never split).
+- [x] A second embedding run makes 0 Voyage calls.
+- [x] `orgknow ask` answers seeds #6–#10 with schema-valid output, and a test proves a citation outside the retrieved set is rejected.
+- [x] Every `ask` produces a Langfuse trace.
+- [x] Seed outputs and failure notes are in `eval/results/s04/` (T8).
+- [x] ADR-006 Accepted.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -369,7 +369,7 @@ Section: Exemptions
 
 ### Run S04-R2: answer path
 
-- **Status:** PR open (PRs: retrieval, then the answer path, stacked)
+- **Status:** merged (PRs #23 and #24)
 - **Branch:** `s04-r2-answer-path`. PR 1's branch `s04-r2a-retrieval` is cut at T5's last commit.
 - **Tasks, in this order:** S04-T0 (tidy-ups, not a backlog task: the sitting's triage) → S04-T5 (dense retrieval) → S04-T6 (generation) → S04-T7 (CLI `ask` + Langfuse trace).
 - **Closes the slice:** no. T8 (`[human]`, seeds #6–#10) and the retro remain.
@@ -635,7 +635,54 @@ A rejection becomes `answer_status: insufficient_evidence`, `answer: ""`, `evide
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - T1 was decided in the R2 sitting (ADR-006). T2–T4 shipped in run S04-R1 (PRs #21, #22), T0 and T5–T7 in run S04-R2 (PRs #23, #24), and T8 interactively (PR #25).
+  - **Ingestion:**
+    - `make ingest` stores 44 documents (43 docs pages, KEP-2579) and 220 versions, with exact release and date windows.
+    - The 231 raw docs files merge into 216 versions, and the spike's independent hash matches all 216.
+    - A second run adds 0 versions and 0 chunks (rerun at the retro).
+  - **Chunker:**
+    - 4,967 chunks, 1,583 distinct texts: 68% of chunks repeat across versions.
+    - A hand-written scanner with 4 rules; no Markdown library.
+  - **Embeddings:**
+    - `make embed` stores 1,583 `voyage-4-large` vectors in 13 requests and 475,905 tokens (free tier).
+    - A second run makes 0 requests (rerun at the retro).
+  - **Dense retrieval:** an HNSW index (a graph index for fast nearest-neighbour search). Its top 10 equals exact search's top 10 on 20 real queries (200 of 200).
+  - **`orgknow ask`:**
+    - one Claude Opus 5.5 call with structured output, then a plain-code citation validator, then JSON
+    - every `ask` run with Langfuse keys set left a trace: 9 of 9 (R2: 3 answers + 1 error path; T8: 5). An empty question exits 2 before tracing, and runs without Langfuse keys print "tracing off", by design.
+  - **Seeds #6–#10:**
+    - 3 pass, 2 partial, 0 fail; 0 unsupported claims
+    - $0.14 for the 5 asks (~$0.03 each), with 0 reasoning tokens
+  - **Tests:** 224 unit, 80 integration (from 94 and 45 at the end of S03).
+  - **Paid calls for the slice:**
+    - Voyage: about 476K embedding tokens plus 16 question embeddings, all in the free tier
+    - Anthropic: 9 Opus calls, about $0.22
+    - Langfuse: free tier
 - **Surprises:**
+  - **No temporal confusion in the seeds (0 of 5),** although it was expected. The answers used the release windows shown in the evidence. None of the 5 asks about an older release.
+  - **Reasoning was 0 tokens on all 8 traced asks** at `medium` effort, so an ask costs about $0.03, against ADR-006's $0.07–0.11 estimate.
+  - **Retrieval isn't bit-reproducible.** Voyage's question vector varies between calls: distances moved by up to 0.0044 and swapped near-ties (T8).
+  - **Voyage's token count came in 5% under the chars ÷ 4 estimate** (475,905 vs 500,674).
+  - **Langfuse:**
+    - T8's traces took about 6 minutes to appear in its API.
+    - Its legacy traces endpoint returns HTTP 410, so reads need the v2 observations endpoint.
+  - **GitHub closed stacked PR #22** when PR #21's branch was deleted. `CLAUDE.md` now retargets PR 2 before merging PR 1.
+  - **PR #24 counted 4 Opus calls, but Langfuse holds 3 R2 generations.** The 4th was T6's one-off demo script, which called the answer step directly before the CLI existed, so it had no tracing.
 - **What didn't work / negative results:**
+  - **Seed #8 repeated KEP-2579's wrong beta date as fact** (2021-11-03; 1.23 shipped 2021-12-07). Nothing checks sources against each other yet (S10).
+  - **Near-duplicate crowding:** seeds #6 and #8 had only 6 distinct sections in their top 10. Versions of a section that differ by one line each take a slot.
+  - **Seed #9 missed a "why":** it lives in a 2021 blog post, outside S04's scope (S05).
+  - **Parked to S05:**
+    - HTML tables with a blank line in a cell are cut (24 chunks on the RBAC page).
+    - Hugo `{#id}` anchors sit in 1,754 of 4,967 heading paths.
+  - **Open from PR #24:**
+    - a cut-off answer loses its stop reason
+    - the Langfuse public key appears in traces
+  - **Size:**
+    - Both runs came out about 2.2× their estimates: R1 ~3,390 reviewable lines (estimate ~1,500), R2 ~2,220 (estimate ~1,000).
+    - 3 of the 4 run PRs were over the ~800-line alarm.
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S04-*.md`
+  - Estimate each PR's reviewable lines in the sitting and split for size there. Tests ran 0.9–1.4× the source lines in every S04 PR.
+  - Route every paid demo call through the traced path, or list each call in the brief, so the paid-call count matches the traces.
+  - When reading traces back, poll for them (T8 waited about 6 minutes) instead of reading once.
+- **Slice brief:** [`docs/learning/S04-first-vertical-slice.md`](../learning/S04-first-vertical-slice.md)

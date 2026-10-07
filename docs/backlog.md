@@ -134,7 +134,7 @@ Tasks:
   - Deps: T3.
 - **Not in this slice:** the `search_vector` column (S07), `observed_lifecycle` (S09), and the relationships/decisions tables (S13).
 
-### 🟨 S04 First vertical slice: PSP → PSA *(Stage 2, narrowed)*
+### ✅ S04 First vertical slice: PSP → PSA *(Stage 2, narrowed)*
 
 - **Outcome:** `orgknow ask "<question>"` returns a cited, structured answer over SIG Auth docs at every release from v1.24 to the latest (v1.37), plus KEP-2579. (Range widened from "v1.24 and the latest" in the S04-R1 sitting, so every stored window is exact; 1.20–1.23 need rename handling, S05.)
 - **Slice doc:** `docs/slices/S04-first-vertical-slice.md`
@@ -173,7 +173,7 @@ Tasks:
 
 ## Milestone M1: Phase 1 complete (product spec AC1–AC8)
 
-### ⬜ S05 Stage 1 subset ingestion *(Stage 2)*
+### 🟨 S05 Stage 1 subset ingestion *(Stage 2)*
 
 - **Outcome:** the full manifest is ingested: 3 SIGs × v1.20 → latest, the 4 KEPs, CHANGELOG, blog, and governance docs.
 - **Exit:** re-ingesting yields identical counts and hashes (AC8, first part); counts match the spike within an explained tolerance.
@@ -279,7 +279,7 @@ ADRs are decided when their slice starts, not earlier.
 |---|---|---|
 | 004 | Toolchain | S01 (Accepted) |
 | 005 | Data access approach | S03 (Accepted) |
-| 006 | Generation model, structured output, tracing | S04 |
+| 006 | Generation model, structured output, tracing | S04 (Accepted) |
 | 007 | Golden-set schema and labeling | S06 |
 | 008 | Reranker model and candidate count | S08 |
 | 009 | Query-mode routing | S09 |
