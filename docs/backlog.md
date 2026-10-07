@@ -165,7 +165,7 @@ Tasks:
   - Deps: T1, T5.
 - [x] **S04-T7 `[commodity]` CLI `ask` command + Langfuse trace per query.**
   - Deps: T6.
-- [ ] **S04-T8 `[human]` Run seeds #6–#10.**
+- [x] **S04-T8 `[human]` Run seeds #6–#10.**
   - Save the outputs to `eval/results/s04/` and write failure notes. Temporal confusion is expected; that's the motivation for S09.
   - Deps: T7.
 
@@ -314,3 +314,6 @@ ADRs are decided when their slice starts, not earlier.
 - **S05 ingestion report: clearer failures.** Failure lines should carry the snapshot label; a skipped file is counted once per snapshot (a symlink counts 14 times); a manifest path absent from every release in range should be an error, not an INFO line (in S04's 1.24+ the old PSP path is legitimately absent). (S04-R1, PR #21 parked 8 and 9; Greptile on PR #21.)
 - **Next sitting (S04-R2 question 1): keep the stop reason when the model is cut off.** Reason: if the model is cut off or refuses partway through its JSON, `messages.parse` raises before it returns, so `GenerationError` has no stop reason and no token usage. The ask still fails cleanly (one stderr line, exit 1). Options: keep it for S04, or switch to `messages.create` with the same `output_config` and validate `ModelAnswer` ourselves on `end_turn`, which keeps both on every path but amends ADR-006 D2. Decide before the S06 baseline. (PR #24 question 1; Greptile on PR #24.)
 - **Next sitting (S04-R2 question 2): the Langfuse public key in traces.** Reason: the Langfuse SDK adds the public key to every observation's scope attributes. The secret, Anthropic and Voyage keys are absent (checked on fetched traces). Langfuse treats the public key as non-secret, and removing it would mean patching the SDK. Proposed: reword the S04-R2 rule to "secret keys never appear in stdout, stderr or the trace". (PR #24 question 2.)
+- **S06: store the question vectors for eval runs.** Reason: Voyage's question vector varies between calls; a second retrieval for the same question moved distances by up to 0.0044 and swapped near-ties (seed #6 rank 10, seed #9 ranks 8–9). Fix the vectors, or repeat runs, before trusting small ablation deltas. (S04-T8, PR #25.)
+- **S09: near-duplicate crowding in the top 10.** Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)
+- **S10: check KEP Implementation History dates against the `releases` table.** Reason: seed #8 repeated KEP-2579's "2021-11-03: v1.23 Beta version released" as fact; 1.23 shipped 2021-12-07. The model never sees release dates. (S04-T8, PR #25; Appendix A conflict case.)
