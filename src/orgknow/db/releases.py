@@ -1,9 +1,9 @@
-"""Writes to the `releases` table."""
+"""Writes to and reads from the `releases` table."""
 
 from collections.abc import Sequence
 
 import psycopg
-from psycopg.rows import TupleRow
+from psycopg.rows import TupleRow, class_row
 
 from orgknow.db.models import Release
 
@@ -32,3 +32,11 @@ def upsert_releases(conn: psycopg.Connection[TupleRow], releases: Sequence[Relea
                 for release in releases
             ],
         )
+
+
+def list_releases(conn: psycopg.Connection[TupleRow]) -> list[Release]:
+    """Return every stored release, oldest first. Read-only: `make ingest` compares these with
+    the manifest and never writes them (`make seed` does)."""
+    with conn.cursor(row_factory=class_row(Release)) as cur:
+        cur.execute("SELECT version, release_date, end_of_life_date FROM releases ORDER BY minor")
+        return cur.fetchall()

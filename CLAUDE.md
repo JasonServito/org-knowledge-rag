@@ -198,7 +198,7 @@ Every task produces the following, briefly. It goes in the PR brief.
   - Only after the developer says "merge" and the required CI checks (`check`, `integration`) are green.
   - Use only `gh pr merge <N> --merge --delete-branch`, which triggers the developer's approval prompt.
   - Merge commits only: no squash, no rebase.
-- **After a stacked PR 1 merges:** GitHub retargets PR 2 to `main`. Run `gh pr update-branch <N>` (merge, not rebase), wait for CI, then ask to merge.
+- **Merging stacked PRs:** before merging PR 1, run `gh pr edit <PR2> --base main`, because `--delete-branch` closes a PR still based on the deleted branch. After PR 1 merges, run `gh pr update-branch <PR2>` (merge, not rebase), wait for CI, then ask to merge.
 - Never push to `main`. Never force-push.
 - **Slice status** still changes only in the retro PR (`/slice-retro`). The retro can be the last commit of a slice's final run.
 - **ADRs:** decided in the sitting and committed as Accepted in the run PR. The developer's merge confirms them.

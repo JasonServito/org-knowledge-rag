@@ -78,3 +78,29 @@ class TextToEmbed(BaseModel):
 
     content_hash: str
     text: str
+
+
+class Hit(BaseModel):
+    """One dense-retrieval result: a distinct chunk text near the question (S04-R2 decision 4).
+
+    Many chunks can hold one text (one per version where a section didn't change). The hit cites
+    the chunk in the newest version holding it, and lists the release window of every version
+    holding it, so a gap between releases stays visible. Every other field is the cited chunk's
+    or its version's.
+    """
+
+    chunk_id: int  # what a citation points to
+    content_hash: str
+    distance: float  # cosine distance to the question, 0 (same direction) to 2 (opposite)
+    text: str  # header + body, exactly as embedded
+    canonical_id: str
+    source_type: str
+    heading_path: list[str]
+    # (valid_from_release, valid_until_release) per version, by from-release; None is open.
+    release_windows: list[tuple[int, int | None]]
+    claimed_status: str | None
+    claimed_stage: str | None
+    snapshot_repo: str
+    snapshot_sha: str
+    source_path: str
+    metadata: dict[str, Any]  # the version's front matter, including `title`

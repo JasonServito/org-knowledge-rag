@@ -2,7 +2,7 @@
 
 - **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
-- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1)
+- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
 This is the spec for the tables, their rules, and the write functions S04 ingestion calls. If code and this doc disagree, fix one of them in the same PR.
 
@@ -98,9 +98,9 @@ Changed by migration `0003` (S04-R1 sitting, decision 4): **one vector per uniqu
 - **Why per text:** the chunk header holds no per-version field, so a section unchanged between versions has byte-identical text. On the S04 scope, 69% of sections repeat unchanged; per chunk, identical vectors would tie and crowd a top-k search.
 - **The table is the embedding cache:** only hashes with no row for the model are sent to the API.
 - **Orphans:** a vector whose hash no chunk uses any more (only after the chunker changes) is deleted by `make embed`. Retrieval joins to `chunks`, so an orphan can never be cited.
-- **A search hit is one text.** R2 decides how it expands to the chunks and versions holding that text.
+- **A search hit is one text.** `search` expands it to the chunks and versions holding that text (S04-R2 decision 4; see "Data-access functions").
 
-The vector search index (HNSW) comes with dense retrieval (S04-T5).
+**Search index** (migration `0004`, S04-T5): `embeddings_embedding_hnsw_idx`, HNSW on `embedding` with `vector_cosine_ops`, so it serves cosine distance `<=>`. pgvector's default build settings (`m` 16, `ef_construction` 64). It is approximate: on 20 real queries it returned the exact top 10 (200 of 200). One index holds every model's vectors; the search filters by model.
 
 ### Chunk header
 
@@ -146,24 +146,30 @@ Each rule has an integration test that breaks it on purpose and asserts the exac
 - `claimed_status` and `claimed_stage` appear only on KEP versions.
 - Re-ingesting creates no new versions.
 
-## Data-access functions (S03-T4, S03-T5)
+## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0, S04-T5)
 
 All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transaction to the caller (ADR-005). Inputs are Pydantic models, with timezone-aware datetimes only.
 
 | Function | Does |
 |---|---|
 | `upsert_releases(conn, releases)` | Insert new releases, update the dates of existing ones, never delete (T5) |
+| `list_releases(conn) -> list` | Every stored release, oldest first. Read-only: `make ingest` compares it with the manifest and stops with "run `make seed`" on a missing or re-dated release (S04-T0) |
 | `create_document(conn, canonical_id, source_type) -> id` | R3 check against aliases, then insert |
 | `add_alias(conn, document_id, alias)` | R3 check against canonical ids, then insert |
 | `resolve_document(conn, id_or_alias) -> id \| None` | Look up by `canonical_id` or alias |
-| `insert_version(conn, version) -> id` | Insert one version |
+| `insert_version(conn, version) -> id` | Insert one version: a `NewVersion`, which is `VersionData` (the columns ingestion derives from snapshots) plus `document_id` |
 | `close_version(conn, version_id, valid_until_release, valid_until_date)` | Close an open version (R10) |
 | `add_chunks(conn, version_id, chunks) -> ids` | Insert chunks; computes each `content_hash` (R13) |
+| `versions_without_chunks(conn) -> list` | Every version with no chunks yet, oldest id first, with its document's `canonical_id` and source type: what `make ingest` chunks (S04-R1) |
+| `texts_without_embedding(conn, model) -> list` | Each distinct chunk text (hash + text) with no vector for `model`, ordered by hash: what `make embed` sends (S04-R1) |
 | `add_embedding(conn, content_hash, model, embedding)` | Insert one vector, sent as a `'[…]'::vector` literal (signature changed by `0003`) |
+| `delete_orphan_embeddings(conn) -> count` | Delete every vector, of any model, whose hash no chunk has (S04-R1) |
+| `list_versions(conn, document_id) -> list` | All versions of a document, oldest first: what re-ingest compares with (S04-R1) |
+| `search(conn, question_vector, model, k) -> list[Hit]` | The `k` texts nearest the vector by cosine distance, among `model`'s vectors that a chunk holds; ties by hash. One hit per text: it cites the chunk in the newest version holding the text (latest date window; lowest chunk id within it) and lists every holding version's release window, never merged (S04-T5) |
 | `versions_at_release(conn, document_id, release) -> list` | Versions whose release window includes `release` (inclusive). Can be several for date-scoped sources |
 | `version_at_time(conn, document_id, at) -> version \| None` | The version whose date window contains `at` (half-open) |
 
-The two read functions hold the window conventions in one place, and their tests cover both edges of a window.
+`versions_at_release` and `version_at_time` hold the window conventions in one place, and their tests cover both edges of a window.
 
 ## Revisit triggers
 
@@ -198,4 +204,4 @@ The two read functions hold the window conventions in one place, and their tests
 - ~~How each source's windows are derived~~ (see above).
 - ~~What a KEP version covers~~ (see above).
 - ~~Re-ingest idempotency~~ (see above) and ~~an index on `chunks.content_hash`~~ (migration `0003`).
-- ~~The chunk header's contents~~ (see "Chunk header"). Still open: the HNSW index (S04-T5).
+- ~~The chunk header's contents~~ (see "Chunk header") and ~~the HNSW index~~ (migration `0004`, see `embeddings`).

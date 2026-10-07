@@ -6,7 +6,7 @@ import pytest
 from psycopg.rows import TupleRow
 
 from orgknow.db.models import Release
-from orgknow.db.releases import upsert_releases
+from orgknow.db.releases import list_releases, upsert_releases
 from orgknow.ingestion.manifest import load_releases
 from orgknow.settings import Settings
 
@@ -68,3 +68,17 @@ def test_upsert_of_a_shorter_list_deletes_nothing(
 
     assert _rows(conn) == before
     assert len(before) == 18
+
+
+def test_list_releases_reads_back_the_seeded_rows_oldest_first(
+    conn: psycopg.Connection[TupleRow], releases: list[Release]
+) -> None:
+    upsert_releases(conn, releases)
+
+    stored = list_releases(conn)
+
+    assert stored == releases
+    # Expected values typed from config/corpus_manifest.yaml.
+    assert stored[4] == Release(
+        version="1.24", release_date=date(2022, 5, 3), end_of_life_date=date(2023, 7, 28)
+    )

@@ -133,12 +133,13 @@ def test_psp_one_microsecond_before_1_23_is_v2(conn: Conn, psp: tuple[int, list[
 
 
 # --- The v1.30 release blog post ---------------------------------------------------------------
-# Two edits 5 minutes apart on 2024-04-19 (website `main` merges 78f7ce0 and 8774faf), with the
-# times as written in the S03-R1 run contract. Both fall in release 1.30's cycle.
+# Two edits 5 minutes apart on 2024-04-19 (website `main` merges 78f7ce0 and 8774faf), at their
+# committer times in UTC (`TZ=UTC git log --date=iso-strict-local`). Both fall in release 1.30's
+# cycle.
 POST = "web:/blog/2024/04/17/kubernetes-v1-30-release/"
 POST_PATH = "content/en/blog/_posts/2024-04-17-kubernetes-1.30.md"
-EDIT_1 = datetime(2024, 4, 19, 14, 56, 34, tzinfo=UTC)
-EDIT_2 = datetime(2024, 4, 19, 15, 1, 40, tzinfo=UTC)
+EDIT_1 = datetime(2024, 4, 19, 20, 56, 34, tzinfo=UTC)
+EDIT_2 = datetime(2024, 4, 19, 21, 1, 40, tzinfo=UTC)
 
 
 def _post_version(document_id: int, from_date: datetime, content_hash: str) -> NewVersion:
@@ -169,7 +170,7 @@ def test_blog_post_edit_time_starts_the_new_version(
 ) -> None:
     document_id, ids = post
 
-    between = version_at_time(conn, document_id, datetime(2024, 4, 19, 14, 58, tzinfo=UTC))
+    between = version_at_time(conn, document_id, datetime(2024, 4, 19, 20, 58, tzinfo=UTC))
     at_edit = version_at_time(conn, document_id, EDIT_2)
 
     assert between is not None

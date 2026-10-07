@@ -41,7 +41,7 @@ def decode(raw: bytes) -> str:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError(f"not valid UTF-8: {exc}") from exc
-    return text.removeprefix("﻿").replace("\r\n", "\n")
+    return text.removeprefix("\ufeff").replace("\r\n", "\n")
 
 
 def _yaml_mapping(text: str, what: str) -> dict[str, Any]:
