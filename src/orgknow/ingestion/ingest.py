@@ -1,17 +1,20 @@
 """Ingest a manifest scope: read files at the locked SHAs, derive versions, store them, chunk them.
 
-Run with `make ingest` (INGEST_SCOPE, default s04), after `make seed`. Safe to re-run: each
+Run with `make ingest` (INGEST_SCOPE, default full), after `make seed`. Safe to re-run: each
 document's derived history is compared with what's stored (`plan_changes`), and only versions
 with no chunks are chunked, so a re-run writes nothing.
 
 1. Check (DB, read-only): the `releases` table must hold every manifest release with the same
    dates, since windows are derived from them. Otherwise stop, before any git read or write,
    and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
-2. Read (git): every snapshot of the scope. A git failure stops here, before any write.
-3. Derive (pure): per document, normalize and hash each snapshot, then build its versions.
-   A document that can't be parsed is reported and left out; the others continue.
-4. Store (DB): one transaction per document. A history mismatch is reported, leaves that
-   document untouched, and makes the exit code non-zero.
+2. Read (git): every snapshot of the scope, one release-scoped group at a time (docs pages,
+   website release records), then the KEPs. A git failure stops here, before any write.
+3. Derive (pure): per document, normalize and hash each snapshot with its group's strip list,
+   then build its versions. A document that can't be parsed is reported and left out; the
+   others continue.
+4. Store (DB): one transaction per document. A history mismatch or an R3 conflict (an id that
+   is another document's alias) is reported, leaves that document untouched, and makes the
+   exit code non-zero.
 5. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
    (`chunker.py`), one transaction per version.
 """
@@ -27,7 +30,7 @@ import psycopg
 from psycopg.rows import TupleRow
 
 from orgknow.db.chunks import add_chunks, versions_without_chunks
-from orgknow.db.documents import add_alias, create_document, resolve_document
+from orgknow.db.documents import add_alias, create_document, find_document, resolve_document
 from orgknow.db.models import NewVersion, Release, VersionData
 from orgknow.db.releases import list_releases
 from orgknow.db.versions import close_version, insert_version, list_versions
@@ -41,7 +44,13 @@ from orgknow.ingestion.history import (
     release_history,
 )
 from orgknow.ingestion.identity import alias_id, docs_canonical_id, kep_canonical_id
-from orgknow.ingestion.manifest import Scope, load_normalization, load_releases, load_scope
+from orgknow.ingestion.manifest import (
+    ReleaseGroup,
+    Scope,
+    load_normalization,
+    load_releases,
+    load_scope,
+)
 from orgknow.ingestion.normalize import docs_state, kep_state
 from orgknow.settings import Settings
 
@@ -92,33 +101,52 @@ def release_problems(manifest: Sequence[Release], stored: Sequence[Release]) -> 
     return problems
 
 
-def collect_docs(
+def document_from_chain(
+    group: ReleaseGroup,
+    chain: Sequence[tuple[str, bytes] | None],
+    strip: Mapping[str, frozenset[str]],
+    releases: Sequence[Release],
+) -> Document:
+    """One document of a release-scoped group from its chain of files: at each of the group's
+    snapshots, the (path, raw content) holding the document, or None where it's absent.
+
+    The canonical id is the first file's URL. Hashes use the strip list of the group's source
+    type (ADR-002 D2). Raises ValueError if a file can't be parsed.
+    """
+    keys = strip[group.source_type]
+    states = [None if link is None else docs_state(link[0], link[1], keys) for link in chain]
+    observed = [Observed(s, state) for s, state in zip(group.snapshots, states, strict=True)]
+    first_path = next(link[0] for link in chain if link is not None)
+    aliases = {alias_id(a) for state in states if state is not None for a in state.aliases}
+    return Document(
+        docs_canonical_id(first_path),
+        group.source_type,
+        release_history(group.repo, observed, releases),
+        sorted(aliases),
+    )
+
+
+def collect_release_scoped(
     scope: Scope,
     cache_dir: Path,
-    strip: frozenset[str],
+    strip: Mapping[str, frozenset[str]],
     releases: Sequence[Release],
     summary: Summary,
 ) -> list[Document]:
-    """Read the scope's docs pages at every release and derive their versions."""
-    snapshots = scope.docs_snapshots
-    files, skipped = read_files(cache_dir / scope.docs_repo, scope.docs_paths, snapshots, (".md",))
-    summary.skipped += skipped
+    """Read each release-scoped group's files at every release and derive their documents.
+
+    Each file path is one document's chain (renames are S05-T2's).
+    """
     documents = []
-    for path, contents in sorted(files.items()):
-        try:
-            states = [None if raw is None else docs_state(path, raw, strip) for raw in contents]
-            observed = [Observed(s, state) for s, state in zip(snapshots, states, strict=True)]
-            aliases = {alias_id(a) for state in states if state is not None for a in state.aliases}
-            documents.append(
-                Document(
-                    docs_canonical_id(path),
-                    "docs_page",
-                    release_history(scope.docs_repo, observed, releases),
-                    sorted(aliases),
-                )
-            )
-        except ValueError as exc:
-            summary.failures.append(f"{path}: {exc}")
+    for group in scope.release_groups:
+        files, skipped = read_files(cache_dir / group.repo, group.paths, group.snapshots, (".md",))
+        summary.skipped += skipped
+        for path, contents in sorted(files.items()):
+            chain = [None if raw is None else (path, raw) for raw in contents]
+            try:
+                documents.append(document_from_chain(group, chain, strip, releases))
+            except ValueError as exc:
+                summary.failures.append(f"{path}: {exc}")
     return documents
 
 
@@ -166,9 +194,13 @@ def store_document(
     conn: psycopg.Connection[TupleRow], document: Document, summary: Summary
 ) -> None:
     """Create the document if it's new, then close/insert versions and add aliases, in one
-    transaction. Raises HistoryMismatch or ValueError (rolled back) for the caller to report."""
+    transaction. Raises HistoryMismatch or ValueError (rolled back) for the caller to report.
+
+    The document is looked up by its canonical_id only. An id that is another document's alias
+    reaches `create_document`, which raises the R3 error naming the alias.
+    """
     with conn.transaction():
-        document_id = resolve_document(conn, document.canonical_id)
+        document_id = find_document(conn, document.canonical_id)
         is_new = document_id is None
         if document_id is None:
             document_id = create_document(conn, document.canonical_id, document.source_type)
@@ -219,7 +251,7 @@ def ingest(
         )
     summary = Summary()
     documents = [
-        *collect_docs(scope, cache_dir, strip["docs_page"], releases, summary),
+        *collect_release_scoped(scope, cache_dir, strip, releases, summary),
         *collect_keps(scope, cache_dir, strip["kep_yaml"], synonyms, releases, summary),
     ]
     for document in documents:

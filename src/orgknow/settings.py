@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     # The partial clones of the corpus repos (spikes/fetch.py), one folder per manifest repo.
     # Outside this repo. Ingestion expands `~`.
     corpus_cache_dir: Path = Path("~/corpus_cache/org-knowledge-rag")
-    # The manifest `scopes:` entry `make ingest` reads.
-    ingest_scope: str = "s04"
+    # The manifest `scopes:` entry `make ingest` reads (S05-R1: `full`; `s04` is kept).
+    ingest_scope: str = "full"
     # KEP claim synonyms, applied to claimed_status and claimed_stage. ADR-003 D5 allows only
     # this one; any other unknown value is stored as written.
     claim_synonyms: dict[str, str] = {"GA": "stable"}

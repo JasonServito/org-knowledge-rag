@@ -181,7 +181,7 @@ Tasks:
 
 Tasks:
 
-- [ ] **S05-T1 `[core]` Release-scoped website sources from 1.20.**
+- [x] **S05-T1 `[core]` Release-scoped website sources from 1.20.**
   - Docs pages of the 3 SIGs and the website release records, every release 1.20 → 1.37; `make reset-corpus`.
   - Done when: a re-run adds 0 versions, and the counts are explained against the spike.
 - [ ] **S05-T2 `[core]` Renames and aliases (ADR-002 D4).**

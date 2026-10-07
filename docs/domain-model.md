@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived.
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -146,7 +146,7 @@ Each rule has an integration test that breaks it on purpose and asserts the exac
 - `claimed_status` and `claimed_stage` appear only on KEP versions.
 - Re-ingesting creates no new versions.
 
-## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0, S04-T5)
+## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0, S04-T5, S05-T1)
 
 All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transaction to the caller (ADR-005). Inputs are Pydantic models, with timezone-aware datetimes only.
 
@@ -156,6 +156,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 | `list_releases(conn) -> list` | Every stored release, oldest first. Read-only: `make ingest` compares it with the manifest and stops with "run `make seed`" on a missing or re-dated release (S04-T0) |
 | `create_document(conn, canonical_id, source_type) -> id` | R3 check against aliases, then insert |
 | `add_alias(conn, document_id, alias)` | R3 check against canonical ids, then insert |
+| `find_document(conn, canonical_id) -> id \| None` | Look up by `canonical_id` only. `make ingest` stores a document under its own id with it, so an id that is another document's alias gets the R3 error from `create_document`, not that document's history (S05-T1) |
 | `resolve_document(conn, id_or_alias) -> id \| None` | Look up by `canonical_id` or alias |
 | `insert_version(conn, version) -> id` | Insert one version: a `NewVersion`, which is `VersionData` (the columns ingestion derives from snapshots) plus `document_id` |
 | `close_version(conn, version_id, valid_until_release, valid_until_date)` | Close an open version (R10) |
@@ -184,10 +185,13 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 ## How windows are derived (S04-R1 sitting)
 
 - **A release date means 00:00 UTC** of the `releases.release_date`.
-- **Release-scoped sources (docs):** ingestion reads every release in scope, oldest first.
+- **Release-scoped sources (docs pages, website release records):** ingestion reads every release in scope, oldest first, from each release's website branch (1.37 = `main` at the lock head).
   - A version starts at the first release whose snapshot has its content: `valid_from_release` = R, `valid_from_date` = R's release date.
   - It closes at the first later release R2 whose snapshot differs or lacks the file: `valid_until_release` = R2 − 1, `valid_until_date` = R2's release date.
-  - The first version of a page starts at the scope's first release (24 in S04), even if the page is older. S05 re-ingests from an empty database.
+  - The first version of a page starts at the scope's first release, even if the page is older: 20 from S05 (the `full` scope), 24 in S04.
+  - Each source type is hashed with its own strip list: release records with `release_record`'s (which strips `card`), docs pages with `docs_page`'s.
+  - A file matched by the paths of two release-scoped groups is an error when the scope is loaded, before any read or write.
+- **Rebuilding from empty (S05-R1 decision 2):** moving the first release from 24 to 20 changes every stored first version, which a re-ingest reports as a history mismatch. `make reset-corpus` empties `documents`, `document_aliases`, `document_versions` and `chunks` (ids restart at 1), then `make ingest` rebuilds them. `releases` and `embeddings` are kept: vectors are a cache keyed by content hash, so an unchanged chunk text keeps its vector. Dev database only.
 - **Date-scoped sources (KEPs):** snapshots are `main` at each release date, plus `head`.
   - A new version's `valid_from_date` is the committer time, in UTC, of the **last** commit touching the document's files between the previous snapshot and this one. The stored text was exactly live from then; edits in between are folded into the previous version's window.
   - The previous version closes at that same instant.

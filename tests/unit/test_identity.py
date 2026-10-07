@@ -23,6 +23,9 @@ from orgknow.ingestion.identity import alias_id, docs_canonical_id, kep_canonica
             "content/en/docs/reference/access-authn-authz/ABAC.md",
             "web:/docs/reference/access-authn-authz/abac/",
         ),
+        # Release records outside docs/ (S05-R1, pinned canonical ids).
+        ("content/en/releases/version-skew-policy.md", "web:/releases/version-skew-policy/"),
+        ("content/en/releases/_index.md", "web:/releases/"),
     ],
 )
 def test_docs_canonical_id(path: str, expected: str) -> None:

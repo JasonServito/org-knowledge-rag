@@ -3,7 +3,9 @@
 The website repo gets one commit per release 1.24 -> 1.37 holding the real pages of that
 release (tests/fixtures/website_s04/<page>/<first release with these bytes>.md, copied from
 kubernetes/website at the locked SHAs; CC BY 4.0). overview.md is deleted at 1.29, as in the
-corpus. The enhancements repo replays KEP-2579's real commit times around its real kep.yaml files.
+corpus. Every commit also holds an excerpt of the real 1.20 release notes, a release record that
+only the re-run test's scope reads. The enhancements repo replays KEP-2579's real commit times
+around its real kep.yaml files.
 """
 
 from collections.abc import Callable
@@ -15,10 +17,17 @@ import psycopg
 import pytest
 from psycopg.rows import TupleRow
 
-from orgknow.db.documents import resolve_document
+from orgknow.db.documents import find_document, resolve_document
+from orgknow.db.models import VersionData
 from orgknow.db.versions import list_versions
-from orgknow.ingestion.ingest import ReleasesMismatch, Summary, ingest
-from orgknow.ingestion.manifest import Scope, Snapshot, load_normalization, load_releases
+from orgknow.ingestion.ingest import Document, ReleasesMismatch, Summary, ingest, store_document
+from orgknow.ingestion.manifest import (
+    ReleaseGroup,
+    Scope,
+    Snapshot,
+    load_normalization,
+    load_releases,
+)
 
 Conn = psycopg.Connection[TupleRow]
 
@@ -34,6 +43,8 @@ PSP_PATH = SECURITY + "pod-security-policy.md"
 PSA_PATH = SECURITY + "pod-security-admission.md"
 OVERVIEW_PATH = SECURITY + "overview.md"
 RBAC_PATH = "content/en/docs/reference/access-authn-authz/rbac.md"
+RELEASE = "content/en/docs/setup/release/"
+NOTES_PATH = RELEASE + "notes.md"
 PAGES = {
     PSP_PATH: "pod-security-policy",
     PSA_PATH: "pod-security-admission",
@@ -67,9 +78,10 @@ def _page_at(folder: str, minor: int) -> bytes:
 def _website(make_git_repo: Callable[[str], Any]) -> tuple[Any, list[Snapshot]]:
     repo = make_git_repo("website")
     rbac = (FIXTURES / "website_s04" / "rbac" / "excerpt-1.37.md").read_bytes()
+    notes = (FIXTURES / "website_s05" / "release-notes" / "excerpt-1.20.md").read_bytes()
     snapshots = []
     for minor in range(24, 38):
-        files: dict[str, bytes | None] = {RBAC_PATH: rbac}
+        files: dict[str, bytes | None] = {RBAC_PATH: rbac, NOTES_PATH: notes}
         for path, folder in PAGES.items():
             if path != OVERVIEW_PATH or minor < 29:
                 files[path] = _page_at(folder, minor)
@@ -98,18 +110,14 @@ def _enhancements(make_git_repo: Callable[[str], Any]) -> list[Snapshot]:
     ]
 
 
-def _scope(docs_snapshots: list[Snapshot], kep_snapshots: list[Snapshot]) -> Scope:
-    docs_paths = (SECURITY, RBAC_PATH)
+def _scope(
+    docs_snapshots: list[Snapshot], kep_snapshots: list[Snapshot], release_records: bool = False
+) -> Scope:
+    groups = [ReleaseGroup("docs_page", "website", (SECURITY, RBAC_PATH), tuple(docs_snapshots))]
+    if release_records:
+        groups.append(ReleaseGroup("release_record", "website", (RELEASE,), tuple(docs_snapshots)))
     keps = ((2579, KEP_DIR),)
-    return Scope(
-        "test",
-        "website",
-        docs_paths,
-        tuple(docs_snapshots),
-        "enhancements",
-        keps,
-        tuple(kep_snapshots),
-    )
+    return Scope("test", tuple(groups), "enhancements", keps, tuple(kep_snapshots))
 
 
 def _ingest(conn: Conn, tmp_path: Path, scope: Scope) -> Summary:
@@ -253,18 +261,24 @@ def test_kep_windows_from_git_commit_times(conn: Conn, tmp_path: Path, repos: An
 
 def test_a_rerun_creates_nothing(conn: Conn, tmp_path: Path, repos: Any) -> None:
     _, docs_snapshots, kep_snapshots = repos
-    scope = _scope(docs_snapshots, kep_snapshots)
+    scope = _scope(docs_snapshots, kep_snapshots, release_records=True)
 
     first = _ingest(conn, tmp_path, scope)
     rows_after_first = _version_rows(conn)
+    counts_after_first = _row_counts(conn)
     second = _ingest(conn, tmp_path, scope)
 
-    # PSP 2 + PSA 5 + overview 3 + RBAC 1 + KEP 2 = 13 versions in 5 documents (counted by hand).
-    assert (first.new_documents, first.new_versions) == (5, 13)
+    # PSP 2 + PSA 5 + overview 3 + RBAC 1 + release notes 1 + KEP 2 = 14 versions in 6 documents
+    # (counted by hand).
+    assert (first.new_documents, first.new_versions) == (6, 14)
+    assert first.documents == {"docs_page": 4, "release_record": 1, "kep": 1}
     assert (second.new_documents, second.new_versions, second.closed_versions) == (0, 0, 0)
-    assert second.unchanged_documents == 5
+    assert (second.unchanged_documents, second.new_chunks) == (6, 0)
     assert second.failures == []
     assert _version_rows(conn) == rows_after_first
+    # documents, aliases (/rbac/), versions, chunks, embeddings: nothing added by the re-run.
+    assert counts_after_first is not None and counts_after_first[:3] == (6, 1, 14)
+    assert _row_counts(conn) == counts_after_first
 
 
 def _version_rows(conn: Conn) -> list[tuple[Any, ...]]:
@@ -353,3 +367,53 @@ def test_kep_chunks_are_read_from_each_versions_readme(
         "Section: KEP-2579\n\n"
     )
     assert texts == [(header + "fix typo",), (header + "implemented",)]
+
+
+# --- R3 when an id is another document's alias (S05-T1, parked item 10b) ----------------------
+
+D20 = datetime(2020, 12, 8, tzinfo=UTC)
+D37 = datetime(2026, 8, 26, tzinfo=UTC)
+MOVED = "web:/docs/reference/deprecation-policy/"
+OLD_URL = "web:/docs/reference/using-api/deprecation-policy/"
+
+
+def _version(path: str, ref: str, from_release: int, from_date: datetime) -> VersionData:
+    return VersionData(
+        content_hash=("a" if from_release == 37 else "b") * 64,
+        source_path=path,
+        snapshot_repo="website",
+        snapshot_ref=ref,
+        snapshot_sha="0" * 40,
+        valid_from_release=from_release,
+        valid_from_date=from_date,
+    )
+
+
+def test_an_id_that_is_another_documents_alias_gets_the_r3_error(conn: Conn) -> None:
+    # The 1.37 deprecation-policy page lists its old URL in `aliases`; the old page is a separate
+    # document until T2 links them. Hand-written versions, so the two histories differ.
+    moved = Document(
+        MOVED,
+        "docs_page",
+        [_version("content/en/docs/reference/deprecation-policy.md", "main", 37, D37)],
+        [OLD_URL],
+    )
+    store_document(conn, moved, Summary())
+    old = Document(
+        OLD_URL,
+        "docs_page",
+        [
+            _version(
+                "content/en/docs/reference/using-api/deprecation-policy.md", "release-1.20", 20, D20
+            )
+        ],
+        [],
+    )
+
+    # Not HistoryMismatch (not a ValueError): the old URL must not resolve to the moved page.
+    with pytest.raises(ValueError) as raised:
+        store_document(conn, old, Summary())
+
+    assert str(raised.value) == f"{OLD_URL!r} is already an alias of another document"
+    assert find_document(conn, OLD_URL) is None  # rolled back: nothing created
+    assert resolve_document(conn, OLD_URL) == find_document(conn, MOVED)

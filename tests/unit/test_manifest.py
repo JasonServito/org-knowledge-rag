@@ -5,6 +5,8 @@ import pytest
 from pydantic import ValidationError
 
 from orgknow.ingestion.manifest import (
+    ReleaseGroup,
+    Scope,
     Snapshot,
     load_normalization,
     load_releases,
@@ -101,8 +103,9 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
 
     # Expected values read by hand from config/corpus_manifest.yaml (sources.docs_page.sigs.auth,
     # sources.kep.traced) and config/corpus_manifest.lock.yaml.
-    assert scope.docs_repo == "website"
-    assert scope.docs_paths == (
+    (docs,) = scope.release_groups
+    assert (docs.source_type, docs.repo) == ("docs_page", "website")
+    assert docs.paths == (
         "content/en/docs/concepts/security/",
         "content/en/docs/reference/access-authn-authz/",
         "content/en/docs/concepts/policy/pod-security-policy.md",
@@ -112,13 +115,11 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
         "content/en/docs/setup/best-practices/enforcing-pod-security-standards.md",
     )
     # Every release 1.24 -> 1.37; the latest has no release branch, so it is `main`.
-    assert [s.release for s in scope.docs_snapshots] == list(range(24, 38))
-    assert scope.docs_snapshots[0] == Snapshot(
+    assert [s.release for s in docs.snapshots] == list(range(24, 38))
+    assert docs.snapshots[0] == Snapshot(
         24, "release-1.24", "98e2db7d9cc710554b486ad56274e362af03b438"
     )
-    assert scope.docs_snapshots[-1] == Snapshot(
-        37, "main", "256a1f49419171f6c7fbdb1857146da1c63eb533"
-    )
+    assert docs.snapshots[-1] == Snapshot(37, "main", "256a1f49419171f6c7fbdb1857146da1c63eb533")
     assert scope.kep_repo == "enhancements"
     assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
     # Master at each release date 1.20 -> 1.37, then head.
@@ -130,12 +131,75 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
         None, "master", "4be81e27aef5d252972fd02b5a9479a18982dfe5"
     )
     assert scope.kep_snapshots[-1].label == "head"
-    assert scope.docs_snapshots[0].label == "1.24"
+    assert docs.snapshots[0].label == "1.24"
+
+
+def test_loads_the_full_scope_from_1_20() -> None:
+    scope = load_scope(REAL_MANIFEST, REAL_LOCK, "full")
+
+    # Expected values read by hand from config/corpus_manifest.yaml (sources.docs_page.sigs of
+    # auth, network and release, in that order; the website entry of sources.release_record)
+    # and config/corpus_manifest.lock.yaml (website_releases).
+    docs, records = scope.release_groups
+    assert (docs.source_type, docs.repo) == ("docs_page", "website")
+    assert docs.paths == (
+        "content/en/docs/concepts/security/",
+        "content/en/docs/reference/access-authn-authz/",
+        "content/en/docs/concepts/policy/pod-security-policy.md",
+        "content/en/docs/tasks/configure-pod-container/enforce-standards-admission-controller.md",
+        "content/en/docs/tasks/configure-pod-container/enforce-standards-namespace-labels.md",
+        "content/en/docs/tasks/configure-pod-container/migrate-from-psp.md",
+        "content/en/docs/setup/best-practices/enforcing-pod-security-standards.md",
+        "content/en/docs/concepts/services-networking/",
+        "content/en/docs/reference/networking/",
+        "content/en/docs/reference/using-api/deprecation-policy.md",
+        "content/en/docs/reference/deprecation-policy.md",
+    )
+    # Every release 1.20 -> 1.37 (18 snapshots); 1.37 is `main` at the lock head.
+    assert [s.release for s in docs.snapshots] == list(range(20, 38))
+    assert docs.snapshots[0] == Snapshot(
+        20, "release-1.20", "2886f437c434ab156f4306b67adedd162bb25c2d"
+    )
+    assert docs.snapshots[-1] == Snapshot(37, "main", "256a1f49419171f6c7fbdb1857146da1c63eb533")
+    assert (records.source_type, records.repo) == ("release_record", "website")
+    assert records.paths == (
+        "content/en/releases/",
+        "content/en/docs/setup/release/",
+        "content/en/docs/reference/using-api/deprecation-guide.md",
+    )
+    assert records.snapshots == docs.snapshots
+    assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
 
 
 def test_an_unknown_scope_is_refused() -> None:
-    with pytest.raises(ValueError, match=r"unknown scope 's99'; the manifest has: s04"):
+    with pytest.raises(ValueError, match=r"unknown scope 's99'; the manifest has: s04, full"):
         load_scope(REAL_MANIFEST, REAL_LOCK, "s99")
+
+
+SNAPSHOTS = (Snapshot(20, "release-1.20", "2886f437c434ab156f4306b67adedd162bb25c2d"),)
+REFERENCE = "content/en/docs/reference/"
+GUIDE = "content/en/docs/reference/using-api/deprecation-guide.md"
+
+
+# Each pair of manifest paths matches at least one file in common.
+@pytest.mark.parametrize(
+    ("docs_path", "record_path"),
+    [
+        (REFERENCE, GUIDE),  # a folder holding the other group's file
+        (GUIDE, "content/en/docs/reference/using-api/"),  # a file inside the other's folder
+        (REFERENCE, "content/en/docs/reference/using-api/"),  # a folder inside a folder
+        (GUIDE, GUIDE),  # the same file
+    ],
+)
+def test_a_file_that_two_groups_would_read_is_refused(docs_path: str, record_path: str) -> None:
+    docs = ReleaseGroup("docs_page", "website", (docs_path,), SNAPSHOTS)
+    records = ReleaseGroup("release_record", "website", (record_path,), SNAPSHOTS)
+
+    with pytest.raises(ValueError, match="match the same files") as raised:
+        Scope("test", (docs, records), "enhancements", (), ())
+
+    assert f"docs_page path {docs_path}" in str(raised.value)
+    assert f"release_record path {record_path}" in str(raised.value)
 
 
 def test_loads_the_strip_lists_lowercased() -> None:
@@ -150,6 +214,16 @@ def test_loads_the_strip_lists_lowercased() -> None:
         "simple_list",
         "hide_summary",
         "aliases",
+    }
+    assert strip["release_record"] == {
+        "reviewers",
+        "weight",
+        "card",
+        "linktitle",
+        "notoc",
+        "sitemap",
+        "layout",
+        "type",
     }
     assert strip["kep_yaml"] == {"reviewers", "approvers", "editor", "last-updated"}
 
