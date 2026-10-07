@@ -159,11 +159,11 @@ Tasks:
   - pgvector cosine search with an HNSW index; returns chunks with version/window/tier metadata.
   - Done when: an integration test on fixtures passes.
   - Deps: T2–T4.
-- [ ] **S04-T6 `[core]` Generation.**
+- [x] **S04-T6 `[core]` Generation.**
   - Structured output (`answer`, `answer_status`, `evidence[]`, `insufficient_evidence_reason`) plus a citation validator.
   - Done when: a citation outside the retrieved set is rejected in tests.
   - Deps: T1, T5.
-- [ ] **S04-T7 `[commodity]` CLI `ask` command + Langfuse trace per query.**
+- [x] **S04-T7 `[commodity]` CLI `ask` command + Langfuse trace per query.**
   - Deps: T6.
 - [ ] **S04-T8 `[human]` Run seeds #6–#10.**
   - Save the outputs to `eval/results/s04/` and write failure notes. Temporal confusion is expected; that's the motivation for S09.
@@ -312,3 +312,5 @@ ADRs are decided when their slice starts, not earlier.
 - **S05: keep past `head` SHAs in the lock.** Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.)
 - **S05: ingestion edge cases.** A KEP deleted and re-created skips the date guard and could stop the run with a database error; an id equal to another document's alias gives a misleading "history mismatch" instead of the R3 error; no test covers a re-ingest that only closes a version. (S04-R1, PR #21 parked 5, 6, 11.)
 - **S05 ingestion report: clearer failures.** Failure lines should carry the snapshot label; a skipped file is counted once per snapshot (a symlink counts 14 times); a manifest path absent from every release in range should be an error, not an INFO line (in S04's 1.24+ the old PSP path is legitimately absent). (S04-R1, PR #21 parked 8 and 9; Greptile on PR #21.)
+- **Next sitting (S04-R2 question 1): keep the stop reason when the model is cut off.** Reason: if the model is cut off or refuses partway through its JSON, `messages.parse` raises before it returns, so `GenerationError` has no stop reason and no token usage. The ask still fails cleanly (one stderr line, exit 1). Options: keep it for S04, or switch to `messages.create` with the same `output_config` and validate `ModelAnswer` ourselves on `end_turn`, which keeps both on every path but amends ADR-006 D2. Decide before the S06 baseline. (PR #24 question 1; Greptile on PR #24.)
+- **Next sitting (S04-R2 question 2): the Langfuse public key in traces.** Reason: the Langfuse SDK adds the public key to every observation's scope attributes. The secret, Anthropic and Voyage keys are absent (checked on fetched traces). Langfuse treats the public key as non-secret, and removing it would mean patching the SDK. Proposed: reword the S04-R2 rule to "secret keys never appear in stdout, stderr or the trace". (PR #24 question 2.)

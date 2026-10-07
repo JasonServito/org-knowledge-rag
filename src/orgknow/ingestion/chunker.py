@@ -186,21 +186,29 @@ def chunk_text(
     return "\n".join(header) + "\n\n" + body
 
 
+def document_title(canonical_id: str, source_type: str, metadata: Mapping[str, Any]) -> str:
+    """The title a chunk header shows: the metadata `title` on one line, and for a KEP (whose
+    kep.yaml is the metadata) `KEP-<number>: <title>`. Raises ValueError when there is none."""
+    title = " ".join(str(metadata.get("title") or "").split())  # one header line
+    if not title:
+        raise ValueError("no title in the version's metadata")
+    if source_type == "kep":
+        return f"KEP-{canonical_id.removeprefix('kep:')}: {title}"
+    return title
+
+
 def chunk_version(
     canonical_id: str, source_type: str, metadata: Mapping[str, Any], raw: bytes, max_tokens: int
 ) -> list[NewChunk]:
     """The chunks of one version, from its raw file.
 
     A docs page is chunked without its front matter. A KEP version is chunked from its README;
-    its kep.yaml is the version's `metadata`, which gives the title (`KEP-<number>: <title>`).
+    its kep.yaml is the version's `metadata`, which gives the title (`document_title`).
     Raises ValueError for a file that can't be decoded or has no title.
     """
-    title = " ".join(str(metadata.get("title") or "").split())  # one header line
-    if not title:
-        raise ValueError("no title in the version's metadata")
+    title = document_title(canonical_id, source_type, metadata)
     text = decode(raw)
     if source_type == "kep":
-        title = f"KEP-{canonical_id.removeprefix('kep:')}: {title}"
         body = text
     else:
         _, body = split_front_matter(text)

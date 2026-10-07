@@ -56,6 +56,11 @@ def load_releases(path: Path) -> list[Release]:
     return releases
 
 
+def load_repo_urls(path: Path) -> dict[str, str]:
+    """The manifest's `repos.<name>.url` by repo name, e.g. "website" -> its GitHub URL."""
+    return {str(name): str(repo["url"]) for name, repo in _read_yaml(path)["repos"].items()}
+
+
 def load_normalization(path: Path) -> dict[str, frozenset[str]]:
     """Return the front-matter keys to strip before hashing, per kind, lowercased (ADR-002 D2).
 

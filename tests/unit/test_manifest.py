@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from orgknow.ingestion.manifest import Snapshot, load_normalization, load_releases, load_scope
+from orgknow.ingestion.manifest import (
+    Snapshot,
+    load_normalization,
+    load_releases,
+    load_repo_urls,
+    load_scope,
+)
 
 REAL_MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
 REAL_LOCK = Path(__file__).parents[2] / "config" / "corpus_manifest.lock.yaml"
@@ -34,6 +40,17 @@ def test_loads_the_real_manifest() -> None:
     assert by_version["1.24"].release_date == date(2022, 5, 3)
     assert by_version["1.24"].end_of_life_date == date(2023, 7, 28)
     assert by_version["1.34"].end_of_life_date == date(2026, 10, 27)
+
+
+def test_loads_the_repo_urls_of_the_real_manifest() -> None:
+    # Read by hand from config/corpus_manifest.yaml, `repos:` (S04-T6).
+    assert load_repo_urls(REAL_MANIFEST) == {
+        "website": "https://github.com/kubernetes/website",
+        "kubernetes": "https://github.com/kubernetes/kubernetes",
+        "enhancements": "https://github.com/kubernetes/enhancements",
+        "community": "https://github.com/kubernetes/community",
+        "sig-release": "https://github.com/kubernetes/sig-release",
+    }
 
 
 def test_accepts_a_good_small_list(tmp_path: Path) -> None:

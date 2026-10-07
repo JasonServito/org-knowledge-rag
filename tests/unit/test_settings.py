@@ -21,6 +21,18 @@ def test_missing_database_url_fails_fast(monkeypatch: pytest.MonkeyPatch) -> Non
         Settings(_env_file=None)
 
 
+def test_a_settings_error_never_shows_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    # S04-T7 edge case: secrets never appear on stderr. A missing DATABASE_URL fails validation,
+    # and the error message must not echo the other values it was given.
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(ValidationError) as error:
+        Settings(_env_file=None, anthropic_api_key="sk-ant-FAKESECRET")
+
+    assert "database_url" in str(error.value)
+    assert "FAKESECRET" not in str(error.value)
+
+
 def test_ingestion_settings_default_to_the_s04_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@db.example:5432/app")
     for name in ("CORPUS_CACHE_DIR", "CORPUS_LOCK_PATH", "INGEST_SCOPE", "CLAIM_SYNONYMS"):
@@ -103,3 +115,35 @@ def test_retrieval_top_k_outside_1_to_40_is_refused(k: int) -> None:
 
 def test_retrieval_top_k_of_40_is_accepted() -> None:
     assert Settings(_env_file=None, database_url="x", retrieval_top_k=40).retrieval_top_k == 40
+
+
+def test_generation_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "GENERATION_MODEL",
+        "GENERATION_EFFORT",
+        "GENERATION_MAX_TOKENS",
+        "ANTHROPIC_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # ADR-006 D1 and the S04-R2 contract, "Claude's calls", Settings.
+    assert settings.generation_model == "claude-opus-5-5"
+    assert settings.generation_effort == "medium"
+    assert settings.generation_max_tokens == 16_000
+    assert settings.anthropic_api_key is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("generation_effort", "turbo"),
+        ("generation_max_tokens", 0),
+        ("generation_max_tokens", 21_334),
+    ],
+)
+def test_bad_generation_settings_are_refused(field: str, value: object) -> None:
+    # 21,333 is the SDK's limit for a non-streaming call (anthropic 1.11, checked 2026-10-06).
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: value})
