@@ -19,6 +19,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Query mode** | CURRENT, HISTORY, CHANGE or WHY. Determines filters and authority adjustments. |
 | **Release-aligned snapshot** | The state of each in-scope file captured once per Kubernetes release (ADR-002 D1). |
 | **Rename detection (similarity threshold)** | git pairs a deleted file with an added file when their contents are at least N% similar (`R081` means 81%). A lower threshold finds more renames but also pairs unrelated files. Declared signals, such as a site's redirects, are an alternative. |
+| **Temporal confusion** | An answer that mixes facts from different releases, or states an old release's fact as current. Retrieval that ignores release windows invites it (S09). |
 | **Validity window** | The release range and date range during which a document version was the live version. |
 
 ## Retrieval and evaluation

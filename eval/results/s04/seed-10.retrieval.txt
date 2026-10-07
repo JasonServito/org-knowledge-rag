@@ -1,0 +1,20 @@
+ 1. 0.5151  [chunk 4933] kep:2579
+    KEP-2579: Pod Security Admission Control > Proposal > Risks and Mitigations  |  releases 1.21-1.22, 1.22-1.24, 1.24-1.25, 1.25-now
+ 2. 0.5196  [chunk 4932] kep:2579
+    KEP-2579: Pod Security Admission Control > Proposal > Risks and Mitigations  |  releases 1.21-1.22, 1.22-1.24, 1.24-1.25, 1.25-now
+ 3. 0.5349  [chunk 666] web:/docs/concepts/security/pod-security-standards/
+    FAQ > Why isn't there a profile between privileged and baseline?  |  releases 1.24-1.24, 1.25-1.25, 1.26-1.26, 1.27-1.27, 1.28-1.28, 1.29-1.29
+ 4. 0.5401  [chunk 726] web:/docs/concepts/security/pod-security-standards/
+    FAQ > Why isn't there a profile between Privileged and Baseline?  |  releases 1.30-1.30, 1.31-1.31, 1.32-1.33, 1.34-now
+ 5. 0.5402  [chunk 4641] web:/docs/setup/best-practices/enforcing-pod-security-standards/
+    Using the built-in Pod Security Admission Controller > Embrace the principle of least privilege  |  releases 1.24-1.24, 1.25-now
+ 6. 0.5459  [chunk 4919] kep:2579
+    KEP-2579: Pod Security Admission Control > Motivation > Goals > Requirements  |  releases 1.21-1.22, 1.22-1.24, 1.24-1.25, 1.25-now
+ 7. 0.5471  [chunk 716] web:/docs/concepts/security/pod-security-standards/
+    Profile Details > Baseline  |  releases 1.24-1.24, 1.25-1.25, 1.26-1.26, 1.27-1.27, 1.28-1.28, 1.29-1.29, 1.30-1.30, 1.31-1.31, 1.32-1.33, 1.34-now
+ 8. 0.5530  [chunk 4922] kep:2579
+    KEP-2579: Pod Security Admission Control > Proposal > API  |  releases 1.21-1.22, 1.22-1.24, 1.24-1.25, 1.25-now
+ 9. 0.5534  [chunk 4643] web:/docs/setup/best-practices/enforcing-pod-security-standards/
+    Third-party alternatives  |  releases 1.24-1.24, 1.25-now
+10. 0.5540  [chunk 4723] web:/docs/tasks/configure-pod-container/migrate-from-psp/
+    0. Decide whether Pod Security Admission is right for you {#is-psa-right-for-you}  |  releases 1.24-1.24, 1.25-1.25, 1.26-1.26, 1.27-now

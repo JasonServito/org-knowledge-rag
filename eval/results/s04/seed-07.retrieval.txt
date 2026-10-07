@@ -1,0 +1,20 @@
+ 1. 0.3425  [chunk 585] web:/docs/concepts/security/pod-security-policy/
+    (no section)  |  releases 1.25-now
+ 2. 0.3585  [chunk 555] web:/docs/concepts/security/pod-security-policy/
+    (no section)  |  releases 1.24-1.24
+ 3. 0.3618  [chunk 4974] kep:2579
+    KEP-2579: Pod Security Admission Control > Implementation History  |  releases 1.22-1.24, 1.24-1.25, 1.25-now
+ 4. 0.3706  [chunk 4955] kep:2579
+    KEP-2579: Pod Security Admission Control > Design Details > Graduation Criteria > GA  |  releases 1.24-1.25, 1.25-now
+ 5. 0.3731  [chunk 4790] kep:2579
+    KEP-2579: Pod Security Admission Control > Implementation History  |  releases 1.21-1.22
+ 6. 0.3765  [chunk 4917] kep:2579
+    KEP-2579: Pod Security Admission Control > Motivation  |  releases 1.21-1.22, 1.22-1.24, 1.24-1.25, 1.25-now
+ 7. 0.3787  [chunk 4633] web:/docs/setup/best-practices/enforcing-pod-security-standards/
+    Using the built-in Pod Security Admission Controller  |  releases 1.24-1.24
+ 8. 0.3797  [chunk 1191] web:/docs/reference/access-authn-authz/admission-controllers/
+    What does each admission controller do? > PodSecurity {#podsecurity}  |  releases 1.24-1.24
+ 9. 0.3798  [chunk 1242] web:/docs/reference/access-authn-authz/admission-controllers/
+    What does each admission controller do? > PodSecurity {#podsecurity}  |  releases 1.25-1.25
+10. 0.3837  [chunk 511] web:/docs/concepts/security/pod-security-admission/
+    (no section)  |  releases 1.24-1.24

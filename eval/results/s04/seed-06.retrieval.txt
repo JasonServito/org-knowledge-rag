@@ -1,0 +1,20 @@
+ 1. 0.3563  [chunk 4648] web:/docs/tasks/configure-pod-container/enforce-standards-admission-controller/
+    (no section)  |  releases 1.24-1.24, 1.25-1.25
+ 2. 0.3578  [chunk 4654] web:/docs/tasks/configure-pod-container/enforce-standards-admission-controller/
+    (no section)  |  releases 1.26-1.27, 1.28-now
+ 3. 0.3672  [chunk 4649] web:/docs/tasks/configure-pod-container/enforce-standards-admission-controller/
+    {{% heading "prerequisites" %}}  |  releases 1.24-1.24, 1.25-1.25
+ 4. 0.3760  [chunk 546] web:/docs/concepts/security/pod-security-admission/
+    (no section)  |  releases 1.25-1.25, 1.26-1.27, 1.28-1.29, 1.30-now
+ 5. 0.3831  [chunk 4639] web:/docs/setup/best-practices/enforcing-pod-security-standards/
+    Using the built-in Pod Security Admission Controller  |  releases 1.25-now
+ 6. 0.3839  [chunk 4633] web:/docs/setup/best-practices/enforcing-pod-security-standards/
+    Using the built-in Pod Security Admission Controller  |  releases 1.24-1.24
+ 7. 0.3861  [chunk 1813] web:/docs/reference/access-authn-authz/admission-controllers/
+    What does each admission controller do? > PodSecurity {#podsecurity}  |  releases 1.31-1.31, 1.32-1.32, 1.33-1.33, 1.34-1.34, 1.35-1.35, 1.36-1.36, 1.37-now
+ 8. 0.3870  [chunk 1293] web:/docs/reference/access-authn-authz/admission-controllers/
+    What does each admission controller do? > PodSecurity {#podsecurity}  |  releases 1.26-1.26
+ 9. 0.3888  [chunk 1446] web:/docs/reference/access-authn-authz/admission-controllers/
+    What does each admission controller do? > PodSecurity {#podsecurity}  |  releases 1.27-1.27, 1.28-1.29, 1.30-1.30
+10. 0.3938  [chunk 547] web:/docs/concepts/security/pod-security-admission/
+    Built-in Pod Security admission enforcement  |  releases 1.25-1.25, 1.26-1.27, 1.28-1.29, 1.30-now

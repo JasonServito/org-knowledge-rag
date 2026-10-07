@@ -165,7 +165,7 @@ Tasks:
   - Deps: T1, T5.
 - [x] **S04-T7 `[commodity]` CLI `ask` command + Langfuse trace per query.**
   - Deps: T6.
-- [ ] **S04-T8 `[human]` Run seeds #6–#10.**
+- [x] **S04-T8 `[human]` Run seeds #6–#10.**
   - Save the outputs to `eval/results/s04/` and write failure notes. Temporal confusion is expected; that's the motivation for S09.
   - Deps: T7.
 
