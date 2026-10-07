@@ -417,3 +417,61 @@ def test_an_id_that_is_another_documents_alias_gets_the_r3_error(conn: Conn) -> 
     assert str(raised.value) == f"{OLD_URL!r} is already an alias of another document"
     assert find_document(conn, OLD_URL) is None  # rolled back: nothing created
     assert resolve_document(conn, OLD_URL) == find_document(conn, MOVED)
+
+
+# --- Renames (S05-T2) --------------------------------------------------------------------------
+
+NEW_NOTES_PATH = "content/en/releases/notes.md"
+NOTES = "web:/docs/setup/release/notes/"
+D21 = datetime(2021, 4, 8, tzinfo=UTC)
+D22 = datetime(2021, 8, 4, tzinfo=UTC)
+
+
+def test_a_moved_release_record_stays_one_document(
+    conn: Conn, tmp_path: Path, make_git_repo: Callable[[str], Any]
+) -> None:
+    # The real move of 1.21: the release notes page left setup/release/ for releases/, and
+    # static/_redirects says so (real lines 495-498 at 1.21). git can't pair the two files: the
+    # 1.20 page held the release notes, the 1.21 page points to the CHANGELOG (spike §4 G).
+    repo = make_git_repo("website")
+    fixtures = FIXTURES / "website_s05"
+    redirects = (fixtures / "redirects" / "excerpt-1.21.txt").read_bytes()
+    at_20 = repo.commit({NOTES_PATH: (fixtures / "release-notes" / "excerpt-1.20.md").read_bytes()})
+    at_21 = repo.commit(
+        {
+            NOTES_PATH: None,
+            NEW_NOTES_PATH: (fixtures / "release-notes" / "1.21.md").read_bytes(),
+            "static/_redirects": redirects,
+        }
+    )
+    at_22 = repo.commit({NEW_NOTES_PATH: (fixtures / "release-notes" / "1.22.md").read_bytes()})
+    snapshots = (
+        Snapshot(20, "release-1.20", at_20),
+        Snapshot(21, "release-1.21", at_21),
+        Snapshot(22, "release-1.22", at_22),
+    )
+    records = ReleaseGroup(
+        "release_record", "website", ("content/en/releases/", RELEASE), snapshots
+    )
+    scope = Scope("test", (records,), "enhancements", (), ())
+
+    summary = _ingest(conn, tmp_path, scope)
+
+    assert summary.failures == []
+    assert (summary.new_documents, summary.new_versions) == (1, 3)
+    # The contract's release-notes windows: the 1.21 page is new text, and it changed at 1.22.
+    assert _windows(conn, NOTES) == [
+        (20, 20, D20, D21),
+        (21, 21, D21, D22),
+        (22, None, D22, None),
+    ]
+    document_id = find_document(conn, NOTES)
+    assert document_id is not None
+    assert [v.source_path for v in list_versions(conn, document_id)] == [
+        NOTES_PATH,
+        NEW_NOTES_PATH,
+        NEW_NOTES_PATH,
+    ]
+    # The later URL is an alias of the document, not a document of its own.
+    assert find_document(conn, "web:/releases/notes/") is None
+    assert resolve_document(conn, "web:/releases/notes/") == document_id

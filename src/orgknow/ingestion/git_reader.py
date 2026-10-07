@@ -92,3 +92,44 @@ def commit_times(repo: Path, since: str | None, until: str, paths: Sequence[str]
     revisions = until if since is None else f"{since}..{until}"
     out = _git(repo, "log", "--format=%cI", revisions, "--", *paths)
     return [parse_commit_time(line) for line in out.decode().split()]
+
+
+def first_present(repo: Path, sha: str, paths: Sequence[str]) -> str | None:
+    """The first of `paths` that exists at commit `sha`, or None if none does."""
+    listing = _git(repo, "ls-tree", "--name-only", "-z", sha, "--", *paths).decode().split("\0")
+    return next((path for path in paths if path in listing), None)
+
+
+# ADR-002 D4: git's default rename threshold, the fallback after the declared signals. Untuned:
+# every docs rename it was graded on is real (spike §4 F).
+RENAME_SIMILARITY = "50%"
+
+
+def similar_renames(
+    repo: Path, before: str, after: str, paths: Sequence[str]
+) -> list[tuple[str, str]]:
+    """The renames git finds between commits `before` and `after` among `paths` only: (old path,
+    new path) for each deleted file it pairs with an added one at least 50% similar."""
+    if not paths:
+        return []  # an empty pathspec would compare the whole tree
+    out = _git(
+        repo,
+        "--literal-pathspecs",  # paths are file names, never patterns
+        "diff",
+        f"-M{RENAME_SIMILARITY}",
+        "--name-status",
+        "-z",
+        before,
+        after,
+        "--",
+        *paths,
+    )
+    # -z output: a status, then its path, or for a rename (R<score>) its old and new paths.
+    tokens = iter(out.decode().split("\0"))
+    renames = []
+    for status in tokens:
+        if status.startswith("R"):
+            renames.append((next(tokens), next(tokens)))
+        elif status:
+            next(tokens)
+    return renames

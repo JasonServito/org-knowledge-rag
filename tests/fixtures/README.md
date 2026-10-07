@@ -9,6 +9,8 @@ Small real files from the Kubernetes corpus, copied byte-exact at pinned commits
 | `website_s04/authorization/excerpt-1.37.md` | kubernetes/website, `.../access-authn-authz/authorization.md`, lines 204–339 | `256a1f49` (1.37) |
 | `website_s04/authentication/excerpt-1.32.md` | kubernetes/website, `.../access-authn-authz/authentication.md`, lines 332–499 | `a6b9d383` (1.32) |
 | `website_s05/release-notes/excerpt-1.20.md` | kubernetes/website, `content/en/docs/setup/release/notes.md`, lines 1–18 | `2886f437` (1.20) |
+| `website_s05/release-notes/1.N.md` | kubernetes/website, `content/en/releases/notes.md` (where the page moved at 1.21) | `release-1.N` in the lock: `7ed77d72` (1.21), `80b4524c` (1.22) |
+| `website_s05/redirects/excerpt-1.21.txt` | kubernetes/website, `static/_redirects`, lines 495–498 | `7ed77d72` (1.21) |
 | `kep_2579/1.N.kep.yaml` | [kubernetes/enhancements](https://github.com/kubernetes/enhancements), `keps/sig-auth/2579-psp-replacement/kep.yaml` | `master` on the 1.N release date in the lock (`release_date_snapshots`) |
 | `kubernetes/CHANGELOG-1.22-excerpt.md` | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes), `CHANGELOG/CHANGELOG-1.22.md`, lines 3082–3193 | `7c596ad7` |
 

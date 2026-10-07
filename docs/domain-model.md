@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset.
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -187,7 +187,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 - **A release date means 00:00 UTC** of the `releases.release_date`.
 - **Release-scoped sources (docs pages, website release records):** ingestion reads every release in scope, oldest first, from each release's website branch (1.37 = `main` at the lock head).
   - A version starts at the first release whose snapshot has its content: `valid_from_release` = R, `valid_from_date` = R's release date.
-  - It closes at the first later release R2 whose snapshot differs or lacks the file: `valid_until_release` = R2 − 1, `valid_until_date` = R2's release date.
+  - It closes at the first later release R2 whose snapshot differs or lacks the document's file (wherever it moved, see "Renames"): `valid_until_release` = R2 − 1, `valid_until_date` = R2's release date.
   - The first version of a page starts at the scope's first release, even if the page is older: 20 from S05 (the `full` scope), 24 in S04.
   - Each source type is hashed with its own strip list: release records with `release_record`'s (which strips `card`), docs pages with `docs_page`'s.
   - A file matched by the paths of two release-scoped groups is an error when the scope is loaded, before any read or write.
@@ -202,6 +202,31 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
   - Equal → change nothing.
   - Stored is a prefix (a new release arrived) → close the open version, insert the new ones.
   - Anything else → report a history mismatch for that document, leave it untouched, and exit non-zero.
+
+## Renames: one document across moves (ADR-002 D4, S05-T2)
+
+A page that moves stays one document. Ingestion links the files of the release-scoped sources into **chains**, one per document: a chain is the document's file at each release (`ingestion/renames.py`).
+
+- **Ids and aliases:**
+  - `canonical_id` is the chain's first URL (`web:`). The PSP page is `web:/docs/concepts/policy/pod-security-policy/`.
+  - Every later URL of the chain is an alias (`web:/docs/concepts/security/pod-security-policy/`), and so is every front-matter `aliases` entry, as in S04.
+  - An alias equal to the document's own id is skipped.
+- **Links,** one release pair R → R+1 at a time. A link joins a file present at R and gone at R+1 to a file absent at R and present at R+1. The rules run in order, and the first rule that links a file wins. Web pages (docs pages, release records):
+  1. Same URL. This covers page bundles: `x.md` → `x/index.md`.
+  2. The redirect file at R+1 maps the gone URL to the new page's URL.
+  3. The new page's front-matter `aliases` holds the gone URL.
+  4. git similarity ≥ 50% (`git diff -M50%` between the two release snapshots), read only for the files no earlier rule linked.
+- **Refused links:**
+  - A file one rule links twice (a gone file claimed by two new files, or the reverse) is a conflict. It's logged and never linked, by that rule or a later one.
+  - A link between two source types is an error: it's reported, not made, and the exit code is non-zero. Groups read from one repo at the same releases are linked together, so such a link can be seen.
+  - A redirect to a URL that existed at R is a removal, not a move: a link's target must be new at R+1. Example: `overview.md` → the security section index at 1.29.
+- **The redirect file:** `static/_redirects` at R+1, else `static/_redirects.base` (from 1.34 the site builds `_redirects` from it).
+  - Lines are `<from> <to> [status]`. Comments, and rules whose source contains `*` or `:`, are skipped. The first rule per source wins, as in Netlify.
+  - URLs are normalized: `https://kubernetes.io`, fragment and query removed; lowercased; a trailing slash added.
+  - No redirect file means no redirect links.
+- **Versions across a move:** a version is still a change in normalized content, wherever the file lives. A move that changes only stripped keys adds no version, so the open version keeps its `source_path` and snapshot. The deprecation policy moved at 1.37 by adding `aliases` only: its open version stays at the old path, from 1.31.
+- **Unmatched adds and deletes** are logged at INFO per release pair, a delete with its redirect target if it has one. A page that moves out of scope closes; a page that moves in from out of scope is a new document.
+- A path that comes back after a gap continues its chain, as it did before renames.
 
 ## Handed to S04
 
