@@ -112,6 +112,7 @@ In an interactive task, the plan step works as a mini-sitting: the same decision
   - anything in `eval/golden_set/`
   - the no-progress rule
 - **No-progress rule:** the same failure after 3 fix attempts → park.
+- **Cheap one-off checks always run.** A check that runs once and is cheap (e.g. the end-of-run `make test-int`, ~30 s) has no "only if X" condition; conditions belong only in repeating loops (the per-task loop). When such a check can fail, make its prerequisite always true (e.g. check Postgres at run start) instead of making the check conditional.
 - If an earlier task's tests break and fixing them would change an approved decision → park.
 - If the usage limit stops the run, the last check-in shows where it was.
 - **Resume:** `/run-bundle` continues from the first unfinished task in the contract.

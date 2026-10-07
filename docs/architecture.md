@@ -1,6 +1,6 @@
 # Architecture
 
-This page describes only what exists in the code **today** (S04-R2, answer path). S03 added the domain tables, the functions that write and read them, and the releases seed. S04-R1 added the indexing path: `make ingest` stores versions and chunks for the S04 scope, and `make embed` stores one vector per distinct chunk text. S04-R2 added the answer path: `orgknow ask` embeds the question, finds the nearest chunk texts with an HNSW index, asks Claude for a structured answer that cites chunk ids, rejects any citation that wasn't retrieved, and prints the answer as JSON, with one Langfuse trace per ask. There is no lexical search, rerank or authority scoring yet. It is updated as slices land. The planned pipeline (ingestion → retrieval → generation → eval) is described in `CLAUDE.md` and `docs/product-spec.md`.
+This page describes only what exists in the code **today** (end of S04). S03 added the domain tables, the functions that write and read them, and the releases seed. S04-R1 added the indexing path: `make ingest` stores versions and chunks for the S04 scope, and `make embed` stores one vector per distinct chunk text. S04-R2 added the answer path: `orgknow ask` embeds the question, finds the nearest chunk texts with an HNSW index, asks Claude for a structured answer that cites chunk ids, rejects any citation that wasn't retrieved, and prints the answer as JSON, with one Langfuse trace per ask. There is no lexical search, rerank or authority scoring yet. It is updated as slices land. The planned pipeline (ingestion → retrieval → generation → eval) is described in `CLAUDE.md` and `docs/product-spec.md`.
 
 ## Overview
 
@@ -99,6 +99,7 @@ Outside `src/`:
 |---|---|
 | `config/corpus_manifest.yaml` | Defines the Stage 1 corpus: repos, releases 1.20–1.37 with release and end-of-life dates, per-SIG path allowlists, the traced KEPs, and the normalization strip lists (ADR-002 D6). |
 | `config/corpus_manifest.lock.yaml` | The single record of the 77 corpus SHAs: each repo's head, the website SHA per release, and the default-branch SHA at each release date. |
+| `eval/results/s04/` | S04-T8's seed run: each `orgknow ask` output for seeds #6–#10, a readable top 10 per seed, selected trace fields (usage, retrieved ids), and failure notes with verdicts. S06 defines the real results format. |
 | `spikes/` | S02's throwaway measurement scripts (`fetch.py`, `measure.py`, `renames.py`, `blog_identity.py`, `formats.py`, `source_formats.py`). They read a partial-clone cache outside the repo (`CORPUS_CACHE_DIR`). They're excluded from `mypy --strict`, never imported by `src/`, and to be rewritten in S04/S05. Results: `docs/research/corpus-spike-report.md`. |
 
 ## Database
