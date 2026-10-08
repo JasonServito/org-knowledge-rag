@@ -8,6 +8,7 @@ only the re-run test's scope reads. The enhancements repo replays KEP-2579's rea
 around its real kep.yaml files.
 """
 
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ from orgknow.db.models import VersionData
 from orgknow.db.versions import list_versions
 from orgknow.ingestion.ingest import Document, ReleasesMismatch, Summary, ingest, store_document
 from orgknow.ingestion.manifest import (
+    DateGroup,
     ReleaseGroup,
     Scope,
     Snapshot,
@@ -116,8 +118,8 @@ def _scope(
     groups = [ReleaseGroup("docs_page", "website", (SECURITY, RBAC_PATH), tuple(docs_snapshots))]
     if release_records:
         groups.append(ReleaseGroup("release_record", "website", (RELEASE,), tuple(docs_snapshots)))
-    keps = ((2579, KEP_DIR),)
-    return Scope("test", tuple(groups), "enhancements", keps, tuple(kep_snapshots))
+    keps = DateGroup("kep", "enhancements", (KEP_DIR,), tuple(kep_snapshots))
+    return Scope("test", tuple(groups), (keps,))
 
 
 def _ingest(conn: Conn, tmp_path: Path, scope: Scope) -> Summary:
@@ -453,7 +455,7 @@ def test_a_moved_release_record_stays_one_document(
     records = ReleaseGroup(
         "release_record", "website", ("content/en/releases/", RELEASE), snapshots
     )
-    scope = Scope("test", (records,), "enhancements", (), ())
+    scope = Scope("test", (records,), ())
 
     summary = _ingest(conn, tmp_path, scope)
 
@@ -554,7 +556,7 @@ def _feature_gates(make_git_repo: Callable[[str], Any]) -> Scope:
         REFERENCE + "feature-gates-removed/",
     )
     group = ReleaseGroup("feature_gate_reference", "website", paths, snapshots)
-    return Scope("test", (group,), "enhancements", (), ())
+    return Scope("test", (group,), ())
 
 
 def _release_windows(conn: Conn, canonical_id: str) -> list[tuple[int, int | None]]:
@@ -639,3 +641,311 @@ def test_a_gate_chunk_stored_from_jsonb_metadata_keeps_the_files_yaml_order(
     )
     assert first.failures == second.failures == []
     assert (second.new_documents, second.new_versions, second.new_chunks) == (0, 0, 0)
+
+
+# --- KEPs dated by merge time (S05-T4) ---------------------------------------------------------
+
+SIG_AUTH, SIG_NETWORK = "keps/sig-auth/", "keps/sig-network/"
+OLD_KEP_PATH = SIG_AUTH + "0014-dynamic-audit-configuration.md"
+OLD_KEP = "kep:sig-auth/0014-dynamic-audit-configuration"
+
+
+def _pull_request(
+    repo: Any, name: str, commits: list[tuple[dict[str, bytes | None], str]], merged: str
+) -> str:
+    """Commit each change on a branch at its own time, then merge the branch into main at
+    `merged`, as GitHub merges a pull request. Returns the merge commit's SHA."""
+    repo.switch(name, create=True)
+    for files, when in commits:
+        repo.commit(files, when=when)
+    repo.switch("main")
+    return repo.merge(name, when=merged)
+
+
+def _enhancements_with_merges(make_git_repo: Callable[[str], Any]) -> tuple[Any, list[Snapshot]]:
+    """KEP-2579's real history as pull requests: each branch commit at its real committer time
+    (S04's dates), each merge at master's real merge time (`git log --first-parent`, S05-R2
+    sitting), with its real kep.yaml. The 1.20 snapshot also holds the real old single-file KEP
+    0014 (removed by a real merge at 2020-12-22T14:02:28Z), sig-network's index, a symlink and an
+    OWNERS file; KEP-2579's folder also gets images, which are ignored."""
+    repo = make_git_repo("enhancements")
+    kep_yaml = FIXTURES / "kep_2579"
+    readme, kep = f"{KEP_DIR}README.md", f"{KEP_DIR}kep.yaml"
+    old_kep = (
+        FIXTURES / "kep_old" / "0014-dynamic-audit-configuration-excerpt-1.20.md"
+    ).read_bytes()
+    base = {
+        OLD_KEP_PATH: old_kep,
+        SIG_NETWORK + "README.md": b"# SIG Network KEPs\n",
+        SIG_AUTH + "OWNERS": b"approvers:\n- sig-auth-leads\n",
+    }
+    (repo.path / "keps" / "sig-auth").mkdir(parents=True)
+    os.symlink("0014-dynamic-audit-configuration.md", repo.path / SIG_AUTH / "link.md")
+    at_20 = repo.commit(base, when="2019-07-04T08:52:37-07:00")
+    at_21 = _pull_request(
+        repo,
+        "old-keps",
+        [({OLD_KEP_PATH: None}, "2020-12-21T10:00:00-08:00")],
+        "2020-12-22T06:02:28-08:00",
+    )
+    first = (kep_yaml / "1.22.kep.yaml").read_bytes()
+    at_22 = _pull_request(
+        repo,
+        "kep-2579-alpha",
+        [
+            ({readme: b"# KEP-2579\n", kep: first}, "2021-05-11T13:42:01-07:00"),
+            (
+                {
+                    readme: b"# KEP-2579\nfix typo\n",
+                    f"{KEP_DIR}images/flow.md": b"# A diagram's source\n",
+                    f"{KEP_DIR}flow.png": b"\x89PNG",
+                },
+                "2021-05-11T13:46:27-07:00",
+            ),
+        ],
+        "2021-05-12T16:25:28+00:00",
+    )
+    at_23 = _pull_request(
+        repo,
+        "kep-2579-beta",
+        [({kep: (kep_yaml / "1.23.kep.yaml").read_bytes()}, "2021-11-04T21:29:13-04:00")],
+        "2021-11-11T16:46:07+00:00",
+    )
+    at_25 = _pull_request(
+        repo,
+        "kep-2579-ga",
+        [({kep: (kep_yaml / "1.25.kep.yaml").read_bytes()}, "2022-06-01T17:05:45-07:00")],
+        "2022-06-06T16:34:23+00:00",
+    )
+    at_26 = _pull_request(
+        repo,
+        "kep-2579-implemented",
+        [({kep: (kep_yaml / "1.26.kep.yaml").read_bytes()}, "2022-09-22T10:28:05+02:00")],
+        "2022-09-22T15:59:06+00:00",
+    )
+    # Hand-made: the KEP's folder leaves sig-auth (as 506, 2004 and 2030 left the 3 SIG folders).
+    at_27 = _pull_request(
+        repo,
+        "move-kep-2579",
+        [
+            (
+                {
+                    readme: None,
+                    kep: None,
+                    f"{KEP_DIR}images/flow.md": None,
+                    f"{KEP_DIR}flow.png": None,
+                },
+                "2023-01-09T12:00:00+00:00",
+            )
+        ],
+        "2023-01-10T12:00:00+00:00",
+    )
+    shas = {20: at_20, 21: at_21, 22: at_22, 23: at_23, 25: at_25, 26: at_26, 27: at_27}
+    return repo, [Snapshot(minor, "master", sha) for minor, sha in shas.items()]
+
+
+def _kep_scope(snapshots: list[Snapshot]) -> Scope:
+    keps = DateGroup("kep", "enhancements", (SIG_AUTH, SIG_NETWORK), tuple(snapshots))
+    return Scope("test", (), (keps,))
+
+
+def test_kep_versions_start_at_their_merge_times(
+    conn: Conn, tmp_path: Path, make_git_repo: Callable[[str], Any]
+) -> None:
+    _, snapshots = _enhancements_with_merges(make_git_repo)
+    scope = _kep_scope(snapshots[:-1])  # up to 1.26: the KEP is still in sig-auth
+
+    first = _ingest(conn, tmp_path, scope)
+    second = _ingest(conn, tmp_path, scope)
+
+    assert first.failures == []
+    # The contract's KEP-2579 windows [21,22] [22,24] [24,25] [25,-], each starting at its merge
+    # (S05-R2 sitting), not at its branch's last commit (S04 stored 2021-05-11T20:46:27Z, ...).
+    m1 = datetime(2021, 5, 12, 16, 25, 28, tzinfo=UTC)
+    m2 = datetime(2021, 11, 11, 16, 46, 7, tzinfo=UTC)
+    m3 = datetime(2022, 6, 6, 16, 34, 23, tzinfo=UTC)
+    m4 = datetime(2022, 9, 22, 15, 59, 6, tzinfo=UTC)
+    assert _windows(conn, "kep:2579") == [
+        (21, 22, m1, m2),
+        (22, 24, m2, m3),
+        (24, 25, m3, m4),
+        (25, None, m4, None),
+    ]
+    # The old single-file KEP: its own document (S05-R2 decision 3), from its 2019 commit on
+    # main (the first snapshot's whole history) to its removal; release window from 20
+    # (decision 1).
+    assert _windows(conn, OLD_KEP) == [
+        (
+            20,
+            20,
+            datetime(2019, 7, 4, 15, 52, 37, tzinfo=UTC),
+            datetime(2020, 12, 22, 14, 2, 28, tzinfo=UTC),
+        )
+    ]
+    old_id = find_document(conn, OLD_KEP)
+    assert old_id is not None
+    assert list_versions(conn, old_id)[0].claimed_status == "implementable"
+    # Skipped with a reason: the symlink (at every snapshot) and sig-network's index. The other
+    # files in the KEP's folder (images/flow.md, flow.png) are ignored, not even skipped.
+    assert first.skipped[:2] == [
+        "1.20 keps/sig-auth/OWNERS: not a .md/.yaml file",
+        "1.20 keps/sig-auth/link.md: symlink",
+    ]
+    assert "1.20 keps/sig-network/README.md: an index of the SIG's KEPs, not a KEP" in first.skipped
+    assert not any("flow" in line for line in first.skipped)
+    assert first.documents == {"kep": 2}
+    # A re-run adds nothing.
+    assert (second.new_documents, second.new_versions, second.closed_versions) == (0, 0, 0)
+    assert (second.unchanged_documents, second.new_chunks, second.failures) == (2, 0, [])
+
+
+def test_a_reingest_that_only_closes_a_version(
+    conn: Conn, tmp_path: Path, make_git_repo: Callable[[str], Any]
+) -> None:
+    # E2 (S05-R2): the 1.27 snapshot only removes KEP-2579, so a re-ingest closes its open
+    # version at the removal's merge time and inserts nothing.
+    _, snapshots = _enhancements_with_merges(make_git_repo)
+    _ingest(conn, tmp_path, _kep_scope(snapshots[:-1]))
+    open_rows = _version_rows(conn)
+
+    summary = _ingest(conn, tmp_path, _kep_scope(snapshots))
+
+    assert summary.failures == []
+    assert (summary.new_documents, summary.new_versions, summary.closed_versions) == (0, 0, 1)
+    removed = datetime(2023, 1, 10, 12, tzinfo=UTC)
+    m4 = datetime(2022, 9, 22, 15, 59, 6, tzinfo=UTC)
+    assert _windows(conn, "kep:2579")[-1] == (25, 26, m4, removed)
+    # Only that row changed: KEP-2579's open version, stored last (rows by id: id, release
+    # `until`, date `until`). The old single-file KEP, stored first, was already closed.
+    assert open_rows[-1][1:] == (None, None)
+    assert _version_rows(conn) == [*open_rows[:-1], (open_rows[-1][0], 26, removed)]
+
+
+# --- Governance docs: moves on date snapshots (S05-T4, S05-R2 decision 2) ---------------------
+
+RELENG = "release-engineering/"
+VERSIONING_PATH, MOVED_VERSIONING = RELENG + "versioning.md", RELENG + "reference/versioning.md"
+BASEIMAGE_PATH, MOVED_BASEIMAGE = (
+    RELENG + "baseimage-exception-list.md",
+    RELENG + "reference/baseimage-exception-list.md",
+)
+VERSIONING = "sig-release:release-engineering/versioning.md"
+BASEIMAGE = "sig-release:release-engineering/baseimage-exception-list.md"
+
+
+def _sig_release(make_git_repo: Callable[[str], Any]) -> list[Snapshot]:
+    """versioning.md's 4 real merge times (`git log --first-parent`, sig-release): PR #1493
+    (2021-03-15), #2452 (2024-03-12), #2962 (2026-02-13), and #2984 (2026-05-28), which moved it
+    into reference/ (98% similar) and moved baseimage-exception-list.md unchanged (R100). The
+    1.36 and 1.37 versioning.md files are the real ones; the others are hand-written. After 1.37
+    a hand-made merge edits the moved baseimage file."""
+    repo = make_git_repo("sig-release")
+    real = FIXTURES / "sig_release" / "versioning"
+    at_20 = repo.commit({"README.md": b"# SIG Release\n"}, when="2020-11-02T00:00:00+00:00")
+    baseimage = b"# Base Image Exception List\n\nImages that may differ from the base image.\n"
+    at_21 = _pull_request(
+        repo,
+        "versioning",
+        [
+            (
+                {
+                    VERSIONING_PATH: b"# Kubernetes Release Versioning\n\nFirst text.\n",
+                    BASEIMAGE_PATH: baseimage,
+                },
+                "2021-03-10T09:00:00-08:00",
+            )
+        ],
+        "2021-03-15T14:24:34-07:00",
+    )
+    at_30 = _pull_request(
+        repo,
+        "patch-1",
+        [
+            (
+                {VERSIONING_PATH: b"# Kubernetes Release Versioning\n\nSecond text.\n"},
+                "2024-03-01T00:00:00+00:00",
+            )
+        ],
+        "2024-03-12T00:23:49-07:00",
+    )
+    at_36 = _pull_request(
+        repo,
+        "outdated-content",
+        [({VERSIONING_PATH: (real / "1.36.md").read_bytes()}, "2026-02-10T00:00:00+00:00")],
+        "2026-02-13T20:58:00+05:30",
+    )
+    at_37 = _pull_request(
+        repo,
+        "fix-release-engineering-docs",
+        [
+            (
+                {
+                    VERSIONING_PATH: None,
+                    MOVED_VERSIONING: (real / "1.37.md").read_bytes(),
+                    BASEIMAGE_PATH: None,
+                    MOVED_BASEIMAGE: baseimage,
+                },
+                "2026-05-20T00:00:00+00:00",
+            )
+        ],
+        "2026-05-28T17:10:47+05:30",
+    )
+    head = _pull_request(
+        repo,
+        "baseimage-update",
+        [({MOVED_BASEIMAGE: baseimage + b"\nOne more image.\n"}, "2026-08-31T00:00:00+00:00")],
+        "2026-09-01T00:00:00+00:00",
+    )
+    shas = {20: at_20, 21: at_21, 30: at_30, 36: at_36, 37: at_37, None: head}
+    return [Snapshot(minor, "master", sha) for minor, sha in shas.items()]
+
+
+def test_a_moved_governance_doc_stays_one_document(
+    conn: Conn, tmp_path: Path, make_git_repo: Callable[[str], Any]
+) -> None:
+    snapshots = _sig_release(make_git_repo)
+    group = DateGroup("governance_doc", "sig-release", (RELENG,), tuple(snapshots))
+    scope = Scope("test", (), (group,))
+
+    first = _ingest(conn, tmp_path, scope)
+    second = _ingest(conn, tmp_path, scope)
+
+    assert first.failures == []
+    assert first.documents == {"governance_doc": 2}
+    # versioning.md: 4 versions at its 4 merge times; the 4th is PR #2984's move (S05-R2
+    # devil's-advocate check: 2026-05-28T11:40:47Z). Windows by hand from the release dates.
+    t1 = datetime(2021, 3, 15, 21, 24, 34, tzinfo=UTC)
+    t2 = datetime(2024, 3, 12, 7, 23, 49, tzinfo=UTC)
+    t3 = datetime(2026, 2, 13, 15, 28, 0, tzinfo=UTC)
+    t4 = datetime(2026, 5, 28, 11, 40, 47, tzinfo=UTC)
+    assert _windows(conn, VERSIONING) == [
+        (20, 29, t1, t2),
+        (29, 35, t2, t3),
+        (35, 36, t3, t4),
+        (36, None, t4, None),
+    ]
+    versioning_id = find_document(conn, VERSIONING)
+    assert versioning_id is not None
+    versions = list_versions(conn, versioning_id)
+    assert [v.source_path for v in versions] == [VERSIONING_PATH] * 3 + [MOVED_VERSIONING]
+    # S05-R2 decision 4: line 1 of the real file, kept as the version's title.
+    assert versions[-1].metadata == {"title": "Kubernetes Release Versioning"}
+    # baseimage: the R100 move adds no version, so the open one kept its old path and snapshot;
+    # the chain then continues from 1.37 to head, where the moved file was edited.
+    t5 = datetime(2026, 9, 1, tzinfo=UTC)
+    assert _windows(conn, BASEIMAGE) == [(20, 37, t1, t5), (37, None, t5, None)]
+    baseimage_id = find_document(conn, BASEIMAGE)
+    assert baseimage_id is not None
+    first_baseimage = list_versions(conn, baseimage_id)[0]
+    assert (first_baseimage.source_path, first_baseimage.snapshot_sha) == (
+        BASEIMAGE_PATH,
+        snapshots[1].sha,
+    )
+    # The first path is the id; the later path is an alias (ADR-002 D4, amended in S05-R2).
+    assert _aliases(conn) == [
+        ("sig-release:release-engineering/reference/baseimage-exception-list.md", BASEIMAGE),
+        ("sig-release:release-engineering/reference/versioning.md", VERSIONING),
+    ]
+    # A re-run adds nothing.
+    assert (second.new_documents, second.new_versions, second.new_chunks) == (0, 0, 0)
+    assert second.failures == []

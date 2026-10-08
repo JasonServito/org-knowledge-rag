@@ -6,7 +6,9 @@ from orgknow.ingestion.identity import (
     alias_id,
     docs_canonical_id,
     gate_canonical_id,
+    governance_canonical_id,
     kep_canonical_id,
+    kep_file_canonical_id,
 )
 
 
@@ -61,6 +63,61 @@ def test_a_relative_alias_is_refused() -> None:
 
 def test_kep_canonical_id() -> None:
     assert kep_canonical_id(2579) == "kep:2579"
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        # A KEP folder's README.md and kep.yaml: the folder's number (ADR-002 D4).
+        ("keps/sig-auth/2579-psp-replacement/README.md", "kep:2579"),
+        ("keps/sig-auth/2579-psp-replacement/kep.yaml", "kep:2579"),
+        # KEP-1669's two real folder names (never present together): one id.
+        ("keps/sig-network/1669-proxy-terminating-endpoints/README.md", "kep:1669"),
+        (
+            "keps/sig-network/1669-graceful-termination-local-external-traffic-policy/kep.yaml",
+            "kep:1669",
+        ),
+        # An old single-file KEP at 1.20 (S05-R2 decision 3, pinned): its path under keps/.
+        (
+            "keps/sig-auth/0014-dynamic-audit-configuration.md",
+            "kep:sig-auth/0014-dynamic-audit-configuration",
+        ),
+        ("keps/sig-network/0007-pod-ready++.md", "kep:sig-network/0007-pod-ready++"),
+    ],
+)
+def test_kep_file_canonical_id(path: str, expected: str) -> None:
+    assert kep_file_canonical_id(path) == expected
+
+
+@pytest.mark.parametrize(
+    ("path", "reason"),
+    [
+        # The SIG folder's index of its KEPs (spike §7 R).
+        ("keps/sig-network/README.md", "an index of the SIG's KEPs"),
+        ("keps/sig-auth/OWNERS", "not a KEP"),
+        ("keps/sig-auth/5681-conditional-authorization/images/overview.md", "not a KEP"),
+        ("keps/sig-auth/psp-replacement/README.md", "doesn't start with its number"),
+    ],
+)
+def test_a_file_that_is_no_kep_has_no_kep_id(path: str, reason: str) -> None:
+    with pytest.raises(ValueError, match=reason):
+        kep_file_canonical_id(path)
+
+
+@pytest.mark.parametrize(
+    ("repo", "path", "expected"),
+    [
+        # The run contract's pinned ids: the repo name, then the repo path (ADR-002 D4).
+        (
+            "sig-release",
+            "release-engineering/versioning.md",
+            "sig-release:release-engineering/versioning.md",
+        ),
+        ("community", "sig-auth/charter.md", "community:sig-auth/charter.md"),
+    ],
+)
+def test_governance_canonical_id(repo: str, path: str, expected: str) -> None:
+    assert governance_canonical_id(repo, path) == expected
 
 
 @pytest.mark.parametrize(

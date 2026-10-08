@@ -13,9 +13,12 @@ Small real files from the Kubernetes corpus, copied byte-exact at pinned commits
 | `website_s05/redirects/excerpt-1.21.txt` | kubernetes/website, `static/_redirects`, lines 495–498 | `7ed77d72` (1.21) |
 | `website_s05/feature-gates/<gate>/1.N.md` | kubernetes/website, `content/en/docs/reference/command-line-tools-reference/feature-gates/<gate>.md`, whole file: `StrictIPCIDRValidation` (1.37), `APIServingWithRoute` (1.32), `APIServingWithRoutine` (1.33), `PodInfoAPI` (1.36), `InPlacePodVerticalScalingMemoryBackedVolumes` (1.37) | The lock's website SHA for 1.N (`website_releases`): `a6b9d383` (1.32), `b9ab6105` (1.33), `1de955eb` (1.36), `256a1f49` (1.37, `main`). Each file's `git hash-object` equals the blob at that commit |
 | `kep_2579/1.N.kep.yaml` | [kubernetes/enhancements](https://github.com/kubernetes/enhancements), `keps/sig-auth/2579-psp-replacement/kep.yaml` | `master` on the 1.N release date in the lock (`release_date_snapshots`) |
+| `kep_old/0014-dynamic-audit-configuration-excerpt-1.20.md` | kubernetes/enhancements, `keps/sig-auth/0014-dynamic-audit-configuration.md` (an old single-file KEP), lines 1–61 | `2df83383` (`master` on the 1.20 release date) |
+| `sig_release/versioning/1.N.md` | [kubernetes/sig-release](https://github.com/kubernetes/sig-release), whole file: `release-engineering/versioning.md` at 1.36, `release-engineering/reference/versioning.md` at 1.37 (moved by PR #2984) | `master` on the 1.N release date in the lock (`release_date_snapshots`): `760d54e8` (1.36), `9ad626fd` (1.37). Each file's `git hash-object` equals the blob at that commit |
+| `sig_release/go/1.36.md`, `sig_release/go-updates/1.37.md` | kubernetes/sig-release, whole file: `release-engineering/handbooks/go.md` at 1.36, renamed `handbooks/go-updates.md` at 1.37 (PR #2984) | `760d54e8` (1.36), `9ad626fd` (1.37). Same `git hash-object` check |
 | `kubernetes/CHANGELOG-1.22-excerpt.md` | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes), `CHANGELOG/CHANGELOG-1.22.md`, lines 3082–3193 | `7c596ad7` |
 
 ## License
 
 - `website_s04/` and `website_s05/`: Kubernetes documentation, © The Kubernetes Authors, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- `kep_2579/` and `kubernetes/`: © The Kubernetes Authors, licensed [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0), the license of the enhancements and kubernetes repos.
+- `kep_2579/`, `kep_old/`, `kubernetes/` and `sig_release/`: © The Kubernetes Authors, licensed [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0), the license of the enhancements, kubernetes and sig-release repos.

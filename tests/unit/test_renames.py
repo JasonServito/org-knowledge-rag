@@ -14,6 +14,7 @@ from orgknow.ingestion.renames import (
     Chains,
     Link,
     build_chains,
+    date_link_rules,
     gate_link_rules,
     parse_redirects,
     web_link_rules,
@@ -491,3 +492,64 @@ def test_two_new_gates_with_the_gone_gates_title_are_a_conflict() -> None:
         Link(1, gone, second, "same title"),
     ]
     assert chains.paths == [[gone, None], [None, first], [None, second]]
+
+
+# --- Governance docs: date snapshots (S05-T4, S05-R2 decision 2) ------------------------------
+
+RELENG = "release-engineering/"
+
+
+def date_chains_of(
+    listings: Sequence[Mapping[str, bytes]], similar: FakeSimilarity | None = None
+) -> Chains:
+    """Build chains with the date-snapshot rules; every file is a governance doc."""
+    every_path = {path for listing in listings for path in listing}
+    types = {path: "governance_doc" for path in every_path}
+    return build_chains(listings, date_link_rules(), similar or FakeSimilarity(), types)
+
+
+def test_governance_files_link_by_same_path_then_similarity() -> None:
+    # sig-release PR #2984, between the 1.36 and 1.37 snapshots (git -M50%, in the sitting):
+    # versioning.md moved into reference/ (98%), handbooks/go.md became go-updates.md (66%),
+    # platforms/guide.md was deleted and handbooks/release-manager.md added. README.md stayed.
+    # go-updates.md was edited again before `head`. Contents are stand-ins: only paths matter.
+    readme, guide = RELENG + "README.md", RELENG + "platforms/guide.md"
+    versioning, moved = RELENG + "versioning.md", RELENG + "reference/versioning.md"
+    go, go_updates = RELENG + "handbooks/go.md", RELENG + "handbooks/go-updates.md"
+    manager = RELENG + "handbooks/release-manager.md"
+    at_36 = {readme: b"r", guide: b"p", versioning: b"v", go: b"g"}
+    at_37 = {readme: b"r", moved: b"v", go_updates: b"g2", manager: b"m"}
+    at_head = {**at_37, go_updates: b"g3"}
+    similar = FakeSimilarity({1: [(versioning, moved), (go, go_updates)]})
+
+    chains = date_chains_of([at_36, at_37, at_head], similar)
+
+    # A path at both snapshots stays in its chain, and no declared rule runs: governance docs
+    # have no URL, redirect or front matter. Similarity is asked only about the files left.
+    assert chains.paths == [
+        [readme, readme, readme],
+        [go, go_updates, go_updates],
+        [guide, None, None],
+        [versioning, moved, moved],
+        [None, manager, manager],
+    ]
+    assert [(link.after, link.gone, link.new, link.rule) for link in chains.links] == [
+        (1, go, go_updates, "similarity"),
+        (1, versioning, moved, "similarity"),
+    ]
+    assert similar.calls == [(1, [go, guide, versioning, go_updates, manager, moved])]
+    assert (chains.deleted, chains.added) == ([(1, guide)], [(1, manager)])
+
+
+def test_an_old_path_back_after_its_move_starts_a_new_chain() -> None:
+    # 0 on real data: versioning.md moves at 1.37 and comes back at head. The new file isn't
+    # linked to anything, so it starts a chain whose first path is the moved chain's first path:
+    # ingestion then refuses both as one id held by two chains, never a silent merge.
+    versioning, moved = RELENG + "versioning.md", RELENG + "reference/versioning.md"
+    similar = FakeSimilarity({1: [(versioning, moved)]})
+
+    chains = date_chains_of(
+        [{versioning: b"v"}, {moved: b"v"}, {moved: b"v", versioning: b"back"}], similar
+    )
+
+    assert chains.paths == [[versioning, moved, moved], [None, None, versioning]]

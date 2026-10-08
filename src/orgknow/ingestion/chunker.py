@@ -11,6 +11,7 @@
   text.
 - A feature gate's body starts with its `stages` (and `removed`) front matter as YAML, then a
   blank line (S05-R1 decision 1): the gate's stages live only in its front matter.
+- A KEP folder's README and a governance doc have no front matter: the whole file is the body.
 
 Headings and code blocks come from a hand-written line scanner with exactly 4 rules (decision 6):
 1. A line starting at column 0 with 1-6 `#` and then a space is a heading, unless inside a
@@ -42,6 +43,7 @@ HEADING = re.compile(r"^(#{1,6}) (.*)$")  # rule 1
 FENCE = re.compile(r"^( *)(`{3,}|~{3,})")  # rules 2 and 3: the indent and the marker
 HIGHLIGHT_OPEN = re.compile(r"^\s*\{\{<\s*highlight\b.*>\}\}\s*$")  # rule 4
 HIGHLIGHT_CLOSE = re.compile(r"^\s*\{\{<\s*/highlight\s*>\}\}\s*$")
+HTML_COMMENT = re.compile(r"<!--.*?-->")
 
 
 @dataclass(frozen=True)
@@ -191,15 +193,31 @@ def chunk_text(
     return "\n".join(header) + "\n\n" + body
 
 
+def _is_kep_folder(canonical_id: str) -> bool:
+    """A KEP with a number (`kep:2579`, a folder), not an old single-file KEP (`kep:sig-x/name`)."""
+    return canonical_id.removeprefix("kep:").isdigit()
+
+
 def document_title(canonical_id: str, source_type: str, metadata: Mapping[str, Any]) -> str:
-    """The title a chunk header shows: the metadata `title` on one line, and for a KEP (whose
-    kep.yaml is the metadata) `KEP-<number>: <title>`. Raises ValueError when there is none."""
+    """The title a chunk header shows: the metadata `title` on one line, and for a KEP folder
+    (whose kep.yaml is the metadata) `KEP-<number>: <title>`. An old single-file KEP has no
+    number, so its front-matter title stays as written. Raises ValueError when there is none."""
     title = " ".join(str(metadata.get("title") or "").split())  # one header line
     if not title:
         raise ValueError("no title in the version's metadata")
-    if source_type == "kep":
+    if source_type == "kep" and _is_kep_folder(canonical_id):
         return f"KEP-{canonical_id.removeprefix('kep:')}: {title}"
     return title
+
+
+def governance_title(text: str, path: str) -> str:
+    """A governance doc's title (S05-R2 decision 4): its first `# ` heading with HTML comments
+    removed (`# Google Cloud Platform <!-- omit in toc -->`), else its repo path. Headings are
+    the scanner's, so a `#` line in a code block is none."""
+    for item in scan(text.split("\n")):
+        if isinstance(item, Heading) and item.level == 1:
+            return " ".join(HTML_COMMENT.sub("", item.text).split()) or path
+    return path
 
 
 def stages_yaml(front_matter: Mapping[str, Any]) -> str:
@@ -217,15 +235,17 @@ def chunk_version(
 ) -> list[NewChunk]:
     """The chunks of one version, from its raw file.
 
-    A docs page is chunked without its front matter. A KEP version is chunked from its README;
-    its kep.yaml is the version's `metadata`, which gives the title (`document_title`). A gate
-    (`gate:` id) with `stages` gets them as YAML before its body, read from the file's front
-    matter: the same values as `metadata`, in the file's order (Postgres jsonb reorders keys).
-    Raises ValueError for a file that can't be decoded or has no title.
+    A docs page, and an old single-file KEP, is chunked without its front matter. A KEP folder's
+    version is chunked from its README; its kep.yaml is the version's `metadata`, which gives the
+    title (`document_title`). A governance doc has no front matter: the whole file is chunked,
+    under the title its metadata holds. A gate (`gate:` id) with `stages` gets them as YAML
+    before its body, read from the file's front matter: the same values as `metadata`, in the
+    file's order (Postgres jsonb reorders keys). Raises ValueError for a file that can't be
+    decoded or has no title.
     """
     title = document_title(canonical_id, source_type, metadata)
     text = decode(raw)
-    if source_type == "kep":
+    if source_type == "governance_doc" or (source_type == "kep" and _is_kep_folder(canonical_id)):
         body = text
     else:
         front_matter, body = split_front_matter(text)

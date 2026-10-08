@@ -8,6 +8,10 @@ Fixtures are real corpus files, copied byte-exact at the locked SHAs (CC BY 4.0 
 - kubernetes/CHANGELOG-1.22-excerpt.md: CHANGELOG/CHANGELOG-1.22.md lines 3082-3193 (kubernetes
   7c596ad7).
 - website_s05/feature-gates/<gate>/1.N.md: the gate's file at release 1.N (S05-T3).
+- kep_old/0014-dynamic-audit-configuration-excerpt-1.20.md: an old single-file KEP, lines 1-61
+  (enhancements 2df83383, S05-T4).
+- sig_release/versioning/1.37.md: release-engineering/reference/versioning.md (sig-release
+  9ad626fd, S05-T4).
 
 Expected values were read from the files by hand (line numbers below are the fixture's own,
 1-based), never computed by the chunker.
@@ -20,6 +24,7 @@ from orgknow.ingestion.chunker import (
     chunk_markdown,
     chunk_text,
     chunk_version,
+    governance_title,
     scan,
     split_sections,
 )
@@ -338,3 +343,74 @@ def test_only_a_gate_document_with_stages_gets_the_yaml() -> None:
 
     assert web.text.endswith("Document: web:/docs/gates/\n\nThe gates.")
     assert bare.text.endswith("Document: gate:SomeGate\n\nA gate.")
+
+
+# --- Old single-file KEPs and governance docs (S05-T4) -----------------------------------------
+
+OLD_KEP = "kep:sig-auth/0014-dynamic-audit-configuration"
+
+
+def test_an_old_single_file_kep_is_chunked_without_front_matter_or_kep_prefix() -> None:
+    raw = (FIXTURES / "kep_old" / "0014-dynamic-audit-configuration-excerpt-1.20.md").read_bytes()
+
+    chunks = chunk_version(OLD_KEP, "kep", {"title": "Dynamic Audit Configuration"}, raw, 512)
+
+    # Headings at fixture lines 23 (#), 25 (##) and 57 (##); the table of contents (27-55) is
+    # the text of "Table of Contents". The title is the front matter's, with no `KEP-<n>:`.
+    assert [c.heading_path for c in chunks] == [
+        ["Dynamic Audit Control", "Table of Contents"],
+        ["Dynamic Audit Control", "Summary"],
+    ]
+    assert chunks[0].text.startswith(
+        "Source: kep\n"
+        "Title: Dynamic Audit Configuration\n"
+        "Document: kep:sig-auth/0014-dynamic-audit-configuration\n"
+        "Section: Dynamic Audit Control > Table of Contents\n"
+        "\n"
+        "<!-- toc -->\n"
+    )
+    assert all("status: implementable" not in c.text for c in chunks)
+
+
+def test_a_governance_doc_is_chunked_whole_under_its_metadata_title() -> None:
+    raw = b"# Release Engineering\n\nIntro.\n\n## Handbooks\n\nBranch creation.\n"
+    metadata = {"title": "Release Engineering"}
+
+    chunks = chunk_version(
+        "sig-release:release-engineering/README.md", "governance_doc", metadata, raw, 512
+    )
+
+    assert [c.text for c in chunks] == [
+        "Source: governance_doc\nTitle: Release Engineering\n"
+        "Document: sig-release:release-engineering/README.md\n"
+        "Section: Release Engineering\n\nIntro.",
+        "Source: governance_doc\nTitle: Release Engineering\n"
+        "Document: sig-release:release-engineering/README.md\n"
+        "Section: Release Engineering > Handbooks\n\nBranch creation.",
+    ]
+
+
+VERSIONING = "release-engineering/reference/versioning.md"
+
+
+def test_a_governance_title_is_the_first_h1_heading() -> None:
+    text = (FIXTURES / "sig_release" / "versioning" / "1.37.md").read_text(encoding="utf-8")
+
+    # Line 1 of the real file (S05-R2 decision 4).
+    assert governance_title(text, VERSIONING) == "Kubernetes Release Versioning"
+
+
+def test_a_governance_title_drops_html_comments() -> None:
+    # Line 1 of release-engineering/reference/gcp.md at the sig-release 1.37 snapshot.
+    text = "# Google Cloud Platform <!-- omit in toc -->\n\n- [IAM](#iam)\n"
+
+    assert governance_title(text, "release-engineering/reference/gcp.md") == "Google Cloud Platform"
+
+
+def test_a_governance_doc_without_an_h1_heading_is_titled_by_its_path() -> None:
+    # A `#` line inside a code block is no heading (scanner rule 1); `##` is not an H1.
+    text = "Moved to the reference folder.\n\n```\n# not a heading\n```\n\n## Details\n"
+
+    assert governance_title(text, "release-engineering/platforms/guide.md") == (
+        "release-engineering/platforms/guide.md"
+    )

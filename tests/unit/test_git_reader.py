@@ -13,7 +13,7 @@ import pytest
 
 from orgknow.ingestion.git_reader import (
     GitError,
-    commit_times,
+    merge_time,
     parse_commit_time,
     read_files,
     similar_renames,
@@ -66,25 +66,46 @@ def test_a_commit_time_without_an_offset_is_refused() -> None:
         parse_commit_time("2022-09-22T10:28:05")
 
 
-def test_commit_times_lists_only_commits_touching_the_files_since_the_previous_snapshot(
+PATHS = ["kep/README.md", "kep/kep.yaml"]
+
+
+def test_merge_time_is_the_last_commit_touching_the_files_since_the_previous_snapshot(
     make_git_repo: Callable[[str], Any],
 ) -> None:
     repo = make_git_repo("enhancements")
     previous = repo.commit({"kep/README.md": b"v1"}, when="2022-06-01T17:05:45-07:00")
     repo.commit({"kep/README.md": b"v2"}, when="2022-08-31T15:51:14-04:00")
-    repo.commit({"other/file.md": b"x"}, when="2022-09-01T00:00:00+00:00")
-    current = repo.commit({"kep/kep.yaml": b"stage: beta\n"}, when="2022-09-22T10:28:05+02:00")
-    paths = ["kep/README.md", "kep/kep.yaml"]
+    touched = repo.commit({"kep/kep.yaml": b"stage: beta\n"}, when="2022-09-22T10:28:05+02:00")
+    current = repo.commit({"other/file.md": b"x"}, when="2022-10-01T00:00:00+00:00")
 
-    since_previous = commit_times(repo.path, previous, current, paths)
-    whole_history = commit_times(repo.path, None, current, paths)
+    # The last of the two commits touching the files, not the later one touching other/.
+    last = datetime(2022, 9, 22, 8, 28, 5, tzinfo=UTC)
+    assert merge_time(repo.path, previous, current, PATHS) == last
+    assert merge_time(repo.path, None, current, PATHS) == last  # the whole history
+    assert merge_time(repo.path, touched, current, PATHS) is None  # nothing touched them since
 
-    assert sorted(since_previous) == [
-        datetime(2022, 8, 31, 19, 51, 14, tzinfo=UTC),
-        datetime(2022, 9, 22, 8, 28, 5, tzinfo=UTC),
-    ]
-    assert min(whole_history) == datetime(2022, 6, 2, 0, 5, 45, tzinfo=UTC)
-    assert len(whole_history) == 3
+
+def test_merge_time_is_when_the_change_was_merged_not_when_it_was_committed(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # KEP-2579's first version (S05-R2 contract): its branch's last commit is 182464a6
+    # (2021-05-11T20:46:27Z); master merged it on 2021-05-12T16:25:28Z (7712007e).
+    repo = make_git_repo("enhancements")
+    previous = repo.commit({"README.md": b"# Enhancements\n"}, when="2021-04-01T00:00:00+00:00")
+    repo.switch("kep-2579", create=True)
+    repo.commit(
+        {"kep/README.md": b"v1", "kep/kep.yaml": b"stage: alpha\n"},
+        when="2021-05-11T13:42:01-07:00",
+    )
+    repo.commit({"kep/README.md": b"v1, fixed typo"}, when="2021-05-11T13:46:27-07:00")
+    repo.switch("main")
+    repo.commit({"other/file.md": b"x"}, when="2021-05-12T09:00:00+00:00")  # main moved on
+    repo.merge("kep-2579", when="2021-05-12T16:25:28+00:00")
+    current = repo.commit({"other/file.md": b"y"}, when="2021-06-01T00:00:00+00:00")
+
+    merged = datetime(2021, 5, 12, 16, 25, 28, tzinfo=UTC)
+    assert merge_time(repo.path, previous, current, PATHS) == merged
+    assert merge_time(repo.path, None, current, PATHS) == merged
 
 
 def test_a_git_failure_raises_with_the_git_error(make_git_repo: Callable[[str], Any]) -> None:
@@ -157,3 +178,21 @@ def test_similar_renames_on_real_gate_files(
     found = similar_renames(repo.path, before, after, [old_path, new_path])
 
     assert found == ([(old_path, new_path)] if renamed else [])
+
+
+SIG_RELEASE_FIXTURES = Path(__file__).parents[1] / "fixtures" / "sig_release"
+
+
+def test_similar_renames_pairs_the_real_go_handbook_move(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # sig-release PR #2984 (1.36 -> 1.37) moved handbooks/go.md to go-updates.md and rewrote
+    # part of it: git scores the real pair 66% (S05-R2 sitting), so the governance doc is linked.
+    repo = make_git_repo("sig-release")
+    old, new = "release-engineering/handbooks/go.md", "release-engineering/handbooks/go-updates.md"
+    before = repo.commit({old: (SIG_RELEASE_FIXTURES / "go" / "1.36.md").read_bytes()})
+    after = repo.commit(
+        {old: None, new: (SIG_RELEASE_FIXTURES / "go-updates" / "1.37.md").read_bytes()}
+    )
+
+    assert similar_renames(repo.path, before, after, [old, new]) == [(old, new)]

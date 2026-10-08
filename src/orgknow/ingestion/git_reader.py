@@ -7,7 +7,7 @@ ingestion; a file is never skipped because git failed.
 
 import logging
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -35,14 +35,23 @@ def _matches(path: str, wanted: str) -> bool:
     return path.startswith(wanted) if wanted.endswith("/") else path == wanted
 
 
+def _ignore_nothing(path: str) -> bool:
+    return False
+
+
 def read_files(
-    repo: Path, paths: Sequence[str], snapshots: Sequence[Snapshot], suffixes: tuple[str, ...]
+    repo: Path,
+    paths: Sequence[str],
+    snapshots: Sequence[Snapshot],
+    suffixes: tuple[str, ...],
+    ignore: Callable[[str], bool] = _ignore_nothing,
 ) -> tuple[dict[str, list[bytes | None]], list[str]]:
     """Read every file under `paths` at each snapshot.
 
     Returns ({file path: its content at each snapshot, None where absent}, skipped files). A
     skipped file is "<snapshot> <path>: <reason>": a symlink, a submodule, or a name without
-    one of `suffixes`. A manifest path absent from a snapshot is logged, not an error.
+    one of `suffixes`. A file `ignore` names is left out: neither read nor skipped (e.g. the
+    images in a KEP's folder). A manifest path absent from a snapshot is logged, not an error.
     """
     files: dict[str, list[bytes | None]] = {}
     skipped: list[str] = []
@@ -55,6 +64,8 @@ def read_files(
             info, path = entry.split("\t", 1)
             mode, kind, oid = info.split()
             found.append(path)
+            if ignore(path):
+                continue
             if mode == SYMLINK_MODE:
                 skipped.append(f"{snapshot.label} {path}: symlink")
             elif kind != "blob":
@@ -86,12 +97,18 @@ def parse_commit_time(text: str) -> datetime:
     return at.astimezone(UTC)
 
 
-def commit_times(repo: Path, since: str | None, until: str, paths: Sequence[str]) -> list[datetime]:
-    """Committer times of the commits touching `paths` in `since..until` (all of `until`'s
-    history if `since` is None), newest first."""
+def merge_time(repo: Path, since: str | None, until: str, paths: Sequence[str]) -> datetime | None:
+    """When the last change to `paths` in `since..until` (all of `until`'s history if `since` is
+    None) was merged into the default branch: the committer time, in UTC, of the last
+    first-parent commit touching them (ADR-002 D3). None if no commit touches them.
+
+    `--first-parent` follows only the default branch: a pull request's merge commit, whose time
+    is when the change went live, not the commits on its branch (S05-R2 sitting).
+    """
     revisions = until if since is None else f"{since}..{until}"
-    out = _git(repo, "log", "--format=%cI", revisions, "--", *paths)
-    return [parse_commit_time(line) for line in out.decode().split()]
+    out = _git(repo, "log", "--first-parent", "-1", "--format=%cI", revisions, "--", *paths)
+    line = out.decode().strip()
+    return parse_commit_time(line) if line else None
 
 
 def first_present(repo: Path, sha: str, paths: Sequence[str]) -> str | None:
@@ -100,8 +117,10 @@ def first_present(repo: Path, sha: str, paths: Sequence[str]) -> str | None:
     return next((path for path in paths if path in listing), None)
 
 
-# ADR-002 D4: git's default rename threshold, the fallback after the declared signals. Untuned:
-# every docs rename it was graded on is real (spike §4 F).
+# ADR-002 D4: git's default rename threshold, the fallback after the declared signals for web
+# pages and gates, and the only rename signal for governance docs (S05-R2 decisions 2 and 9). An
+# identity rule, not a tuning knob: changing it changes canonical ids. Untuned: every docs
+# rename it was graded on is real (spike §4 F).
 RENAME_SIMILARITY = "50%"
 
 

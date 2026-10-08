@@ -1,10 +1,17 @@
 """ADR-002 D2: what changes a content hash, and what doesn't."""
 
+import hashlib
 from pathlib import Path
 
 import pytest
 
-from orgknow.ingestion.normalize import content_hash, docs_state, kep_state
+from orgknow.ingestion.normalize import (
+    content_hash,
+    docs_state,
+    governance_state,
+    kep_state,
+    single_kep_state,
+)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 # The manifest's docs_page and kep_yaml strip lists (config/corpus_manifest.yaml), lowercased.
@@ -195,3 +202,49 @@ def test_a_kep_needs_both_files() -> None:
         kep_state(README, b"# T\n", None, KEP_STRIP, SYNONYMS)
     with pytest.raises(ValueError, match="README"):
         kep_state(README, None, b"title: T\n", KEP_STRIP, SYNONYMS)
+
+
+# --- Old single-file KEPs and governance docs (S05-T4) -----------------------------------------
+
+OLD_KEP = "keps/sig-auth/0014-dynamic-audit-configuration.md"
+# Real lines 1-61 of the old single-file KEP at the 1.20 snapshot: front matter, then the body.
+OLD_KEP_RAW = (
+    FIXTURES / "kep_old" / "0014-dynamic-audit-configuration-excerpt-1.20.md"
+).read_bytes()
+
+
+def test_an_old_single_file_kep_keeps_its_metadata_and_claims_in_front_matter() -> None:
+    state = single_kep_state(OLD_KEP, OLD_KEP_RAW, KEP_STRIP, SYNONYMS)
+
+    # Read by hand from the fixture's front matter (lines 2 and 20); it has no `stage` key.
+    assert (state.claimed_status, state.claimed_stage) == ("implementable", None)
+    assert state.source_path == OLD_KEP
+    assert state.metadata["title"] == "Dynamic Audit Configuration"
+    assert state.metadata["creation-date"] == "2018-05-18"
+    assert state.metadata["reviewers"][0] == "@tallclair"  # stripped from the hash, kept here
+
+
+def test_an_old_single_file_kep_is_hashed_with_the_kep_yaml_strip_list() -> None:
+    reviewer_added = OLD_KEP_RAW.replace(b"reviewers:\n", b'reviewers:\n  - "@someone"\n')
+    retitled = OLD_KEP_RAW.replace(b"# Dynamic Audit Control", b"# Dynamic Audit Control v2")
+    assert reviewer_added != OLD_KEP_RAW and retitled != OLD_KEP_RAW
+
+    def _hash(raw: bytes) -> str:
+        return single_kep_state(OLD_KEP, raw, KEP_STRIP, SYNONYMS).content_hash
+
+    assert _hash(reviewer_added) == _hash(OLD_KEP_RAW)
+    assert _hash(retitled) != _hash(OLD_KEP_RAW)
+
+
+def test_a_governance_doc_is_hashed_whole_and_its_metadata_holds_only_its_title() -> None:
+    text = "# Release Engineering\n\nSee [the handbooks](handbooks/)  for   details.\n"
+
+    state = governance_state("release-engineering/README.md", text, "Release Engineering")
+
+    # No front matter: the hash is the empty JSON object, a newline, then the cleaned text
+    # (link target dropped, whitespace collapsed), typed here by hand.
+    cleaned = "# Release Engineering See [the handbooks] for details."
+    assert state.content_hash == hashlib.sha256(("{}\n" + cleaned).encode()).hexdigest()
+    assert state.metadata == {"title": "Release Engineering"}
+    assert state.source_path == "release-engineering/README.md"
+    assert (state.claimed_status, state.claimed_stage) == (None, None)

@@ -105,6 +105,19 @@ class ReleaseGroup:
     snapshots: tuple[Snapshot, ...]  # one per release, from the scope's first release
 
 
+@dataclass(frozen=True)
+class DateGroup:
+    """Files read from a repo's default branch at each release date, plus `head` (ADR-002 D1).
+
+    A version is dated by when its change was merged, not by its snapshot (ADR-002 D3).
+    """
+
+    source_type: str  # ADR-003 D1: kep or governance_doc
+    repo: str
+    paths: tuple[str, ...]  # a path ending in "/" is a directory prefix
+    snapshots: tuple[Snapshot, ...]  # the default branch at every release date, then head
+
+
 def _same_files(a: str, b: str) -> bool:
     """Whether some file is matched by both manifest paths (one ending in "/" is a folder)."""
     return a == b or (a.endswith("/") and b.startswith(a)) or (b.endswith("/") and a.startswith(b))
@@ -116,9 +129,7 @@ class Scope:
 
     name: str
     release_groups: tuple[ReleaseGroup, ...]
-    kep_repo: str
-    keps: tuple[tuple[int, str], ...]  # (KEP number, its directory)
-    kep_snapshots: tuple[Snapshot, ...]  # default branch at each release date, then head
+    date_groups: tuple[DateGroup, ...]  # the KEPs, then the governance docs
 
     def __post_init__(self) -> None:
         """Refuse a scope where one file would be read by two groups, so stored twice."""
@@ -136,8 +147,10 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
     """Resolve the manifest's `scopes.<name>` against its sources and the lock's SHAs.
 
     Release-scoped groups (docs pages, website release records, feature gates) are read from
-    each release's branch, from the group's `from_release` to the latest. KEPs are read from the
-    default branch at every release date, plus `head` (ADR-002 D1).
+    each release's branch, from the group's `from_release` to the latest. Date-scoped groups
+    (KEPs, governance docs) are read from their repo's default branch at every release date,
+    plus `head` (ADR-002 D1). `kep: all` reads every KEP in `sources.kep.sig_dirs`; otherwise
+    `kep: {traced: [...]}` reads only those KEPs' directories.
     """
     manifest = _read_yaml(manifest_path)
     lock = _read_yaml(lock_path)
@@ -195,13 +208,30 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
             )
         )
 
+    def date_snapshots(repo: str) -> tuple[Snapshot, ...]:
+        branch = lock["repos"][repo]["default_branch"]
+        dated = lock["release_date_snapshots"][repo]
+        return (
+            *(Snapshot(int(v.removeprefix("1.")), branch, dated[v]["sha"]) for v in versions),
+            Snapshot(None, branch, lock["repos"][repo]["head"]),
+        )
+
     kep = sources["kep"]
-    kep_repo = str(kep["repo"])
-    keps = tuple((int(number), str(kep["traced"][number])) for number in scope["kep"]["traced"])
-    branch = lock["repos"][kep_repo]["default_branch"]
-    dated = lock["release_date_snapshots"][kep_repo]
-    kep_snapshots = (
-        *(Snapshot(int(v.removeprefix("1.")), branch, dated[v]["sha"]) for v in versions),
-        Snapshot(None, branch, lock["repos"][kep_repo]["head"]),
-    )
-    return Scope(name, tuple(groups), kep_repo, keps, kep_snapshots)
+    if scope["kep"] == "all":
+        kep_paths = tuple(str(path) for path in kep["sig_dirs"])
+    else:
+        kep_paths = tuple(str(kep["traced"][number]) for number in scope["kep"]["traced"])
+    date_groups = [DateGroup("kep", str(kep["repo"]), kep_paths, date_snapshots(kep["repo"]))]
+    if "governance_doc" in scope:
+        if scope["governance_doc"] != "all":
+            raise ValueError(f"scope {name!r}: governance_doc must be `all`")
+        date_groups += [
+            DateGroup(
+                "governance_doc",
+                str(entry["repo"]),
+                tuple(entry["paths"]),
+                date_snapshots(entry["repo"]),
+            )
+            for entry in sources["governance_doc"]
+        ]
+    return Scope(name, tuple(groups), tuple(date_groups))

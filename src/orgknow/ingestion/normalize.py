@@ -29,7 +29,9 @@ class FileState:
 
     content_hash: str
     source_path: str
-    metadata: dict[str, Any]  # parsed front matter (or kep.yaml), stripped keys included
+    # Parsed front matter (or kep.yaml), stripped keys included. A governance doc has none: its
+    # metadata holds only its title.
+    metadata: dict[str, Any]
     claimed_status: str | None = None  # KEP only (ADR-002 D5)
     claimed_stage: str | None = None
     aliases: tuple[str, ...] = ()  # front-matter `aliases`, as written
@@ -133,4 +135,31 @@ def kep_state(
         metadata=_as_json(kep),
         claimed_status=_claim(kep, "status", synonyms),
         claimed_stage=_claim(kep, "stage", synonyms),
+    )
+
+
+def single_kep_state(
+    path: str, raw: bytes, strip: frozenset[str], synonyms: Mapping[str, str]
+) -> FileState:
+    """Hash, metadata and claims of an old single-file KEP, which keeps its metadata in front
+    matter instead of a kep.yaml (S05-R2 sitting). `strip` is the manifest's kep_yaml list.
+    Raises ValueError if it has no parseable front matter."""
+    front_matter, body = split_front_matter(decode(raw))
+    return FileState(
+        content_hash=content_hash(front_matter, body, strip),
+        source_path=path,
+        metadata=_as_json(front_matter),
+        claimed_status=_claim(front_matter, "status", synonyms),
+        claimed_stage=_claim(front_matter, "stage", synonyms),
+    )
+
+
+def governance_state(path: str, text: str, title: str) -> FileState:
+    """Hash and metadata of a governance doc's decoded text. It has no front matter, so the whole
+    text is hashed (no strip list), and its metadata holds only its title (S05-R2 decision 4),
+    which the chunk header and citations read like any other title."""
+    return FileState(
+        content_hash=content_hash({}, text, frozenset()),
+        source_path=path,
+        metadata={"title": title},
     )

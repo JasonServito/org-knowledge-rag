@@ -19,19 +19,24 @@ from orgknow.ingestion.ingest import (
     Summary,
     document_from_chain,
     gate_document_from_chain,
+    governance_document,
     is_gate_file,
+    kep_chains,
+    kep_document,
+    kep_files_state,
     read_redirects,
     release_problems,
     without_duplicate_ids,
 )
 from orgknow.ingestion.manifest import (
+    DateGroup,
     ReleaseGroup,
     Snapshot,
     load_normalization,
     load_releases,
     load_scope,
 )
-from orgknow.ingestion.renames import build_chains, gate_link_rules
+from orgknow.ingestion.renames import build_chains, date_link_rules, gate_link_rules
 
 ROOT = Path(__file__).parents[2]
 MANIFEST = ROOT / "config" / "corpus_manifest.yaml"
@@ -419,4 +424,139 @@ def test_two_chains_with_one_id_are_an_error_never_a_merge() -> None:
     assert summary.failures == [
         f"gate:A: 2 chains have this id, so none is stored (first files: {GATES}A.md, "
         f"{GATES}a-copy.md)"
+    ]
+
+
+# --- KEPs and governance docs (S05-T4) --------------------------------------------------------
+
+# Enhancements `master` at the 1.20 and 1.21 release dates (config/corpus_manifest.lock.yaml).
+AT_20 = Snapshot(20, "master", "2df83383d452cf5dd029de73e1963543dbf37998")
+AT_21 = Snapshot(21, "master", "a500df8dc9597839caf8616ec4d03885274593f4")
+KEPS = DateGroup("kep", "enhancements", ("keps/sig-auth/", "keps/sig-network/"), (AT_20, AT_21))
+KEP_STRIP = load_normalization(MANIFEST)["kep_yaml"]
+OLD_KEP = "keps/sig-auth/0014-dynamic-audit-configuration.md"
+
+
+def test_kep_files_group_into_one_chain_per_kep() -> None:
+    # Real paths: KEP-1669's folder was renamed (graceful-termination-... up to the 1.23 snapshot,
+    # proxy-terminating-endpoints from 1.24); here the rename falls between two snapshots. The
+    # old single-file KEP and sig-network's index exist at 1.20 only (spike §7 R).
+    graceful = "keps/sig-network/1669-graceful-termination-local-external-traffic-policy/"
+    proxy = "keps/sig-network/1669-proxy-terminating-endpoints/"
+    files: dict[str, list[bytes | None]] = {
+        graceful + "README.md": [b"r1", None],
+        graceful + "kep.yaml": [b"k1", None],
+        proxy + "README.md": [None, b"r2"],
+        proxy + "kep.yaml": [None, b"k2"],
+        OLD_KEP: [b"old", None],
+        "keps/sig-network/README.md": [b"# SIG Network KEPs", None],
+    }
+
+    chains, skipped = kep_chains(files, KEPS.snapshots)
+
+    # One chain per KEP, whatever its folder is called: the number is the id (ADR-002 D4).
+    assert chains == {
+        "kep:sig-auth/0014-dynamic-audit-configuration": [{OLD_KEP: b"old"}, {}],
+        "kep:1669": [
+            {graceful + "README.md": b"r1", graceful + "kep.yaml": b"k1"},
+            {proxy + "README.md": b"r2", proxy + "kep.yaml": b"k2"},
+        ],
+    }
+    assert skipped == ["1.20 keps/sig-network/README.md: an index of the SIG's KEPs, not a KEP"]
+
+
+def test_a_kep_number_with_two_folders_at_one_snapshot_fails() -> None:
+    # 0 on real data: 1669, 3257 and 4444 never have both folder names at one snapshot.
+    both = {
+        "keps/sig-auth/3257-trust-anchor-sets/README.md": b"# A",
+        "keps/sig-auth/3257-trust-anchor-sets/kep.yaml": b"title: A\n",
+        "keps/sig-auth/3257-cluster-trust-bundles/README.md": b"# B",
+        "keps/sig-auth/3257-cluster-trust-bundles/kep.yaml": b"title: B\n",
+    }
+
+    with pytest.raises(ValueError, match="2 folders at one snapshot"):
+        kep_files_state(both, KEP_STRIP, {"GA": "stable"})
+
+
+def test_an_old_single_file_kep_is_a_document_of_its_own() -> None:
+    raw = (
+        ROOT / "tests/fixtures/kep_old/0014-dynamic-audit-configuration-excerpt-1.20.md"
+    ).read_bytes()
+    # Real merge times (`git log --first-parent -1 --format=%cI`): the last change before the
+    # 1.20 snapshot, and its removal before 1.21 (it became the folder 600-dynamic-audit-...).
+    written = datetime(2019, 7, 4, 15, 52, 37, tzinfo=UTC)  # 2019-07-04T08:52:37-07:00
+    removed = datetime(2020, 12, 22, 14, 2, 28, tzinfo=UTC)  # 273591aa, 2020-12-22T06:02:28-08:00
+
+    document = kep_document(
+        KEPS,
+        "kep:sig-auth/0014-dynamic-audit-configuration",
+        [{OLD_KEP: raw}, {}],
+        [written, removed],
+        KEP_STRIP,
+        {"GA": "stable"},
+        load_releases(MANIFEST),
+    )
+
+    # S05-R2 decision 3: the id pinned in the contract; claims from the front matter. Its text
+    # is from 2019: the date is kept, and the release window starts at 20 (decision 1).
+    assert (document.canonical_id, document.source_type, document.aliases) == (
+        "kep:sig-auth/0014-dynamic-audit-configuration",
+        "kep",
+        [],
+    )
+    (version,) = document.versions
+    assert (version.claimed_status, version.claimed_stage) == ("implementable", None)
+    assert (version.valid_from_date, version.valid_until_date) == (written, removed)
+    assert (version.valid_from_release, version.valid_until_release) == (20, 20)
+    assert (version.source_path, version.snapshot_sha) == (OLD_KEP, AT_20.sha)
+
+
+RELENG = "release-engineering/"
+VERSIONING, MOVED = RELENG + "versioning.md", RELENG + "reference/versioning.md"
+
+
+def test_an_old_path_back_after_its_move_is_a_duplicate_id_error() -> None:
+    # 0 on real data: versioning.md moves at 1.37 and a new versioning.md appears at head. Its
+    # chain starts at the moved chain's first path, so both have one id: neither is stored.
+    snapshots = (
+        Snapshot(36, "master", "760d54e82b76a13d1e8423d9143028c8220dfdb2"),
+        Snapshot(37, "master", "9ad626fddbec5fe4757dc9882b8b9815f37ae450"),
+        Snapshot(None, "master", "49d129fa10676ef91d821c006494bfddd5d1fcd2"),
+    )
+    group = DateGroup("governance_doc", "sig-release", (RELENG,), snapshots)
+    listings = [
+        {VERSIONING: b"# Versioning\n"},
+        {MOVED: b"# Versioning\n"},
+        {MOVED: b"# Versioning\n", VERSIONING: b"# Back\n"},
+    ]
+    types = {VERSIONING: "governance_doc", MOVED: "governance_doc"}
+    # The move is linked by git similarity in real data; here by a stand-in.
+    chains = build_chains(
+        listings,
+        date_link_rules(),
+        lambda after, paths: [(VERSIONING, MOVED)] if after == 1 else [],
+        types,
+    )
+    hand_made = [
+        [datetime(2026, 2, 13, tzinfo=UTC), None, None],
+        [None, None, datetime(2026, 9, 1, tzinfo=UTC)],
+    ]
+    documents = [
+        governance_document(
+            group,
+            [
+                None if p is None else (p, listing[p])
+                for p, listing in zip(paths, listings, strict=True)
+            ],
+            changed_at,
+            load_releases(MANIFEST),
+        )
+        for paths, changed_at in zip(chains.paths, hand_made, strict=True)
+    ]
+    summary = Summary()
+
+    assert without_duplicate_ids(documents, summary) == []
+    assert summary.failures == [
+        "sig-release:release-engineering/versioning.md: 2 chains have this id, so none is "
+        "stored (first files: release-engineering/versioning.md, release-engineering/versioning.md)"
     ]

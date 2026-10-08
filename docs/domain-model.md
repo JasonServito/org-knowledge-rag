@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates.
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -71,7 +71,7 @@ This is the spec for the tables, their rules, and the write functions S04 ingest
 | `valid_until_date` | `timestamptz` NULL | Exclusive |
 | `claimed_status` | `text` NULL | KEP only, stored as written (ADR-003 D5); no CHECK, so unknown values are kept |
 | `claimed_stage` | `text` NULL | Same |
-| `metadata` | `jsonb` NOT NULL, default `{}` | Parsed front matter (or `kep.yaml`), including stripped keys |
+| `metadata` | `jsonb` NOT NULL, default `{}` | Parsed front matter (or `kep.yaml`), including stripped keys. A governance doc has no front matter: its metadata holds only its `title` (see "Chunk header") |
 
 ### `chunks`
 
@@ -113,7 +113,11 @@ Document: <canonical_id>
 Section: <heading path joined with " > ">
 ```
 
-- **Title:** the front-matter `title`; for a KEP, `KEP-<number>: <kep.yaml title>`.
+- **Title:** the version's metadata `title`:
+  - a docs page, release record or gate: the front-matter `title`
+  - a KEP folder: `KEP-<number>: <kep.yaml title>`
+  - an old single-file KEP: its front-matter `title`, with no `KEP-<n>:` prefix (it has no number)
+  - a governance doc (S05-R2 decision 4): the version's first `# ` heading with HTML comments removed (`# Google Cloud Platform <!-- omit in toc -->` → `Google Cloud Platform`), else its repo path. Ingestion stores it as the version's metadata `title`, so the chunk header and citations read it like any other title.
 - **Section:** omitted when the heading path is empty (text before the first heading).
 
 **A gate's chunk text** (S05-R1 decision 1). A gate's stages live only in its front matter, so a `gate:` document whose file has `stages` gets them at the start of its body: the header, a blank line, the YAML, a blank line, then the body.
@@ -217,18 +221,27 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
   - Each source type is hashed with its own strip list: release records with `release_record`'s (which strips `card`), docs pages with `docs_page`'s, feature gates and their pages with `feature_gate_reference`'s (`_build`, `weight`, `card`). `stages` and `removed` are never stripped, so a stage change is a new version.
   - A file matched by the paths of two release-scoped groups is an error when the scope is loaded, before any read or write.
 - **Rebuilding from empty (S05-R1 decision 2):** moving the first release from 24 to 20 changes every stored first version, which a re-ingest reports as a history mismatch. `make reset-corpus` empties `documents`, `document_aliases`, `document_versions` and `chunks` (ids restart at 1), then `make ingest` rebuilds them. `releases` and `embeddings` are kept: vectors are a cache keyed by content hash, so an unchanged chunk text keeps its vector. Dev database only.
-- **Date-scoped sources (KEPs):** snapshots are `main` at each release date, plus `head`.
-  - A new version's `valid_from_date` is the committer time, in UTC, of the **last** commit touching the document's files between the previous snapshot and this one. The stored text was exactly live from then; edits in between are folded into the previous version's window.
+- **Date-scoped sources (KEPs, governance docs):** snapshots are the repo's default branch at each release date, plus `head`.
+  - A new version's `valid_from_date` is its **merge time** (S05-R2 sitting): the committer time, in UTC, of the **last first-parent commit** touching the document's files between the previous snapshot and this one (`git log --first-parent -1 --format=%cI <prev>..<snap> -- <paths>`). For the first snapshot, the range is its whole history. The paths are the document's files at both snapshots, so a move or a KEP folder rename is seen.
+  - First-parent follows only the default branch, so a pull request's version starts when it was merged, not at its branch's commits. KEP-2579's first version starts at 2021-05-12T16:25:28Z (its merge), not 2021-05-11T20:46:27Z (its branch's last commit, S04's date).
+  - The stored text was exactly live from then; edits in between are folded into the previous version's window.
   - The previous version closes at that same instant.
-  - `valid_from_release` = the latest release on or before `valid_from_date`. `valid_until_release` = the latest release strictly before `valid_until_date`.
+  - `valid_from_release` = the latest release on or before `valid_from_date`, but **never before the scope's first release** (S05-R2 decision 1): a version older than 1.20's release date keeps its true `valid_from_date`, and its `valid_from_release` is 20. 67 documents start that early (48 KEPs, 19 governance docs). `valid_until_release` = the latest release strictly before `valid_until_date`.
+  - Dates that can't make valid windows are a `ValueError` for that document, never a database error: a change dated no later than the open version's start (R5), or a document deleted and re-created with its new version dated before the closed one's `until` (R8; 0 on real data).
 - **A KEP version covers README + `kep.yaml`:** both are hashed together (with the `kep_yaml` strip list), so a `kep.yaml`-only change is a new version. `claimed_status` and `claimed_stage` come from that version's `kep.yaml`, with `GA` → `stable` the only mapping (ADR-003 D5). The raw `kep.yaml` is kept in `metadata`.
+- **Which KEPs (S05-T4):** every KEP in the manifest's `sig_dirs` (`kep: all` in the `full` scope).
+  - A KEP folder `keps/<sig>/<number>-<slug>/` is `kep:<number>`. A folder renamed or moved between the 3 SIG folders keeps its document (1669, 3257 and 4444 each have two names, never at once; two folders with one number at one snapshot is an error). A KEP that leaves the 3 SIG folders closes as removed (506, 2004, 2030).
+  - Only the folder's `README.md` and `kep.yaml` are read. Its other files (images, `images/authorizer-chain-computation.md`) are ignored: not read, not reported.
+  - **Old single-file KEPs** (25 files at the 1.20 snapshot, `keps/<sig>/<name>.md`) are separate documents, `kep:<sig>/<name>` (S05-R2 decision 3), not linked to their later folders (ADR-002 known limit). Their metadata is their front matter: hashed with the `kep_yaml` strip list, `claimed_status` from `status`, `claimed_stage` from `stage` (none has one). Their body is chunked without the front matter.
+  - Skipped with a reason: the 7 symlinks (mode `120000`) and `keps/sig-network/README.md` (an index of the SIG's KEPs).
+- **Governance docs (S05-T4):** the manifest's `community` and `sig-release` paths, `.md` files only. A doc has no front matter: its whole text is hashed (no strip list), and its title comes from its first `# ` heading (see "Chunk header").
 - **Re-ingest (compare and extend):** ingestion computes each document's full history from the snapshots, then compares it with the stored versions.
   - None stored → insert them all.
   - Equal → change nothing.
   - Stored is a prefix (a new release arrived) → close the open version, insert the new ones.
   - Anything else → report a history mismatch for that document, leave it untouched, and exit non-zero.
 
-## Renames: one document across moves (ADR-002 D4, S05-T2, S05-T3)
+## Renames: one document across moves (ADR-002 D4, S05-T2, S05-T3, S05-T4)
 
 A page or a feature gate that moves stays one document. Ingestion links the files of the release-scoped sources into **chains**, one per document: a chain is the document's file at each release (`ingestion/renames.py`).
 
@@ -266,6 +279,13 @@ A page or a feature gate that moves stays one document. Ingestion links the file
 - **Versions across a move:** a version is still a change in normalized content, wherever the file lives. A move that changes only stripped keys adds no version, so the open version keeps its `source_path` and snapshot. The deprecation policy moved at 1.37 by adding `aliases` only: its open version stays at the old path, from 1.31.
 - **Unmatched adds and deletes** are logged at INFO per release pair, a delete with its redirect target if it has one. A page that moves out of scope closes; a page that moves in from out of scope is a new document.
 - A path that comes back after a gap continues its chain, as it did before renames.
+- **Governance docs** (S05-R2 decision 2, amending ADR-002 D4's `git log --follow`) use the same chain builder on their date snapshots, with two rules:
+  1. Same path: a file at both snapshots stays in its chain.
+  2. git similarity ≥ 50% between the adjacent snapshots (`git diff -M50%`), for the files left. They have no URL, redirect or front matter to declare a move.
+  - The `canonical_id` is `<repo>:` + the chain's first path (`sig-release:release-engineering/versioning.md`); each later path is an alias (`sig-release:release-engineering/reference/versioning.md`).
+  - On real data this links the 8 moves of sig-release PR #2984 (1.36 → 1.37, 66–100% similar). The R100 move of `baseimage-exception-list.md` adds no version: its open version keeps the old path and snapshot. A chain continues from 1.37 to `head` (`branch-creation.md`, `release-cuts.md`).
+  - An old path that comes back after its move starts a new chain with the same first path: both chains are refused as one id held twice, never merged (0 on real data).
+- The 50% threshold is a named constant citing ADR-002 D4, not a setting: changing it changes `canonical_id`s (S05-R2 decision 9).
 
 ## Handed to S04
 

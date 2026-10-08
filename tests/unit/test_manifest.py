@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from orgknow.ingestion.manifest import (
+    DateGroup,
     ReleaseGroup,
     Scope,
     Snapshot,
@@ -120,17 +121,17 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
         24, "release-1.24", "98e2db7d9cc710554b486ad56274e362af03b438"
     )
     assert docs.snapshots[-1] == Snapshot(37, "main", "256a1f49419171f6c7fbdb1857146da1c63eb533")
-    assert scope.kep_repo == "enhancements"
-    assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
-    # Master at each release date 1.20 -> 1.37, then head.
-    assert [s.release for s in scope.kep_snapshots] == [*range(20, 38), None]
-    assert scope.kep_snapshots[0] == Snapshot(
-        20, "master", "2df83383d452cf5dd029de73e1963543dbf37998"
-    )
-    assert scope.kep_snapshots[-1] == Snapshot(
+    # The traced KEP only (sources.kep.traced), from master at each release date 1.20 -> 1.37,
+    # then head.
+    (keps,) = scope.date_groups
+    assert (keps.source_type, keps.repo) == ("kep", "enhancements")
+    assert keps.paths == ("keps/sig-auth/2579-psp-replacement/",)
+    assert [s.release for s in keps.snapshots] == [*range(20, 38), None]
+    assert keps.snapshots[0] == Snapshot(20, "master", "2df83383d452cf5dd029de73e1963543dbf37998")
+    assert keps.snapshots[-1] == Snapshot(
         None, "master", "4be81e27aef5d252972fd02b5a9479a18982dfe5"
     )
-    assert scope.kep_snapshots[-1].label == "head"
+    assert keps.snapshots[-1].label == "head"
     assert docs.snapshots[0].label == "1.24"
 
 
@@ -176,7 +177,34 @@ def test_loads_the_full_scope_from_1_20() -> None:
         "content/en/docs/reference/command-line-tools-reference/feature-gates-removed/",
     )
     assert gates.snapshots == docs.snapshots
-    assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
+    # S05-T4: every KEP in sources.kep.sig_dirs, and both governance groups, each from its
+    # repo's default branch at every release date, then head (lock: release_date_snapshots).
+    keps, community, sig_release = scope.date_groups
+    assert keps == DateGroup(
+        "kep",
+        "enhancements",
+        ("keps/sig-release/", "keps/sig-auth/", "keps/sig-network/"),
+        keps.snapshots,
+    )
+    assert (community.source_type, community.repo) == ("governance_doc", "community")
+    assert community.paths == (
+        "sig-release/README.md",
+        "sig-release/charter.md",
+        "sig-auth/README.md",
+        "sig-auth/charter.md",
+        "sig-network/README.md",
+        "sig-network/charter.md",
+        "contributors/devel/sig-release/",
+    )
+    assert (sig_release.source_type, sig_release.repo) == ("governance_doc", "sig-release")
+    assert sig_release.paths == ("release-engineering/",)
+    assert [s.release for s in sig_release.snapshots] == [*range(20, 38), None]
+    assert community.snapshots[0] == Snapshot(
+        20, "main", "ad91093a4a38e2655e55dcb1fac8ed04eeceae82"
+    )
+    assert sig_release.snapshots[-1] == Snapshot(
+        None, "master", "49d129fa10676ef91d821c006494bfddd5d1fcd2"
+    )
 
 
 def test_an_unknown_scope_is_refused() -> None:
@@ -204,7 +232,7 @@ def test_a_file_that_two_groups_would_read_is_refused(docs_path: str, record_pat
     records = ReleaseGroup("release_record", "website", (record_path,), SNAPSHOTS)
 
     with pytest.raises(ValueError, match="match the same files") as raised:
-        Scope("test", (docs, records), "enhancements", (), ())
+        Scope("test", (docs, records), ())
 
     assert f"docs_page path {docs_path}" in str(raised.value)
     assert f"release_record path {record_path}" in str(raised.value)

@@ -190,7 +190,7 @@ Tasks:
 - [x] **S05-T3 `[core]` Feature gates.**
   - Done when: the 1.32 file renames create no new documents.
   - Deps: T1, T2.
-- [ ] **S05-T4 `[core]` KEPs and governance docs (date-scoped, merge-time dating).**
+- [x] **S05-T4 `[core]` KEPs and governance docs (date-scoped, merge-time dating).**
   - Done when: a re-run adds 0 versions; KEP-2579's versions start at their merge times.
   - Deps: T1.
 - [ ] **S05-T5 `[core]` Blog posts.**
