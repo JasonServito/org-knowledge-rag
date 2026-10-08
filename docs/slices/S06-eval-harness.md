@@ -1,9 +1,9 @@
 # S06: Eval harness + golden set v0 + dense baseline
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 3 (§19: golden set, metrics, ablation table)
 - **Started:** 2026-10-08
-- **Finished:**
+- **Finished:** 2026-10-08
 
 ## Outcome
 
@@ -17,12 +17,12 @@
 
 ## Exit checks
 
-- [ ] ADR-007 (golden-set schema and labeling) is Accepted.
-- [ ] Golden set v0: 30–50 questions, verified by Claude and spot-checked by the developer (T5 decision 1); every label matches at least one stored chunk; frozen.
-- [ ] `make eval-smoke` (10–15 questions) and `make eval` (all) run end to end locally (AC8, second part).
-- [ ] The dense-baseline row is committed in the ablation table, with its run-to-run spread.
-- [ ] `docs/evaluation.md` defines each metric; the thresholds are recorded in the product spec.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] ADR-007 (golden-set schema and labeling) is Accepted.
+- [x] Golden set v0: 30–50 questions, verified by Claude and spot-checked by the developer (T5 decision 1); every label matches at least one stored chunk; frozen.
+- [x] `make eval-smoke` (10–15 questions) and `make eval` (all) run end to end locally (AC8, second part).
+- [x] The dense-baseline row is committed in the ablation table, with its run-to-run spread.
+- [x] `docs/evaluation.md` defines each metric; the thresholds are recorded in the product spec.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -114,7 +114,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S06-R1: eval harness
 
-- **Status:** PR open
+- **Status:** Merged (PR #31)
 - **Branch:** `s06-r1-eval-harness`
 - **Tasks, in this order:** S06-T1 (golden-set format and loader) → S06-T2 (retrieval metrics) → S06-T3 (answer checks AC1–AC3) → S06-T4 (eval runner and ablation table).
 - **Closes the slice:** no. T5 (`[human]` labels) and T6 (the paid baseline) follow.
@@ -281,10 +281,27 @@ The demo's results folders are not committed (they'd add a demo row to the ablat
 - **Anthropic:** ≤ 15 asks (~$0.60 at most), for the demo smoke runs only. Nothing else.
 - No other network calls. No content reads on the corpus clones.
 
-## Retro (fill in at the end)
+## Retro
 
 - **Shipped (with numbers):**
+  - **S06-R1** (PR #31): the golden-set loader and label check, the 5 retrieval metrics, the AC1–AC3 checks, and the runner with the ablation table. 453 unit tests (+63) and 106 integration tests (+13); 9 demo asks.
+  - **S06-T5** (PR #32): golden set v0, with 43 questions (36 answerable, 7 unanswerable) and 184 labels, 0 unmatched. 3 Claude passes, plus 6 developer spot-checks, all ✅.
+  - **S06-T6:** 3 runs of `make eval` and 1 smoke run; 142 asks for $4.14, 0 errors, 1 Voyage request (40 vectors).
+    - Retrieval: Recall@10 0.384, Hit@10 0.944, MRR 0.614, nDCG@10 0.369, identical in all 3 runs.
+    - Answers: AC1–AC3 100%; false refusals 2–3 of 36.
+    - Cost and latency: $0.029 per question; p95 9.4–11.3 s.
+    - The Phase 1 thresholds are in the product spec, and `docs/evaluation.md` is written.
 - **Surprises:**
+  - **The 2 refusals that happened every run are the 2 questions with no labeled hit** (q31, q43). The model's refusals tracked retrieval, not caution.
+  - **The answer side barely varied:** 1 of 43 questions changed status across 3 runs (q41), and cost per run varied < 1%. Input tokens were identical (232,992), because the hits were.
+  - **Cost per ask was $0.029**, below ADR-006's $0.07–0.11 estimate. Reasoning was 1,388–1,548 tokens per 43-question run.
+  - **Every run rewrites the tracked ablation table**, so the next run back to back is marked `git_dirty` on the same code (run 3).
 - **What didn't work / negative results:**
+  - **Dense retrieval found no labeled source for 2 of 36 questions,** and on average 38% of a question's labeled sources.
+  - **About 3 of 10 slots repeat a section** (7.1 distinct sections per 10 hits).
+  - **CURRENT questions rank worst** (MRR 0.467).
+  - **S06-R1's PR was 2,895 reviewable lines,** 2× the sitting's estimate (tests were 1,609).
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S06-*.md`
+  - Commit or exclude the ablation table between repeated runs, and name smoke runs apart from full runs (both proposed).
+  - Count tests in PR size estimates.
+- **Slice brief:** `docs/learning/S06-eval-harness.md`

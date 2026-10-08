@@ -210,7 +210,7 @@ Tasks:
   - Done when: a second run makes 0 requests.
   - Deps: T7, T8.
 
-### 🟨 S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
+### ✅ S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
 
 - **Outcome:** a frozen golden set v0 (30–50 questions, verified by Claude and spot-checked by the developer) and a committed dense-baseline row in the ablation table.
 - **Exit:** `make eval-smoke` and `make eval` work; `docs/evaluation.md` is written; thresholds are recorded in the product spec.
@@ -234,7 +234,7 @@ Tasks:
   - Done when: 3 runs of `make eval` on the frozen v0 are committed with their spread; `docs/evaluation.md` is written; thresholds are in the product spec.
   - Deps: T4, T5.
 
-### ⬜ S07 Hybrid retrieval *(Stage 4)*
+### 🟨 S07 Hybrid retrieval *(Stage 4)*
 
 - **Outcome:** lexical + dense retrieval fused with RRF, and an ablation row showing the delta.
 - **Candidate tasks:**
