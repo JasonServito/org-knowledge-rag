@@ -221,7 +221,7 @@ Tasks:
 - [x] **S06-T2 `[core]` Retrieval metrics.**
   - Done when: Recall@K, Hit@K, MRR, nDCG@K and distinct sections match hand-calculated values, edge cases included.
   - Deps: T1.
-- [ ] **S06-T3 `[core]` Answer checks AC1–AC3.**
+- [x] **S06-T3 `[core]` Answer checks AC1–AC3.**
   - Done when: each check passes and fails on hand-built answers.
   - Deps: T1.
 - [ ] **S06-T4 `[commodity]` Eval runner and ablation table.**
