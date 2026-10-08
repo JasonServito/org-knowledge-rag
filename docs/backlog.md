@@ -173,7 +173,7 @@ Tasks:
 
 ## Milestone M1: Phase 1 complete (product spec AC1–AC8)
 
-### 🟨 S05 Stage 1 subset ingestion *(Stage 2)*
+### ✅ S05 Stage 1 subset ingestion *(Stage 2)*
 
 - **Outcome:** the full manifest is ingested and embedded: 3 SIGs × v1.20 → latest, the website release records, the feature gates, every KEP in the 3 SIG folders, CHANGELOG, blog, and governance docs. (Wording fixed in the S05 sitting, 2026-10-07: all KEPs, not 4; feature gates in; the embed is S05's last task.)
 - **Exit:** re-ingesting yields identical counts and hashes (AC8, first part); counts match the spike within an explained tolerance.
@@ -210,7 +210,7 @@ Tasks:
   - Done when: a second run makes 0 requests.
   - Deps: T7, T8.
 
-### ⬜ S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
+### 🟨 S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
 
 - **Outcome:** a frozen golden set v0 (30–50 questions, human-verified) and a committed dense-baseline row in the ablation table.
 - **Exit:** `make eval-smoke` and `make eval` work; `docs/evaluation.md` is written; thresholds are recorded in the product spec.

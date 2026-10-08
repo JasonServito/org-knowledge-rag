@@ -1,9 +1,9 @@
 # S05: Stage 1 subset ingestion
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 2 (the full manifest; S04 was the narrowed first pass)
 - **Started:** 2026-10-07
-- **Finished:**
+- **Finished:** 2026-10-08
 
 ## Outcome
 
@@ -29,13 +29,13 @@ Every chunk text then has a `voyage-4-large` vector.
 
 ## Exit checks
 
-- [ ] `make ingest` from an empty database, then again: the second run adds 0 documents, versions and chunks.
-- [ ] Two from-empty ingests print identical reports, fingerprints included (AC8, first part).
-- [ ] Per-source document and version counts match the spike (`docs/research/corpus-spike-report.md`, table B) within an explained tolerance: each difference has a stated cause.
-- [ ] The 6 known docs and release-record moves (spike §4 E and G) are one document each, with the later URL as an alias.
-- [ ] `make embed` gives every distinct chunk text a `voyage-4-large` vector, and a second run makes 0 requests.
-- [ ] `make test-int` is green with the dev database fully ingested and embedded.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] `make ingest` from an empty database, then again: the second run adds 0 documents, versions and chunks. *(R3 bundle check: 1,168 / 2,882 / 48,273 new, then 0 / 0 / 0, exit 0.)*
+- [x] Two from-empty ingests print identical reports, fingerprints included (AC8, first part). *(T8: byte-identical; a third from-empty run in the bundle check matches too; `sha256:458effad…`, reproduced by an independent script.)*
+- [x] Per-source document and version counts match the spike (`docs/research/corpus-spike-report.md`, table B) within an explained tolerance: each difference has a stated cause. *(Retro, "Shipped": one row per source.)*
+- [x] The 6 known docs and release-record moves (spike §4 E and G) are one document each, with the later URL as an alias. *(R3 bundle check SQL; first shown in PR #27.)*
+- [x] `make embed` gives every distinct chunk text a `voyage-4-large` vector, and a second run makes 0 requests. *(T9: 21,552 texts, 0 without a vector; the second run: `Requests: 0`.)*
+- [x] `make test-int` is green with the dev database fully ingested and embedded. *(R3 bundle check: 93 passed.)*
+- [x] Retro done; slice brief written; backlog updated. *(This retro.)*
 
 ## Scope
 
@@ -675,7 +675,7 @@ Expected values were computed in the sitting with the spike's normalizer (`spike
 
 ### Run S05-R3: final chunk text, ingestion report, full embed
 
-- **Status:** running (T7, T8, T9 done)
+- **Status:** PR open
 - **Branch:** `s05-r3-final-corpus`
 - **Tasks, in this order:** S05-T7 (chunker fixes) → S05-T8 (ingestion report) → S05-T9 (embed the full corpus) → the slice retro (`/slice-retro`, the run's last commit).
 - **Closes the slice:** yes.
@@ -873,7 +873,52 @@ Expected values were measured in the sitting with SQL, git, and throwaway script
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - Three runs: R1 = T1–T3 (PRs #27, #28), R2 = T4–T6 (PR #29), R3 = T7–T9 and this retro (one PR).
+  - **Ingestion:**
+    - `make ingest` stores the whole manifest from empty in 1 min 25 s: 1,168 documents, 2,882 versions, 21 aliases, 0 failures. A second run adds 0 (34 s).
+    - Per source (documents / versions): blog 417 / 924 · docs pages 64 / 405 · feature gates 491 / 868 · governance 29 / 140 · KEPs 141 / 472 · release records 26 / 73 (8 web pages + 18 CHANGELOGs).
+    - The 6 known moves are one document each, plus RBAC's front-matter alias `web:/rbac/`. Aliases: 21 (blog 4, docs pages 4, feature gates 2, governance 8, release records 3).
+    - KEP and governance versions start at their merge time (KEP-2579: 2021-05-12, not the commit's 2021-05-11). Blog versions start at publication; 214 of 1,138 were never public and aren't stored.
+  - **Counts against the spike (table B):** documents / versions; every expected value was computed in a sitting with the spike's code and git, never with the new code.
+
+    | Source | Spike | Stored | Cause |
+    |---|---|---|---|
+    | blog | 417 / 1,138 | 417 / 924 | Versions: 214 never public (ADR-002 D3). Posts: the spike's 416 published + the VAP GA post, whose `------` front matter now parses (+1 version); `k8s-book-club`'s `------` → `---` fix is then whitespace-only (−1 version). R2 proof map, PR #29 |
+    | docs pages | 67 / 406 | 64 / 405 | 3 moves linked: PSP, topology hints → routing, deprecation policy. The deprecation-policy move changes only the stripped `aliases` key, so it adds no version. R1 proof map and edge cases |
+    | feature gates | 842 / 1,169 | 491 / 868 | The spike's identity is the file path. 351 paths join other documents: 348 title links (345 of them the 1.32 renames), 1 similarity link (`APIServingWithRoute`), 2 page → `index.md` moves. A link without a content change adds no version: 301 in all, 300 of them 1.32 renames (SQL at the retro; the last 1 isn't itemized). R1 proof map (491 / 868, spike code + git `-M50%`), PR #28 |
+    | governance | 37 / 143 | 29 / 140 | 8 moved paths linked as aliases; 3 of those moves change no normalized content. R2 proof map |
+    | KEPs | 153 + 200 YAML / 352 + 581 | 141 / 472 | The spike counted files; S05 stores one document per KEP number (116) + 25 old single-file KEPs. 81 PRR files, 7 symlinks, 1 index and 1 image note aren't KEPs; README and `kep.yaml` are hashed together, so one version covers a change to either. R2 proof map, PR #29 |
+    | release records | 29 / 73 | 26 / 73 | 3 moves linked (release index, notes, version skew); each move also changed the content, so versions stay 55 (R1 proof map: 11 / 55 before linking, 8 / 55 after). 8 / 55 web + 18 / 18 CHANGELOGs. R2 proof map |
+    | **total** | 1,745 / 3,862 | 1,168 / 2,882 | |
+
+  - **Chunks:** 48,273 chunks, 21,552 distinct texts (55% of chunks repeat a text).
+    - 0 `{#id}` anchors in section names (1,269 texts before); 0 cut HTML tables (RBAC: 2 per version × 15 before); 0 sha512 chunks (32 before).
+    - HTML comment blocks are dropped (scanner rule 6). Oversize lists and pipe tables are cut between items or rows, so texts over 1,024 estimated tokens fell from 433 to 77.
+    - Scanner vs markdown-it on all 2,882 stored files: 822 heading differences in 80 files → 558 in 30, each from a listed cause (Hugo highlight 474, list-item headings 68, a backtick in a fence's info string 12, indented headings 4).
+  - **Report:** `make ingest` ends with a report and `make ingest-report` prints its database part. Two from-empty ingests printed byte-identical reports; fingerprint `sha256:458effad…`, reproduced by an independent script over 52,344 rows. Skip lines: 331 → 26.
+  - **Embeddings:** 21,552 `voyage-4-large` vectors. 162 requests, 20,688 new texts, 5,613,947 Voyage tokens against a 5,370,535 estimate (ratio 1.045), 719 orphan vectors deleted, 3 min 44 s. A second run: 0 requests.
+  - **Tests:** 390 unit and 93 integration (from 224 and 80 at the end of S04). 6 spike tests were deleted with this retro.
+  - **Paid calls for the slice:** Voyage only, about 5.61M embedding tokens (T9 and its 1-text break-it), inside the 200M free tier. 0 Anthropic calls.
 - **Surprises:**
+  - **Voyage counted 4.5% more tokens than the chars ÷ 4 estimate** (ratio 1.045); S04 came in 5% under (0.95). A rebuild from empty now estimates 5.66M against the 6M one-off cap: a 6% margin, about 5.9M by Voyage's count.
+  - **Hidden text was common.** 10.9% of KEP lines (31,841) sat in HTML comments (template guidance), with 260 fake headings in 13 KEPs (R3 sitting).
+  - **Oversize blocks were big.** 433 texts over 1,024 tokens held 1.01M of 5.80M tokens, up to 15,735 in one text (R3 sitting): lists without blank lines and pipe tables were single blocks.
+  - **The download hashes weren't only in CHANGELOGs.** The 1.20 release-notes page held 32 sha512 chunks (R2 question 1).
+  - **No real move needed git similarity among docs pages and release records:** 5 link by redirect, 1 by front-matter alias. Similarity linked 1 gate (`APIServingWithRoute`).
+  - **67 documents are older than 1.20** (48 KEPs, 19 governance docs; the earliest from 2018-12-05). The code raised on all of them until R2's decision 1 kept their true dates.
+  - **Ad hoc `git grep` on the partial clones reached the network.** The T7 builder and reviewer each fetched blobs from GitHub and triggered `git gc --auto`. It was free and read-only, but broke the contract's "no network but Voyage" line.
+  - **Runs came out larger than their estimates:** R2 ~3,330 reviewable lines against ~2,000–2,600, 2,096 of them tests.
 - **What didn't work / negative results:**
+  - **77 texts are still over 1,024 tokens** (max 15,735), by design: by their largest block, 50 code blocks, 19 HTML tables, 5 pipe tables, 2 lists (each a single item), 1 paragraph.
+  - **558 scanner heading differences remain** in 30 files (above). They are listed, not fixed.
+  - **1 comment block is left in chunk text** (KEP-6283 at `head`: `<!--` indented 4 spaces in a nested list; rule 6 covers 0–3).
+  - **About 12 lines of PR links were dropped** in 8 CHANGELOGs, where text followed a comment's closing `-->` on the same line: the comment block ends at the end of that line, as in CommonMark.
+  - **The 25 old single-file KEPs stay separate from their later folders,** though 24 of 25 match a folder by exact title (ADR-002 known limit; backlog entry).
+  - **`make embed` prints its estimate only after its requests,** where the R3 contract said before. The refusal above the cap does run first. Parked: a `src/` change.
+  - **Not verified:** whether Voyage truncated the 15,735-token text.
+  - **PRs #27–#29 were all over the ~800-line alarm** (R1: ~1,510 and ~1,050; R2: ~3,330), each accepted in its sitting. R3's one PR was accepted above it in advance (estimate ~1,500–2,000).
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S05-*.md`
+  - Put "no `git grep`, `git log -p` or other content reads on the corpus cache; query the database, or use `git -c protocol.allow=never`" into every builder and reviewer brief. R2's contract named the risk; R3's didn't repeat it, and builders don't read earlier contracts.
+  - Size paid embedding runs with the measured Voyage ratio (1.045), not chars ÷ 4 alone.
+  - Estimate test lines separately in the sitting: tests were 63% of R2's reviewable lines.
+- **Slice brief:** [`docs/learning/S05-stage1-subset-ingestion.md`](../learning/S05-stage1-subset-ingestion.md)
