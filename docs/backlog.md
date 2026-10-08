@@ -215,7 +215,7 @@ Tasks:
 - **Outcome:** a frozen golden set v0 (30–50 questions, human-verified) and a committed dense-baseline row in the ablation table.
 - **Exit:** `make eval-smoke` and `make eval` work; `docs/evaluation.md` is written; thresholds are recorded in the product spec.
 - **Slice doc:** `docs/slices/S06-eval-harness.md`. ADR-007 Accepted in the S06-R1 sitting.
-- [ ] **S06-T1 `[core]` Golden-set format and loader.**
+- [x] **S06-T1 `[core]` Golden-set format and loader.**
   - Done when: a malformed file fails with the question id and field; a label matching 0 stored chunks is reported; hand-written fixtures cover each ADR-007 rule.
   - Deps: ADR-007.
 - [ ] **S06-T2 `[core]` Retrieval metrics.**

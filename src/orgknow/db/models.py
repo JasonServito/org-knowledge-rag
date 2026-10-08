@@ -119,6 +119,14 @@ class StoredChunk(BaseModel):
     content_hash: str
 
 
+class SectionText(BaseModel):
+    """One distinct chunk text of a document and its heading path (S06-T1): what a golden-set
+    label is checked against."""
+
+    heading_path: list[str]
+    content_hash: str
+
+
 class Hit(BaseModel):
     """One dense-retrieval result: a distinct chunk text near the question (S04-R2 decision 4).
 

@@ -1,5 +1,6 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed
+.PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed \
+	eval-check eval-sections
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -71,3 +72,15 @@ reset-corpus:
 # makes 0 requests. Needs `make ingest`.
 embed:
 	uv run python -m orgknow.embeddings.embed
+
+# Validate the golden set (EVAL_GOLDEN_PATH, default eval/golden_set/v0.yaml), then check every
+# label against the dev database: one line per label with the distinct chunk texts it matches,
+# then a total. Fails if the file is invalid or a label matches nothing. Read-only; needs `make up`.
+eval-check:
+	uv run python -m orgknow.eval check
+
+# List a document's sections as golden-set labels write them, each with its distinct text count:
+# one line per heading path in any version, first appearance first; `""` is the intro. Read-only.
+# Example: make eval-sections DOC=gate:LegacyServiceAccountTokenCleanUp
+eval-sections:
+	uv run python -m orgknow.eval sections "$(DOC)"

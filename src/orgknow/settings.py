@@ -69,3 +69,5 @@ class Settings(BaseSettings):
     langfuse_secret_key: SecretStr | None = None
     # Langfuse Cloud's EU region, the SDK's default. The US region: https://us.cloud.langfuse.com.
     langfuse_base_url: str = "https://cloud.langfuse.com"
+    # The golden set (ADR-007 D1) that `make eval-check` checks. Relative to the repo root.
+    eval_golden_path: Path = Path("eval/golden_set/v0.yaml")
