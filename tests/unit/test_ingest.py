@@ -15,12 +15,15 @@ import pytest
 
 from orgknow.db.models import Release, VersionData
 from orgknow.ingestion.blog import Entry, publication
+from orgknow.ingestion.git_reader import Skip
 from orgknow.ingestion.ingest import (
     Document,
     Summary,
     blog_document,
     changelog_document,
     collect_changelogs,
+    collect_governance,
+    collect_release_scoped,
     document_from_chain,
     gate_document_from_chain,
     governance_document,
@@ -37,6 +40,7 @@ from orgknow.ingestion.manifest import (
     ChangelogGroup,
     DateGroup,
     ReleaseGroup,
+    Scope,
     Snapshot,
     load_normalization,
     load_releases,
@@ -469,7 +473,9 @@ def test_kep_files_group_into_one_chain_per_kep() -> None:
             {proxy + "README.md": b"r2", proxy + "kep.yaml": b"k2"},
         ],
     }
-    assert skipped == ["1.20 keps/sig-network/README.md: an index of the SIG's KEPs, not a KEP"]
+    # A record per snapshot holding it; the report lists it once (S05-T8).
+    index = "keps/sig-network/README.md"
+    assert skipped == [Skip(AT_20, index, "an index of the SIG's KEPs, not a KEP")]
 
 
 def test_a_kep_number_with_two_folders_at_one_snapshot_fails() -> None:
@@ -746,5 +752,70 @@ def test_a_listed_changelog_that_is_absent_or_not_utf8_is_reported(
     # The others are still stored, dated by the head commit's time.
     assert [d.canonical_id for d in documents] == ["changelog:1.37"]
     assert documents[0].versions[0].valid_from_date == HEAD_TIME
-    assert summary.failures[0].startswith("CHANGELOG/CHANGELOG-1.35.md: not valid UTF-8")
-    assert summary.failures[1:] == [f"CHANGELOG/CHANGELOG-1.36.md: absent at head ({head})"]
+    # Each failure line starts with its snapshot's label (S05-T8).
+    assert summary.failures[0].startswith("head CHANGELOG/CHANGELOG-1.35.md: not valid UTF-8")
+    assert summary.failures[1:] == [f"head CHANGELOG/CHANGELOG-1.36.md: absent ({head})"]
+
+
+# --- Clearer failures (S05-T8) -----------------------------------------------------------------
+
+DOCS = "content/en/docs/"
+PAGE_A = b"---\ntitle: A\n---\nText A.\n"
+PAGE_B = b"---\ntitle: B\n---\nText B.\n"
+
+
+def _two_releases(make_git_repo: Callable[[str], Any], at_21: dict[str, bytes | None]) -> Any:
+    """A tiny website repo: a.md at 1.20, then `at_21`'s changes at 1.21. Returns the repo and the
+    two release snapshots."""
+    repo = make_git_repo("website")
+    sha_20 = repo.commit({DOCS + "a.md": PAGE_A})
+    sha_21 = repo.commit(at_21)
+    return repo, (Snapshot(20, "release-1.20", sha_20), Snapshot(21, "release-1.21", sha_21))
+
+
+def test_a_manifest_path_absent_from_every_snapshot_is_a_failure(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # Hand-made: a.md is at both releases; b.md only at 1.21 (absent from some releases: logged,
+    # not an error); the typo folder at neither, so the manifest is wrong: an error.
+    repo, snapshots = _two_releases(make_git_repo, {DOCS + "b.md": PAGE_B})
+    paths = (DOCS + "a.md", DOCS + "b.md", DOCS + "typo/")
+    scope = Scope("test", (ReleaseGroup("docs_page", "website", paths, snapshots),), ())
+    summary = Summary()
+
+    documents = collect_release_scoped(
+        scope, repo.path.parent, load_normalization(MANIFEST), load_releases(MANIFEST), summary
+    )
+
+    assert summary.failures == [
+        "1.20\N{EN DASH}1.21: manifest path content/en/docs/typo/ is absent at every snapshot"
+    ]
+    # The other paths are still read.
+    assert sorted(d.canonical_id for d in documents) == ["web:/docs/a/", "web:/docs/b/"]
+
+    # A date-scoped group too (its snapshots end at head).
+    head = Snapshot(None, "main", snapshots[1].sha)
+    governance = DateGroup("governance_doc", "website", ("typo.md",), (*snapshots, head))
+    summary = Summary()
+    assert collect_governance(governance, repo.path.parent, load_releases(MANIFEST), summary) == []
+    assert summary.failures == [
+        "1.20\N{EN DASH}1.21, head: manifest path typo.md is absent at every snapshot"
+    ]
+
+
+def test_a_file_failing_at_one_release_starts_its_failure_line_with_that_release(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # Hand-made: a.md's front matter is broken at 1.21 only.
+    broken = b"---\ntitle: [\n---\nText A.\n"
+    repo, snapshots = _two_releases(make_git_repo, {DOCS + "a.md": broken})
+    scope = Scope("test", (ReleaseGroup("docs_page", "website", (DOCS,), snapshots),), ())
+    summary = Summary()
+
+    documents = collect_release_scoped(
+        scope, repo.path.parent, load_normalization(MANIFEST), load_releases(MANIFEST), summary
+    )
+
+    assert documents == []
+    (line,) = summary.failures
+    assert line.startswith("1.21 content/en/docs/a.md: front matter is not valid YAML")

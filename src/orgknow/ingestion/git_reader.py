@@ -41,22 +41,33 @@ def _ignore_nothing(path: str) -> bool:
     return False
 
 
+@dataclass(frozen=True)
+class Skip:
+    """A file left out at one snapshot, with the reason (e.g. "symlink"). The report lists each
+    (file, reason) once, with every snapshot it was skipped at (S05-T8)."""
+
+    snapshot: Snapshot
+    path: str
+    reason: str
+
+
 def read_files(
     repo: Path,
     paths: Sequence[str],
     snapshots: Sequence[Snapshot],
     suffixes: tuple[str, ...],
     ignore: Callable[[str], bool] = _ignore_nothing,
-) -> tuple[dict[str, list[bytes | None]], list[str]]:
+) -> tuple[dict[str, list[bytes | None]], list[Skip], list[str]]:
     """Read every file under `paths` at each snapshot.
 
-    Returns ({file path: its content at each snapshot, None where absent}, skipped files). A
-    skipped file is "<snapshot> <path>: <reason>": a symlink, a submodule, or a name without
-    one of `suffixes`. A file `ignore` names is left out: neither read nor skipped (e.g. the
-    images in a KEP's folder). A manifest path absent from a snapshot is logged, not an error.
+    Returns ({file path: its content at each snapshot, None where absent}, skipped files, manifest
+    paths absent at every snapshot). A file is skipped if it's a symlink, a submodule, or a name
+    without one of `suffixes`. A file `ignore` names is left out: neither read nor skipped (e.g.
+    the images in a KEP's folder). A manifest path absent from some snapshots is logged: pages
+    move. One absent from every snapshot means the manifest is wrong: the caller reports it.
     """
     files: dict[str, list[bytes | None]] = {}
-    skipped: list[str] = []
+    skipped: list[Skip] = []
     contents: dict[str, bytes] = {}  # by blob id: a file unchanged across snapshots is read once
     absent: dict[str, list[str]] = {}
     for i, snapshot in enumerate(snapshots):
@@ -69,11 +80,11 @@ def read_files(
             if ignore(path):
                 continue
             if mode == SYMLINK_MODE:
-                skipped.append(f"{snapshot.label} {path}: symlink")
+                skipped.append(Skip(snapshot, path, "symlink"))
             elif kind != "blob":
-                skipped.append(f"{snapshot.label} {path}: not a file ({kind})")
+                skipped.append(Skip(snapshot, path, f"not a file ({kind})"))
             elif not path.endswith(suffixes):
-                skipped.append(f"{snapshot.label} {path}: not a {'/'.join(suffixes)} file")
+                skipped.append(Skip(snapshot, path, f"not a {'/'.join(suffixes)} file"))
             else:
                 if oid not in contents:
                     contents[oid] = _git(repo, "cat-file", "blob", oid)
@@ -81,9 +92,13 @@ def read_files(
         for wanted in paths:
             if not any(_matches(path, wanted) for path in found):
                 absent.setdefault(wanted, []).append(snapshot.label)
+    missing = []
     for wanted, labels in absent.items():
-        log.info("manifest path %s is absent at %s", wanted, ", ".join(labels))
-    return files, skipped
+        if len(labels) == len(snapshots):
+            missing.append(wanted)
+        else:
+            log.info("manifest path %s is absent at %s", wanted, ", ".join(labels))
+    return files, skipped, missing
 
 
 def read_file(repo: Path, sha: str, path: str) -> bytes:

@@ -1,5 +1,5 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate seed ingest reset-corpus embed
+.PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -47,8 +47,16 @@ seed:
 # then chunk every version that has no chunks yet. Free and local; safe to re-run (a re-run adds
 # 0 versions and 0 chunks). Needs `make up`, `make migrate`, `make seed`: it only reads `releases`,
 # and stops before reading git if a manifest release is missing there or has other dates.
+# It ends with the ingestion report: this run's counts, skipped and failed files, then the
+# database part (see ingest-report).
 ingest:
 	uv run python -m orgknow.ingestion.ingest
+
+# Print the database part of the ingestion report, without reading git: counts per source type
+# and per release, the chunk id range, and the fingerprint of every stored value except generated
+# ids. Two databases holding the same values print the same report. Read-only. Needs `make up`.
+ingest-report:
+	uv run python -m orgknow.ingestion.report
 
 # Empty the DEV database's corpus: documents, aliases, versions and chunks, with ids restarting at
 # 1 (S05-R1 decision 2). `releases` and `embeddings` are kept: vectors are a cache keyed by content

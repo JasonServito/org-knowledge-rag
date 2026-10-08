@@ -173,7 +173,7 @@ Tasks:
 
 ## Milestone M1: Phase 1 complete (product spec AC1–AC8)
 
-### 🟨 S05 Stage 1 subset ingestion *(Stage 2)*
+### ✅ S05 Stage 1 subset ingestion *(Stage 2)*
 
 - **Outcome:** the full manifest is ingested and embedded: 3 SIGs × v1.20 → latest, the website release records, the feature gates, every KEP in the 3 SIG folders, CHANGELOG, blog, and governance docs. (Wording fixed in the S05 sitting, 2026-10-07: all KEPs, not 4; feature gates in; the embed is S05's last task.)
 - **Exit:** re-ingesting yields identical counts and hashes (AC8, first part); counts match the spike within an explained tolerance.
@@ -199,17 +199,18 @@ Tasks:
 - [x] **S05-T6 `[core]` CHANGELOG.**
   - Done when: 18 documents, 371 patch sections; no sha512 rows in chunks; a set release `until` can't change.
   - Deps: T1.
-- [ ] **S05-T7 `[core]` Chunker fixes.**
+- [x] **S05-T7 `[core]` Chunker fixes.**
   - Covers `{#id}` anchors, HTML tables with a blank line in a cell, the scanner re-check, and the oversize-block decision.
+  - Done when: 0 heading paths contain `{#`; the RBAC page's 30 cut HTML tables are whole; the scanner matches markdown-it, or each difference is explained. (S05-R3 sitting: also cut oversize lists and tables, drop HTML comment blocks, and the "Downloads for" rule on every source.)
   - Deps: T1–T6.
-- [ ] **S05-T8 `[commodity]` Ingestion report with a fingerprint.**
+- [x] **S05-T8 `[commodity]` Ingestion report with a fingerprint.**
   - Done when: two from-empty ingests print identical reports.
   - Deps: T1–T6.
-- [ ] **S05-T9 `[commodity]` Embed the full corpus.**
+- [x] **S05-T9 `[commodity]` Embed the full corpus.**
   - Done when: a second run makes 0 requests.
   - Deps: T7, T8.
 
-### ⬜ S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
+### 🟨 S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
 
 - **Outcome:** a frozen golden set v0 (30–50 questions, human-verified) and a committed dense-baseline row in the ablation table.
 - **Exit:** `make eval-smoke` and `make eval` work; `docs/evaluation.md` is written; thresholds are recorded in the product spec.
@@ -325,7 +326,7 @@ ADRs are decided when their slice starts, not earlier.
 - **Playwright end-to-end tests + screenshots for the S17 Next.js UI.** Reason: verify UI behavior once a UI exists. Evaluate in the S17 sitting. (Workflow review 2026-10-04.)
 - **Cloud runs test (`claude --cloud`).** Reason: lets the laptop stay off on run nights. Check Docker Postgres, the corpus cache, and that the merge gate still holds. Trigger: keeping the laptop on becomes a burden. (Workflow review 2026-10-04.)
 - **Make R3 race-free before a second writer exists (S14 at the latest).** Reason: R3's cross-table part (no alias equals a `canonical_id`) is a check-then-insert in `create_document` and `add_alias`. Two concurrent writers can each miss the other's uncommitted row and both commit the same identifier. Options: a transaction-level advisory lock in both functions, or one shared identifiers table with a single UNIQUE. Safe today: one writer. Same class: two `make embed` runs at once both pay for the same texts, and the second aborts on the primary key. (Found by Greptile on PRs #19, #20 and #22.)
-- **S14: keep past `head` SHAs in the lock.** (Moved from S05 in the S05 sitting, 2026-10-07: it matters only when the lock is refreshed; S05 keeps the 2026-09-30 lock.) Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.)
+- **S14: keep past `head` SHAs in the lock.** (Moved from S05 in the S05 sitting, 2026-10-07: it matters only when the lock is refreshed; S05 keeps the 2026-09-30 lock.) Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.) The 18 CHANGELOG versions too: a lock refresh re-dates them and gives a history mismatch (S05-R2, PR #29 parked 17).
 - **S06 sitting (S04-R2 question 1; moved in the S05 sitting): keep the stop reason when the model is cut off.** Reason: if the model is cut off or refuses partway through its JSON, `messages.parse` raises before it returns, so `GenerationError` has no stop reason and no token usage. The ask still fails cleanly (one stderr line, exit 1). Options: keep it for S04, or switch to `messages.create` with the same `output_config` and validate `ModelAnswer` ourselves on `end_turn`, which keeps both on every path but amends ADR-006 D2. Decide before the S06 baseline. (PR #24 question 1; Greptile on PR #24.)
 - **S06: store the question vectors for eval runs.** Reason: Voyage's question vector varies between calls; a second retrieval for the same question moved distances by up to 0.0044 and swapped near-ties (seed #6 rank 10, seed #9 ranks 8–9). Fix the vectors, or repeat runs, before trusting small ablation deltas. (S04-T8, PR #25.)
 - **S09: near-duplicate crowding in the top 10.** Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)

@@ -28,7 +28,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 |---|---|
 | **Ablation** | Measuring the system with and without one component, to prove that component's contribution. |
 | **Bi-encoder** | Embeds query and document separately, then compares the vectors. Fast; used for dense retrieval. |
-| **Chunking (structure-aware)** | Splitting documents into retrievable pieces at their headings, so each chunk is one section with its heading path. Code blocks and tables are never cut (S04). |
+| **Chunking (structure-aware)** | Splitting documents into retrievable pieces at their headings, so each chunk is one section with its heading path. Code blocks and HTML tables are never cut; an oversize list or pipe table is cut between items or rows (S05). |
 | **Citation validation** | A plain-code check that every chunk id the model cites was retrieved for this question. One bad id rejects the answer (ADR-006). |
 | **Cosine distance** | 1 − the cosine similarity of two vectors: 0 = same direction, 1 = unrelated, 2 = opposite. pgvector's `<=>` operator. |
 | **Cross-encoder (reranker)** | Scores a query and document *together*. More accurate but slower; used on a small candidate set. |
@@ -57,6 +57,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Database driver** | The library that speaks Postgres's network protocol (here psycopg 3). Alembic and SQLAlchemy sit on top of it. |
 | **Editable install** | Installing a package as a link to its source directory, so code edits take effect without reinstalling. `uv sync` does this for the project. |
 | **Exclusion constraint** | A Postgres constraint that rejects a row if it "collides" with an existing one under given operators. Here: same document (`=`) and overlapping date ranges (`&&`) means no two versions are live at once. Needs the `btree_gist` extension to compare plain columns with `=`. |
+| **Fingerprint (of a database)** | One hash over every stored value except generated ids, from sorted rows, so two databases with equal fingerprints hold identical data however they were built. S05 uses it to prove re-ingestion is reproducible (AC8). |
 | **Half-open interval `[from, until)`** | Includes its start, excludes its end. Back-to-back windows then touch without overlapping, so an instant belongs to exactly one version. Release windows are inclusive `[from, until]` instead. |
 | **Healthcheck** | A command Docker runs repeatedly inside a container to decide whether it is healthy (here, `pg_isready`). `docker compose up --wait` blocks on it. |
 | **Idempotent** | Running an operation twice has the same effect as running it once. This is required for ingestion and queue workers. |

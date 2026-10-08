@@ -1,9 +1,9 @@
 # S05: Stage 1 subset ingestion
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 2 (the full manifest; S04 was the narrowed first pass)
 - **Started:** 2026-10-07
-- **Finished:**
+- **Finished:** 2026-10-08
 
 ## Outcome
 
@@ -29,13 +29,13 @@ Every chunk text then has a `voyage-4-large` vector.
 
 ## Exit checks
 
-- [ ] `make ingest` from an empty database, then again: the second run adds 0 documents, versions and chunks.
-- [ ] Two from-empty ingests print identical reports, fingerprints included (AC8, first part).
-- [ ] Per-source document and version counts match the spike (`docs/research/corpus-spike-report.md`, table B) within an explained tolerance: each difference has a stated cause.
-- [ ] The 6 known docs and release-record moves (spike §4 E and G) are one document each, with the later URL as an alias.
-- [ ] `make embed` gives every distinct chunk text a `voyage-4-large` vector, and a second run makes 0 requests.
-- [ ] `make test-int` is green with the dev database fully ingested and embedded.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] `make ingest` from an empty database, then again: the second run adds 0 documents, versions and chunks. *(R3 bundle check: 1,168 / 2,882 / 48,273 new, then 0 / 0 / 0, exit 0.)*
+- [x] Two from-empty ingests print identical reports, fingerprints included (AC8, first part). *(T8: byte-identical; a third from-empty run in the bundle check matches too; `sha256:458effad…`, reproduced by an independent script.)*
+- [x] Per-source document and version counts match the spike (`docs/research/corpus-spike-report.md`, table B) within an explained tolerance: each difference has a stated cause. *(Retro, "Shipped": one row per source.)*
+- [x] The 6 known docs and release-record moves (spike §4 E and G) are one document each, with the later URL as an alias. *(R3 bundle check SQL; first shown in PR #27.)*
+- [x] `make embed` gives every distinct chunk text a `voyage-4-large` vector, and a second run makes 0 requests. *(T9: 21,552 texts, 0 without a vector; the second run: `Requests: 0`.)*
+- [x] `make test-int` is green with the dev database fully ingested and embedded. *(R3 bundle check: 93 passed.)*
+- [x] Retro done; slice brief written; backlog updated. *(This retro.)*
 
 ## Scope
 
@@ -151,16 +151,17 @@ These mirror `docs/backlog.md`; details live here. Runs are planned one at a tim
   - Strip Hugo `{#id}` anchors from heading paths.
   - Add scanner rule 5: an HTML table with a blank line inside a cell isn't cut.
   - Re-check the scanner against markdown-it on the S05 sources.
+  - Added in the R3 sitting: cut oversize lists and pipe tables (decision 1), drop HTML comment blocks (rule 6, decision 2), the "Downloads for" rule on every source (decision 4).
 - **Done when:**
   - 0 heading paths contain `{#`.
-  - The RBAC page's 12 cut HTML tables are whole.
+  - The RBAC page's 30 cut HTML tables are whole: 2 in each of its 15 versions. (Corrected in the R3 sitting: 12 was S04's scope.)
   - The scanner's headings match markdown-it's on every S05 source, or each difference is listed and explained.
 - **Notes / pointers:**
   - S05 rebuilds the database from empty, so no re-chunk machinery is needed; vectors are reused by content hash.
   - From the triaged backlog items:
     - **Rule 5:** 12 of 78 HTML tables in the S04 scope (all on the RBAC page) are cut into 24 chunks. Recheck with it: a tab-indented line would close an indented fence under rule 3 (0 cases in S04).
     - **Anchors:** 1,754 of S04's 4,967 chunks have an anchor in `heading_path`. S06 labels relevance by heading path. The parked item suggested keeping the id for citation URL fragments; where it goes is an R3 decision.
-  - **Decide in the R3 sitting: oversize blocks** (measured in the R1 sitting with today's chunker).
+  - **Oversize blocks, decided in the R3 sitting (decision 1)** (measured in the R1 sitting with today's chunker; full-corpus numbers in run S05-R3's contract).
     - Lists without blank lines and pipe tables count as one block, and a block is never cut. So they become single chunks far over 512 tokens.
     - The pre-1.29 feature-gates page reaches **11,219 tokens** in one chunk.
     - R1 sources have 33 chunks over 2,000 tokens.
@@ -171,10 +172,10 @@ These mirror `docs/backlog.md`; details live here. Runs are planned one at a tim
 
 ### S05-T8: Ingestion report `[commodity]`
 
-- **Goal:** `make ingest-report` prints:
+- **Goal:** `make ingest` ends with a report, and `make ingest-report` prints its database part (R3 sitting, decision 7):
   - documents, versions, chunks and distinct texts, per source type and per release
-  - skipped and failed files with reasons
-  - a fingerprint (one hash over every document's `canonical_id`, version hashes and windows) to compare two ingests
+  - skipped and failed files with reasons (`make ingest` only)
+  - a fingerprint over every stored value except generated ids, to compare two ingests (R3 sitting, decision 8; was "`canonical_id`, version hashes and windows")
 - **Done when:** two from-empty ingests print identical reports.
 - **Notes / pointers:** the parked "clearer failures" items:
   - each failure line carries its snapshot label
@@ -184,7 +185,7 @@ These mirror `docs/backlog.md`; details live here. Runs are planned one at a tim
 
 ### S05-T9: Embed the full corpus `[commodity]`
 
-- **Goal:** `make embed` over the full corpus with `voyage-4-large`, with the per-run token cap raised to fit (about 5.5–6.5M estimated tokens, inside the free tier).
+- **Goal:** `make embed` over the full corpus with `voyage-4-large`, with the per-run token cap raised to fit (about 5.5–6.5M estimated tokens, inside the free tier). The cap is raised for that one command only (R3 sitting, decision 9).
 - **Done when:** every distinct chunk text has a vector, a second run makes 0 requests, and Voyage's token count is recorded against the chars ÷ 4 estimate.
 - **Deps:** T7, T8.
 
@@ -212,9 +213,7 @@ These mirror `docs/backlog.md`; details live here. Runs are planned one at a tim
   - decision 3: the full embed is S05's last task
 - **R1 sitting (2026-10-07), done:** see run S05-R1 below. The full scope is Claude's call; the from-empty reset is decision 2; the rename rules are Claude's calls within ADR-002 D4; feature-gate stages in the chunk text are decision 1.
 - **R2 sitting (2026-10-07), done:** see run S05-R2 below. Decisions 1–9; decision 2 amends ADR-002 D4 (devil's advocate run), decisions 1 and 3 add to ADR-002 D3 and D4.
-- **R3 sitting:**
-  - where a stripped anchor goes
-  - the embed cap
+- **R3 sitting (2026-10-07), done:** see run S05-R3 below. Decisions 1–9 and the PR plan; decision 6 changes the ADR README's rule for changed sub-decisions (no ADR changes).
 - No new ADR is expected: ADR-002 and ADR-003 already decide the rules. A rule that turns out wrong on real data is an ADR-002 amendment, decided in a sitting (as R2's decisions 1–3 did).
 
 ## Run contracts
@@ -471,7 +470,7 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 
 ### Run S05-R2: date-scoped sources and CHANGELOG
 
-- **Status:** PR open
+- **Status:** merged (PR #29)
 - **Branch:** `s05-r2-date-scoped`
 - **Tasks, in this order:** S05-T4 (KEPs and governance docs) → S05-T5 (blog posts) → S05-T6 (CHANGELOG).
 - **Closes the slice:** no. T7–T9 remain (R3, after its own sitting).
@@ -488,14 +487,14 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 |---|---|---|---|
 | S1 | Triage of R1's 17 parked items and T4's 2 edge cases: P2 (a CHANGELOG snapshot of its own) → T6; P4 (delete `test_spike_renames.py`) → retro; P9 (the absent-path log) → T8; P11 (a wrong docstring), E1 (a re-created KEP), E2 (a close-only re-ingest) → T4; P13 (3 R1 contract lines) corrected in this commit; the other 11 dropped (0 cases on real data, or settled by convention) | Fixing each now | Each dropped item has 0 cases on real data or is a convention already in force |
 | S2 | Bundle T4 → T5 → T6 | — | All three depend only on T1; backlog order |
-| 1 | A date-scoped version whose start is before 1.20's release date keeps its true `valid_from_date`; its `valid_from_release` is 20, the scope's first release | Clamping the date too; adding releases 1.0–1.19 | The date window is authoritative for date-scoped sources (ADR-002 D3). 67 documents (48 KEPs, 19 governance docs) start before 2020-12-08, the earliest 2019-06-29; today's code raises on all of them |
+| 1 | A date-scoped version whose start is before 1.20's release date keeps its true `valid_from_date`; its `valid_from_release` is 20, the scope's first release | Clamping the date too; adding releases 1.0–1.19 | The date window is authoritative for date-scoped sources (ADR-002 D3). 67 documents (48 KEPs, 19 governance docs) start before 2020-12-08, the earliest KEP on 2019-06-29 and the earliest governance doc on 2018-12-05; today's code raises on all of them (governance date corrected in the R3 sitting) |
 | 2 | **ADR-002 D4 amendment.** Governance moves: R1's chain builder on the date snapshots, with the links same path, then git similarity ≥ 50% between adjacent snapshots. The first path is the id; later paths are aliases | `git log --follow` (the ADR's wording); no rename handling | Finds all 8 real moves (sig-release PR #2984, 1.36 → 1.37, 66–100%); reuses tested code. Devil's advocate run: its concession condition (the per-commit log shows the same 8 pairs and no edit before a move) was checked and holds: the 8 moves, 4 deletes and 2 adds are one commit |
 | 3 | The 25 old single-file KEPs (1.20 only) are separate documents with `kep:<sig folder>/<file name>`, e.g. `kep:sig-auth/0014-dynamic-audit-configuration` | `kep:<file name>`; linking to the later folder by title; skipping them | Keeps the S02 known limit; unique by construction; can't be read as a KEP number. Linking by title (24 of 25 match exactly) → Proposed additions |
 | 4 | A governance doc's title is the version's first `# ` heading with HTML comments removed, else its repo path. A CHANGELOG's title is `CHANGELOG-1.R` | The path always; titles in the manifest | 152 of 154 governance versions have a `# ` heading, always their first heading; the 2 without: `artifacts.md` (4 versions), `platforms/guide.md` (a "moved" stub) |
 | 5 | Blog histories follow git renames in one first-parent log of `_posts/` (the spike's method); the permalink pattern lives in the manifest | Grouping commits by URL; reading `hugo.toml` at ingest | The spike measured this method (785 histories, 417 in scope); all 69 site-config versions since 1.20 have the same permalink |
 | 6 | A CHANGELOG version's `valid_from_date` is the kubernetes lock head commit's committer time, 2026-09-30T01:30:57Z | The lock's `fetched_at`; a deeper clone | A git fact, reproducible from the clone; ADR-002 D1/D3 (no history before the first ingestion) |
 | 7 | `close_version` refuses to change a release `until` that is already set (ValueError); passing the same value is fine. R10 becomes "A window is closed once. Only an open version can be closed, a release `until` set at insert never changes, and nothing reopens or moves it" | Silently keeping it; a trigger; no change | One SQL condition where R10 already lives; the S03 review finding |
-| 8 | CHANGELOG chunks leave out the text before the first heading (the generated TOC) and every section under a `## Downloads for …` heading | Only the sha512 rows; only the rows, keeping the TOC | All 8,477 sha512 rows sit inside those sections; they are 42% of the 7.74M CHANGELOG characters, and the TOC is 3% |
+| 8 | CHANGELOG chunks leave out the text before the first heading (the generated TOC) and every section under a `## Downloads for …` heading | Only the sha512 rows; only the rows, keeping the TOC | All 8,397 sha512 rows sit inside those sections (corrected in the R3 sitting; was 8,477); they are 42% of the 7.74M CHANGELOG characters, and the TOC is 3% |
 | 9 | The 50% rename threshold stays a named constant that cites ADR-002 D4. Rule: a value an ADR fixes is a constant that cites its ADR; tuning knobs stay in settings | A setting; the manifest | It's an identity rule: changing it changes `canonical_id`s, which needs an ADR, not an env var |
 | 10 | The verification plan below | — | — |
 | 11 | **1 PR**, an explicit exception to the ~800-line size alarm (estimate ~2,000–2,600 reviewable lines); the run doesn't split it | 2 stacked PRs, split after T4 (recommended) | The developer's call in the sitting |
@@ -547,7 +546,7 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 **Blog rules (ADR-002 D2–D4, decision 5):**
 - **History:** one entry per first-parent commit on website `main` (up to the lock head) touching a post's `.md` file, following renames (`git log --first-parent --find-renames --raw -z`). An entry's state is the file's content at that commit, or none once deleted.
 - **A version** is an entry whose normalized hash (the `blog_post` strip list) differs from the previous entry's.
-- **Due time** of a state: none if it's deleted or `draft: true`; else `publishDate`, else the page date (front-matter `date`, else the filename's `YYYY-MM-DD-`, else `lastmod`), else the commit time. A date without an offset is UTC; one with an offset keeps it; `+0000` (no colon) is parsed too.
+- **Due time** of a state: none if it's deleted or `draft: true`; else `publishDate`, else the page date (front-matter `date`, else the filename's `YYYY-MM-DD-`, else `publishDate`, else `lastmod`; `publishDate` added in the R3 sitting, as built), else the commit time. A date without an offset is UTC; one with an offset keeps it; `+0000` (no colon) is parsed too.
 - **Publication** is the first moment Hugo renders the post: for each entry in order, max(commit time, due time), if that is before the next entry's commit time (or it's the last entry). A post never published isn't stored.
 - **Stored versions:** the version live at publication, from the publication moment, then every later version, each from its commit time. A version superseded before publication isn't stored. After publication, a deletion or `draft: true` closes the open version at that commit; a later rendered version opens a new one.
 - **URL** (as `spikes/blog_identity.py`'s `hugo_url`): the front-matter `url:` (tokens allowed), else the permalink. `:year`/`:month`/`:day` come from the page date as written; `:slug` is the front-matter `slug`, else the filename's slug (only when the date came from the filename), else the title through the urlize approximation (lowercase, punctuation dropped, spaces to hyphens); `:section` is `blog`.
@@ -571,7 +570,7 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 
 - **T4:**
   - 3 KEP numbers have 2 folder names, never present together (1669, 3257, 4444): one document each.
-  - KEPs that leave the 3 SIG folders close as removed: 506 (`[21–25]`), 2004 and 2030 (`[20–21]`).
+  - KEPs that leave the 3 SIG folders close as removed: 506 (`[20,21] [21,25]`: its first merge, 2020-12-16, is after 1.20's release; corrected in the R3 sitting), 2004 and 2030 (`[20–21]`).
   - KEP-1205's `kep.yaml` at 1.20 holds two YAML documents: only the first is read (already in S04's parser).
   - Skipped with a reason: the 7 symlinks; `keps/sig-network/README.md` (an index, not a KEP); files in a KEP folder other than `README.md` and `kep.yaml` (e.g. `images/authorizer-chain-computation.md`) are ignored.
   - Governance: the R100 move (`baseimage-exception-list.md`) adds no version; its open version keeps the old path and snapshot. Chains continue from 1.37 to `head` (`branch-creation.md`, `release-cuts.md`: 2 edits). `go.md` → `go-updates.md` at 66% links.
@@ -584,7 +583,7 @@ Use stricter validation for fields containing IP addresses and CIDR values.
   - The VAP GA post (`------`): stored. `k8s-book-club`'s fix commit (`------` → `---` plus rewrapped lines) may add no version.
   - 8 dates with `+0000`-style offsets; 1 with milliseconds.
   - 3 URLs change after publication → aliases: `introducing-headlamp-plugin-for-karpenter` (09/23 → 10/06), `ingress-nginx-retirement` (11/12 → 11/11), `ccm-new-metric-route-sync-total` (02/26 → 05/15; its front-matter alias equals its id and is skipped).
-  - A post re-dated into the future after publication (ccm) keeps the post's first publication; its later versions start at their commit times (a known approximation).
+  - A post re-dated after publication keeps the post's first publication; its later versions start at their commit times (a known approximation). The ccm post's new date is 13.5 min before its commit, so not in the future; the future-date case is covered by a hand-built test (corrected in the R3 sitting).
 - **T6:**
   - Stray closing fences in `CHANGELOG-1.22.md` (line 3085) and `CHANGELOG-1.36.md` (line 1602): scanner rule 3; all 371 sections must still appear.
   - `CHANGELOG-1.38.md` exists at the head but is out of range: not read.
@@ -674,10 +673,252 @@ Expected values were computed in the sitting with the spike's normalizer (`spike
 
 **Paid calls allowed:** none. No Voyage and no Anthropic calls, and `make embed` doesn't run.
 
+### Run S05-R3: final chunk text, ingestion report, full embed
+
+- **Status:** PR open
+- **Branch:** `s05-r3-final-corpus`
+- **Tasks, in this order:** S05-T7 (chunker fixes) → S05-T8 (ingestion report) → S05-T9 (embed the full corpus) → the slice retro (`/slice-retro`, the run's last commit).
+- **Closes the slice:** yes.
+- **Goal (plain words):**
+  - Make the chunk text final: section names without `{#id}` anchors, no hidden HTML comments, no download-hash tables, HTML tables whole, and oversize lists and tables cut between items or rows.
+  - Prove that two ingests from empty store identical data, with a report and a fingerprint.
+  - Embed every distinct chunk text once with `voyage-4-large`.
+  - Close S05 with its retro.
+
+#### Decisions (made in the sitting, 2026-10-07)
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| S1 | Triage of R2's 17 parked items (PR #29): 1–5 corrected in this commit (R2 contract wordings); 6 (README reset note), 12 (blog error labels; the "dated before" count) and 16 (331 skip lines) → T8; 7 (domain-model limit wording) → retro; 17 (a lock refresh re-dates the CHANGELOGs) → the S14 "keep past `head` SHAs" entry, in this commit; 8–11 and 13–15 dropped | Fixing each now | The dropped items have 0 real cases, still fail loudly, or are refactors. R2's P4 (delete `test_spike_renames.py`) stays with the retro |
+| S2 | Bundle T7 → T8 → T9, then the retro | — | The last 3 tasks; T8's fingerprint covers T7's chunk texts, and T9 embeds the texts T8 counts |
+| 1 | Cut an oversize list between items and an oversize pipe table between rows, repeating the header row; code blocks and HTML tables stay whole | Keep blocks whole; cut without repeating the header; also cut code blocks by lines | 433 texts are over 1,024 tokens (max 15,735) and hold 1.01M of 5.80M tokens; a simulation in the sitting fixes ~363 of them and leaves at most 10 lists or tables over 1,024 (single long items or rows). A row keeps its column names. Cut code misleads |
+| 2 | Scanner rule 6: an HTML comment block is dropped from chunk text | Keep comments; park as an S06 experiment | 10.9% of KEP lines (31,841) are hidden template guidance; 427 KEP texts are mostly comment; 260 fake headings in 13 KEPs. Changing chunk text after S06 means relabeling and re-embedding |
+| 3 | A stripped `{#id}` anchor is dropped: not in `heading_path`, the chunk header or a governance title | A new `anchors` column; keeping it in `heading_path` and stripping only in the header | No code reads anchors (the section name is display-only); a migration for an unused feature; one section name, not two. Recoverable from git (snapshot + path) |
+| 4 | The "Downloads for" rule (S05-R2 decision 8) applies to every source; the table-of-contents rule stays CHANGELOG-only | A special case for the 1.20 notes page; accepting the 32 chunks | `web:/docs/setup/release/notes/` is the only other document with such headings, and its 32 chunks are the only sha512 chunks left (R2 Question 1) |
+| 5 | Computed governance and CHANGELOG titles stay in each version's `metadata.title` | A `title` column; computing titles on read | Every version of every source already has `metadata.title` (2,882 of 2,882); titles change between versions for 30 documents; one read path (R2 Question 2) |
+| 6 | The ADR README's rule matches practice: one sub-decision may change in place when decided in a sitting with its evidence, and is logged in a dated "Changes" table (Where / Was / Now / Evidence); a superseding ADR only when the main decision changes | Superseding ADRs; leaving the rule and practice apart | S02 and S05-R2 changed ADR-002/003 that way; Greptile flagged the mismatch (R2 Question 3). Edited in this commit; no ADR changes |
+| 7 | `make ingest` ends with the full report; `make ingest-report` prints its database part (counts, chunk id range, fingerprint) without reading git | Storing skips in a new table; a dry re-read of git | Skips exist only during a run; no schema change |
+| 8 | The fingerprint covers every stored value except generated ids; the report also prints the chunk id range | The slice doc's draft (ids, version hashes, windows); including generated ids | One definition of "identical" (AC8) that covers chunk text, claims, metadata and snapshots, and holds however the database was built |
+| 9 | T9 runs in the run as `EMBED_MAX_TOKENS_PER_RUN=6000000 make embed`; the default stays 2,000,000 | Raising the default; T9 by hand in the morning | The guard stays tight for later runs; a corpus over 6M parks instead of overspending. Voyage's free tier: 200M tokens, 0.48M used in S04 |
+| 10 | The verification plan below | — | — |
+| 11 | **1 PR**, with the retro as its last commit; an explicit exception to the ~800-line size alarm | 2 stacked PRs split after T7 (recommended); a separate retro PR | The developer's call in the sitting |
+
+No ADR-level decision, so no devil's advocate.
+
+**Claude's calls (overrulable):**
+- **Heading rule 1:** a tab after the `#`s also makes a heading, as in CommonMark (`###<tab>Keep configuration simple and minimal`, 1 blog version, 4 headings).
+- **Heading text:** the scanner strips a trailing anchor (`\s*\{#[^}]*\}\s*$`) and inline HTML comments (`<!--.*?-->`, e.g. `Branch Manager Handbook <!-- omit in toc -->`, 7 distinct headings) from a heading's text, then trims it. Section names, chunk headers and governance titles all get it. (The inline-comment part was added after the read-back, in the same spirit as decisions 2 and 3.)
+- **Rules 5 and 6:** outside a code block, a line starting (after at most 3 spaces) with `<table` (any case) opens a block that runs to the first line containing `</table>`; one starting with `<!--` opens a block that runs to the first line containing `-->` (the opening line itself counts). Either opener also ends a paragraph. A table block is kept whole; a comment block makes no text and no heading. An unclosed one runs to the end of the body (0 cases outside code). A comment inside a code block, and a one-line comment inside a paragraph, are untouched.
+- **List cuts (decision 1):**
+  - Only a paragraph block over `chunk_max_tokens` is cut. Code blocks, HTML tables and blocks within the limit are untouched.
+  - An item starts at a line matching `^( *)([-*+]|\d{1,9}[.)])[ \t]` whose indent equals the smallest such indent in the block. Nested items and continuation lines stay with their item; lines before the first item stay with the first piece.
+  - The pieces become blocks for the existing packer (greedy, up to `chunk_max_tokens`). A single item over the limit is a piece on its own.
+- **Table cuts (decision 1):** a pipe table is a paragraph block whose 2nd line is a delimiter row (only `|`, `-`, `:` and spaces, with at least one `|` and one `-`). Its rows are cut between lines; every piece after the first starts with the block's first 2 lines. A table inside a list is cut as a list.
+- **Scanner re-check:** `spikes/scanner_recheck.py` (new; a sitting tool, never imported by `src/`), run with `uv run --with markdown-it-py==3.0.0 python -I spikes/scanner_recheck.py`. markdown-it-py is not a project dependency; it's already in uv's cache. It compares ATX headings per stored file after stripping anchors and inline comments on both sides, classifies each difference by cause, and checks every stored chunk body for HTML comment blocks with markdown-it.
+- **Report layout:** the reads live in `db/report.py` (new; the only SQL); the fingerprint and the formatting are pure functions in `ingestion/report.py` (new). `make ingest-report` is a new Makefile target.
+- **T9:** no code change expected. README gains the one-off cap override; `.env.example` is unchanged.
+- **Docs:** each task updates `docs/domain-model.md` (chunking rules; the fingerprint). `docs/architecture.md` is updated once, at the end of the run.
+
+#### Pinned formats
+
+**A pipe table cut in two** (decision 1), from the real 1.28 feature-gates page (website `release-1.28`, `feature-gates.md` line 56). The second piece starts with the same 2 header lines; there is no blank line between them and the rows:
+
+```
+| Feature | Default | Stage | Since | Until |
+|---------|---------|-------|-------|-------|
+| `APIPriorityAndFairness` | `false` | Alpha | 1.18 | 1.19 |
+…
+```
+
+**A list cut** (decision 1). Cut points are marked `▶`; nothing else is a cut point:
+
+```
+  continuation of the previous item      ← stays with the first piece
+▶- Item A
+  more text of A
+  - nested item of A                     ← stays with A
+▶- Item B
+▶1. Item C (numbered lists alike)
+```
+
+**Fingerprint** (decision 8):
+- One row per stored record, each a compact JSON array, `json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`:
+  - `["document", canonical_id, source_type]`
+  - `["alias", canonical_id, alias]`
+  - `["version", canonical_id, content_hash, source_path, snapshot_repo, snapshot_ref, snapshot_sha, valid_from_release, valid_until_release, valid_from_date, valid_until_date, claimed_status, claimed_stage, metadata]`
+  - `["chunk", canonical_id, version valid_from_date, ordinal, heading_path, content_hash]`
+- Dates are UTC ISO 8601 strings; a null is JSON `null`; `metadata` is the JSON object (its keys sorted by `sort_keys`).
+- A chunk names its version by `canonical_id` and `valid_from_date`, unique per document (the date-window exclusion constraint).
+- The rows are sorted as strings and joined with `\n`; the fingerprint is the sha256 hex of their UTF-8 bytes, printed as `Fingerprint: sha256:<hex>`. An empty database gives the sha256 of the empty string.
+
+**Skip lines** (T8): one line per (file, reason), listing the snapshots in release order, with consecutive releases as a range: `keps/sig-release/OWNERS: not a .md/.yaml file (1.20–1.37, head)`. A failure line starts with its snapshot label (a blog failure: the commit's short SHA, not "head").
+
+#### Handoffs between tasks
+
+- **T7 → T8:** the final chunk texts, after `make reset-corpus && make ingest`. Document and version counts are unchanged from R2.
+- **T8 → T9:** the distinct-text count and the fingerprint. T9 must not change the fingerprint (it writes only `embeddings`).
+- **T9 → retro:** the slice's exit checks, all measured.
+
+#### Edge cases (from the pre-mortem; all must be handled or tested)
+
+- **T7:**
+  - Version hashes cover the file, not the chunks, so a plain re-ingest keeps the old chunks. Every demo starts from `make reset-corpus`.
+  - 71 CHANGELOG texts open with an indented continuation line, not a marker: it stays with the first piece.
+  - `---` (a thematic break) isn't an item: a marker must be followed by a space or tab.
+  - The gate stages YAML (`- stage: alpha` …) is never over the limit, so it's never cut.
+  - At most 10 list or table texts stay over 1,024 tokens, each a single item or row; code blocks and HTML tables stay whole (about 70 texts; max 15,735, `artifacts.md`'s tar listing).
+  - KEP `<!-- toc -->` and `<!-- /toc -->` lines are one-line comment blocks: dropped; the visible table of contents between them stays.
+  - A comment block whose closing line has text after `-->`: the whole line is dropped (CommonMark).
+  - CHANGELOG behaviour is unchanged: 18 documents, 371 patch sections, 0 sha512 chunks; T6's tests stay green.
+  - Earlier tests that pin heading paths with `{#…}` or texts with comments are updated to the new rules; that's in scope. Any other break of an earlier test parks.
+- **T8:**
+  - Dates print in UTC, `metadata` with sorted keys, chunks by ordinal, and every list is sorted, so the report is byte-identical.
+  - "no text to chunk" (2) is about versions, not files: its lines keep the version's label.
+  - A manifest path absent from every release in range is an error (0 on real data; unit test on a hand-built scope). One absent from some releases stays an INFO line.
+  - The blog's out-of-scope log line splits "dated before 1.20" from "no date" (R2 parked 12).
+  - `make ingest-report` on an empty database prints zeros and the empty fingerprint.
+- **T9:**
+  - The estimate is printed before any request; above 6,000,000 the command refuses, and the task parks. The cap is not raised further.
+  - An HTTP 429 or 5xx after 3 retries stops `make embed`; stored batches stay, and a re-run sends only what's missing. The same failure 3 times → park (no-progress rule).
+  - Orphan deletion removes the S04 vectors whose texts T7 changed; the count is reported.
+  - The largest text (15,735 estimated tokens) is sent as written; whether Voyage truncates it isn't visible (Not verified).
+- **SQL:** no string-built SQL (ADR-005); the reviewer checks by hand.
+- **Network:** ingestion reads blobs by id only, as in R1 and R2. The only network calls are Voyage's (T9) and uv's cache for markdown-it-py (already cached).
+
+#### Files in scope
+
+- **T7:** `src/orgknow/ingestion/chunker.py`; `spikes/scanner_recheck.py` (new); `docs/domain-model.md` (chunking rules); `tests/unit/test_chunker.py` and any test pinning an anchor, a comment or a Downloads section; `tests/fixtures/` (small real excerpts: the 1.28 feature-gates table, a `CHANGELOG-1.27` list around line 2444, KEP-4317's comment block at `enhancements` head lines 932–992, the RBAC table at website head lines 645–698, the blog post `2025-11-25-kubernetes-configuration-best-practices` at `5b9bb69f`).
+- **T8:** `src/orgknow/db/report.py` (new), `src/orgknow/ingestion/report.py` (new), `ingest.py` (the report at the end; skips as records; failure labels), `blog.py` (the error label and the out-of-scope counts), `manifest.py` (the absent-path error), `Makefile` (`ingest-report`), `README.md` (the command; R2 parked 6: any chunker change needs `make reset-corpus`), `docs/domain-model.md` (the fingerprint), tests.
+- **T9:** `README.md` (the one-off cap override). No `src/` change expected; if one is needed, it parks.
+- **Retro:** this slice doc (Retro, Status, Finished), `docs/backlog.md` (S05 ✅, S06 🟨), `docs/learning/S05-stage1-subset-ingestion.md` (new), `docs/architecture.md`, `docs/domain-model.md` (R2 parked 7), `docs/learning/glossary.md` if needed, delete `tests/unit/test_spike_renames.py` (R2's P4).
+- **Every task:** `docs/backlog.md` (tick), this contract's Status line.
+- **Out of scope:**
+  - any retrieval or generation change; `orgknow ask`
+  - migrations
+  - the manifest, the lock and the strip lists
+  - `eval/`
+
+#### Proof map
+
+Expected values were measured in the sitting with SQL, git, and throwaway scripts (markdown-it-py as the referee, and a separate simulation of decision 1), never with the new code.
+
+| Task | Done when / rule | Proof | Source of expected values |
+|---|---|---|---|
+| T7 | **0 heading paths contain `{#` (done when)** | Unit test (a spaced anchor and `…(experimental){#status-supported-features}`) + demo SQL | 1,269 texts / 446 distinct headings → 0 (SQL in the sitting) |
+| T7 | **RBAC tables whole (done when)** | Unit test on the real RBAC excerpt (3 blank lines inside) + demo SQL: chunks with `<table` and no `</table>` | 1 per version × 15 → 0; each version has 4 tables, 2 cut (git in the sitting) |
+| T7 | **Scanner vs markdown-it (done when)** | `spikes/scanner_recheck.py` on all 2,882 stored files | Before: 822 heading differences in 80 files: 486 Hugo highlight (12 files), 72 list-item headings (18 files), 260 HTML comments (49 files), 4 tab (1 file). After: only the first two causes; comment and tab differences 0. Any other difference is listed |
+| T7 | List and table cuts (decision 1) | Hand-written unit tests on the CHANGELOG-1.27 and 1.28 feature-gates excerpts (a small `max_tokens` forces cuts), as pinned above | Pinned formats |
+| T7 | Oversize after the cuts | Demo SQL: distinct texts over 1,024 estimated tokens, by largest-block kind | 433 → about 79 (± 10); lists and tables at most 10, each a single item or row; max 15,735 (simulation in the sitting) |
+| T7 | Comments dropped (decision 2) | Unit test on the KEP-4317 excerpt (no `Alpha` section, no comment text) + the re-check's markdown-it pass over every stored chunk body | 0 comment blocks |
+| T7 | Tab headings | Unit test on the real blog lines | 4 headings found |
+| T7 | Downloads everywhere (decision 4) | R2's all-chunks query: `SELECT count(*) FROM chunks WHERE text ~ '[0-9a-f]{128}'` | 32 → 0 |
+| T7 | Versions untouched | The counts query | blog 417 / 924 · docs pages 64 / 405 · feature gates 491 / 868 · governance 29 / 140 · KEPs 141 / 472 · release records 26 / 73 · 21 aliases (R2) |
+| T8 | **Two from-empty ingests print identical reports (done when)** | `make reset-corpus && make ingest > a.txt`, twice; `diff a.txt b.txt` | Empty diff (stdout only; timing is outside it) |
+| T8 | Fingerprint (decision 8) | Hand-built unit tests: rows in any order → same hash; one changed value per kind (a document's source type, an alias, a version's `valid_until_date`, a chunk's content hash, a metadata value) → a different hash; metadata keys in another order → same hash; empty → sha256 of `""` | Hand-written |
+| T8 | Skips listed once | Unit test (one file skipped at 3 snapshots → 1 line, `(1.20–1.22)`) + demo | 331 skip lines → 26 lines (awk on the log in the sitting) |
+| T8 | Per-release counts | Demo | Docs pages valid at 1.20 → 1.37: 29, 30, 35, 36, 42, 48, 51, 50, 52, 52, 53, 54, 55, 57, 57, 58, 60, 60 (S05-R1 contract) |
+| T8 | Absent path is an error | Unit test on a hand-built scope | — |
+| T9 | **Every distinct text has a vector (done when)** | SQL: distinct chunk texts with no `voyage-4-large` vector | 0; vectors for the model = T8's distinct-text count |
+| T9 | **A second run makes 0 requests (done when)** | `make embed` again | `Requests: 0` |
+| T9 | **Voyage's count recorded (done when)** | The summary line | Recorded, not pass/fail; S04's ratio was 0.95 (475,905 / 500,674) |
+| T9 | Cap | The estimate in the summary | ≤ 6,000,000 (sitting: 5.31M today; about 5.2–5.5M after T7) |
+| Bundle | All together | The bundle-level check | Counts as in T7's row; T8's fingerprint unchanged after T9 |
+
+#### Break-it rules
+
+- **T7:**
+  1. **Most important.** Pack lists whole again (no item cuts) → the CHANGELOG list test fails.
+  2. Drop the header repeat → the feature-gates table test fails.
+  3. Drop rule 6 → the KEP-4317 test fails.
+- **T8:**
+  1. **Most important.** Leave chunks out of the fingerprint → the chunk-change test fails.
+  2. Don't sort the rows → the order test fails.
+  3. Count a skip once per snapshot → the dedupe test fails.
+- **T9:** delete one vector (`DELETE FROM embeddings WHERE content_hash = '<one hash>'`), then `make embed` → `Requests: 1`, `Texts embedded: 1`; then `make embed` again → `Requests: 0`. A real paid call of one text, inside decision 9's limit.
+- After every restore, `git status --short` is clean (new files: compare sha256).
+
+#### Real-data demos
+
+- **Every task:** `make reset-corpus && time make ingest`, the counts query (S05-R1's), then `make ingest` again: 0 new documents, versions and chunks.
+- **T7:**
+  - the re-check: `uv run --with markdown-it-py==3.0.0 python -I spikes/scanner_recheck.py`
+  - the anchor, RBAC, sha512 and oversize queries
+  - KEP-4317's section names at `head`; one cut CHANGELOG section and one cut feature-gates table piece, as stored
+- **T8:** two from-empty `make ingest` runs and their `diff`; `make ingest-report`.
+- **T9:** `EMBED_MAX_TOKENS_PER_RUN=6000000 make embed`, twice; the vector-coverage query:
+
+  ```bash
+  docker compose exec -T db psql -U orgknow -d orgknow -c "SELECT count(DISTINCT c.content_hash) AS texts, count(DISTINCT c.content_hash) FILTER (WHERE e.content_hash IS NULL) AS without_vector FROM chunks c LEFT JOIN embeddings e ON e.content_hash = c.content_hash AND e.model = 'voyage-4-large'"
+  ```
+
+- Ingest run time is measured and reported.
+
+#### Bundle-level check
+
+1. `make check`
+2. `make reset-corpus && make ingest`, then `make ingest` again: 0 new documents, versions and chunks; exit 0
+3. The counts query: every value in T7's "Versions untouched" row
+4. `make ingest-report`: the fingerprint equals T8's
+5. The vector-coverage query: 0 without a vector; `make embed` again: `Requests: 0`
+6. `make test-int`, with the dev database ingested and embedded
+7. `git status --short` clean after every break-it restore
+
+#### PR plan
+
+- **1 PR** (decision 11): `s05-r3-final-corpus`: the contract, T7, T8, T9, then the retro. Expected above the ~800-line alarm (~1,500–2,000 reviewable lines); accepted in the sitting, so the run doesn't split it.
+- Greptile once (9 → 10 of 50). Record the PR's size in its brief.
+
+**Paid calls allowed:** Voyage document embeddings of chunk texts only, through `make embed`, at most 6,000,000 estimated tokens across the run (T9 and its break-it). No Anthropic calls, no question embeddings, and `orgknow ask` doesn't run.
+
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - Three runs: R1 = T1–T3 (PRs #27, #28), R2 = T4–T6 (PR #29), R3 = T7–T9 and this retro (one PR).
+  - **Ingestion:**
+    - `make ingest` stores the whole manifest from empty in 1 min 25 s: 1,168 documents, 2,882 versions, 21 aliases, 0 failures. A second run adds 0 (34 s).
+    - Per source (documents / versions): blog 417 / 924 · docs pages 64 / 405 · feature gates 491 / 868 · governance 29 / 140 · KEPs 141 / 472 · release records 26 / 73 (8 web pages + 18 CHANGELOGs).
+    - The 6 known moves are one document each, plus RBAC's front-matter alias `web:/rbac/`. Aliases: 21 (blog 4, docs pages 4, feature gates 2, governance 8, release records 3).
+    - KEP and governance versions start at their merge time (KEP-2579: 2021-05-12, not the commit's 2021-05-11). Blog versions start at publication; 214 of 1,138 were never public and aren't stored.
+  - **Counts against the spike (table B):** documents / versions; every expected value was computed in a sitting with the spike's code and git, never with the new code.
+
+    | Source | Spike | Stored | Cause |
+    |---|---|---|---|
+    | blog | 417 / 1,138 | 417 / 924 | Versions: 214 never public (ADR-002 D3). Posts: the spike's 416 published + the VAP GA post, whose `------` front matter now parses (+1 version); `k8s-book-club`'s `------` → `---` fix is then whitespace-only (−1 version). R2 proof map, PR #29 |
+    | docs pages | 67 / 406 | 64 / 405 | 3 moves linked: PSP, topology hints → routing, deprecation policy. The deprecation-policy move changes only the stripped `aliases` key, so it adds no version. R1 proof map and edge cases |
+    | feature gates | 842 / 1,169 | 491 / 868 | The spike's identity is the file path. 351 paths join other documents: 348 title links (345 of them the 1.32 renames), 1 similarity link (`APIServingWithRoute`), 2 page → `index.md` moves. A link without a content change adds no version: 301 in all, 300 of them 1.32 renames (SQL at the retro; the last 1 isn't itemized). R1 proof map (491 / 868, spike code + git `-M50%`), PR #28 |
+    | governance | 37 / 143 | 29 / 140 | 8 moved paths linked as aliases; 3 of those moves change no normalized content. R2 proof map |
+    | KEPs | 153 + 200 YAML / 352 + 581 | 141 / 472 | The spike counted files; S05 stores one document per KEP number (116) + 25 old single-file KEPs. 81 PRR files, 7 symlinks, 1 index and 1 image note aren't KEPs; README and `kep.yaml` are hashed together, so one version covers a change to either. R2 proof map, PR #29 |
+    | release records | 29 / 73 | 26 / 73 | 3 moves linked (release index, notes, version skew); each move also changed the content, so versions stay 55 (R1 proof map: 11 / 55 before linking, 8 / 55 after). 8 / 55 web + 18 / 18 CHANGELOGs. R2 proof map |
+    | **total** | 1,745 / 3,862 | 1,168 / 2,882 | |
+
+  - **Chunks:** 48,273 chunks, 21,552 distinct texts (55% of chunks repeat a text).
+    - 0 `{#id}` anchors in section names (1,269 texts before); 0 cut HTML tables (RBAC: 2 per version × 15 before); 0 sha512 chunks (32 before).
+    - HTML comment blocks are dropped (scanner rule 6). Oversize lists and pipe tables are cut between items or rows, so texts over 1,024 estimated tokens fell from 433 to 77.
+    - Scanner vs markdown-it on all 2,882 stored files: 822 heading differences in 80 files → 558 in 30, each from a listed cause (Hugo highlight 474, list-item headings 68, a backtick in a fence's info string 12, indented headings 4).
+  - **Report:** `make ingest` ends with a report and `make ingest-report` prints its database part. Two from-empty ingests printed byte-identical reports; fingerprint `sha256:458effad…`, reproduced by an independent script over 52,344 rows. Skip lines: 331 → 26.
+  - **Embeddings:** 21,552 `voyage-4-large` vectors. 162 requests, 20,688 new texts, 5,613,947 Voyage tokens against a 5,370,535 estimate (ratio 1.045), 719 orphan vectors deleted, 3 min 44 s. A second run: 0 requests.
+  - **Tests:** 390 unit and 93 integration (from 224 and 80 at the end of S04). 6 spike tests were deleted with this retro.
+  - **Paid calls for the slice:** Voyage only, about 5.61M embedding tokens (T9 and its 1-text break-it), inside the 200M free tier. 0 Anthropic calls.
 - **Surprises:**
+  - **Voyage counted 4.5% more tokens than the chars ÷ 4 estimate** (ratio 1.045); S04 came in 5% under (0.95). A rebuild from empty now estimates 5.66M against the 6M one-off cap: a 6% margin, about 5.9M by Voyage's count.
+  - **Hidden text was common.** 10.9% of KEP lines (31,841) sat in HTML comments (template guidance), with 260 fake headings in 13 KEPs (R3 sitting).
+  - **Oversize blocks were big.** 433 texts over 1,024 tokens held 1.01M of 5.80M tokens, up to 15,735 in one text (R3 sitting): lists without blank lines and pipe tables were single blocks.
+  - **The download hashes weren't only in CHANGELOGs.** The 1.20 release-notes page held 32 sha512 chunks (R2 question 1).
+  - **No real move needed git similarity among docs pages and release records:** 5 link by redirect, 1 by front-matter alias. Similarity linked 1 gate (`APIServingWithRoute`).
+  - **67 documents are older than 1.20** (48 KEPs, 19 governance docs; the earliest from 2018-12-05). The code raised on all of them until R2's decision 1 kept their true dates.
+  - **Ad hoc `git grep` on the partial clones reached the network.** The T7 builder and reviewer each fetched blobs from GitHub and triggered `git gc --auto`. It was free and read-only, but broke the contract's "no network but Voyage" line.
+  - **Runs came out larger than their estimates:** R2 ~3,330 reviewable lines against ~2,000–2,600, 2,096 of them tests.
 - **What didn't work / negative results:**
+  - **77 texts are still over 1,024 tokens** (max 15,735), by design: by their largest block, 50 code blocks, 19 HTML tables, 5 pipe tables, 2 lists (each a single item), 1 paragraph.
+  - **558 scanner heading differences remain** in 30 files (above). They are listed, not fixed.
+  - **1 comment block is left in chunk text** (KEP-6283 at `head`: `<!--` indented 4 spaces in a nested list; rule 6 covers 0–3).
+  - **About 12 lines of PR links were dropped** in 8 CHANGELOGs, where text followed a comment's closing `-->` on the same line: the comment block ends at the end of that line, as in CommonMark.
+  - **The 25 old single-file KEPs stay separate from their later folders,** though 24 of 25 match a folder by exact title (ADR-002 known limit; backlog entry).
+  - **`make embed` prints its estimate only after its requests,** where the R3 contract said before. The refusal above the cap does run first. Parked: a `src/` change.
+  - **Not verified:** whether Voyage truncated the 15,735-token text.
+  - **PRs #27–#29 were all over the ~800-line alarm** (R1: ~1,510 and ~1,050; R2: ~3,330), each accepted in its sitting. R3's one PR was accepted above it in advance (estimate ~1,500–2,000).
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S05-*.md`
+  - Put "no `git grep`, `git log -p` or other content reads on the corpus cache; query the database, or use `git -c protocol.allow=never`" into every builder and reviewer brief. R2's contract named the risk; R3's didn't repeat it, and builders don't read earlier contracts.
+  - Size paid embedding runs with the measured Voyage ratio (1.045), not chars ÷ 4 alone.
+  - Estimate test lines separately in the sitting: tests were 63% of R2's reviewable lines.
+- **Slice brief:** [`docs/learning/S05-stage1-subset-ingestion.md`](../learning/S05-stage1-subset-ingestion.md)
