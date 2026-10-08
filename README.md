@@ -78,6 +78,8 @@ make eval-table             # rebuild eval/results/ablation.md from every result
 
 A run stops before any paid call if a label matches no stored text. It embeds only the questions with no stored vector (`eval/question_vectors/<model>.json`, one Voyage request; a re-run makes 0), so retrieval is exactly repeatable. Each run writes `eval/results/<name>-<UTC time>/` (`run.json`, one `questions.jsonl` row per question with its hits, answer, metrics and checks, and `summary.json`), then rebuilds the ablation table. A failed ask is a row with its error, not a crash. `uv run python -m orgknow.eval run --name NAME` names the pipeline (default `dense`).
 
+The metrics, the dense baseline and how to read a result are in `docs/evaluation.md`; the ablation table is `eval/results/ablation.md`.
+
 Postgres listens on host port **5433** (not the default 5432), bound to localhost, so it doesn't clash with another Postgres on your machine. `make down` stops it; the data is kept in a named Docker volume.
 
 ## Development environment
