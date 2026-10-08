@@ -227,7 +227,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S05-R1: release-scoped website sources
 
-- **Status:** running (T1, T2, T3 done)
+- **Status:** PR open
 - **Branch:** `s05-r1-release-scoped`. PR 1's branch `s05-r1a-docs-from-1-20` is cut at T2's last commit.
 - **Tasks, in this order:** S05-T1 (from-1.20 loop) → S05-T2 (renames and aliases) → S05-T3 (feature gates).
 - **Closes the slice:** no. T4–T9 remain (R2 and R3, each after its own sitting).
