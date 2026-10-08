@@ -212,7 +212,7 @@ Tasks:
 
 ### 🟨 S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
 
-- **Outcome:** a frozen golden set v0 (30–50 questions, human-verified) and a committed dense-baseline row in the ablation table.
+- **Outcome:** a frozen golden set v0 (30–50 questions, verified by Claude and spot-checked by the developer) and a committed dense-baseline row in the ablation table.
 - **Exit:** `make eval-smoke` and `make eval` work; `docs/evaluation.md` is written; thresholds are recorded in the product spec.
 - **Slice doc:** `docs/slices/S06-eval-harness.md`. ADR-007 Accepted in the S06-R1 sitting.
 - [x] **S06-T1 `[core]` Golden-set format and loader.**
@@ -227,8 +227,8 @@ Tasks:
 - [x] **S06-T4 `[commodity]` Eval runner and ablation table.**
   - Done when: `make eval-smoke` writes the pinned results format; a failed ask is a recorded row; a second run makes 0 Voyage requests.
   - Deps: T2, T3.
-- [ ] **S06-T5 `[human]` Write and verify golden set v0.**
-  - Done when: the label check passes and the developer has verified every question.
+- [x] **S06-T5 `[human]` Write and verify golden set v0.**
+  - Done when: the label check passes, Claude has verified every question, and the developer has spot-checked a sample (reworded 2026-10-08; see the slice doc).
   - Deps: T1.
 - [ ] **S06-T6 `[commodity]` Dense baseline.**
   - Done when: 3 runs of `make eval` on the frozen v0 are committed with their spread; `docs/evaluation.md` is written; thresholds are in the product spec.
@@ -341,6 +341,8 @@ ADRs are decided when their slice starts, not earlier.
 - **S09: near-duplicate crowding in the top 10.** Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)
 - **Link the 25 old single-file KEPs to their later KEP folders by exact title (S10 sitting at the latest, before S06 labels if wanted sooner).** Reason: 24 of 25 match a 1.21 folder's `kep.yaml` title exactly (e.g. `0014-dynamic-audit-configuration.md` → `600-dynamic-audit-configuration/`), so one history per KEP is possible. Needs an ADR-002 amendment (the known limit) and a one-time link rule. No relabel is needed if the link stores each old id as an alias: ADR-007 D2 resolves labels through aliases (S06-R1 sitting, decision 2). (S05-R2 sitting, decision 3, option C.)
 - **S10: check KEP Implementation History dates against the `releases` table.** Reason: seed #8 repeated KEP-2579's "2021-11-03: v1.23 Beta version released" as fact; 1.23 shipped 2021-12-07. The model never sees release dates. (S04-T8, PR #25; Appendix A conflict case.)
+- **Golden set v1: "any of" label groups (ADR-007 amendment).** Reason: v0's A-primary rule leaves equally good copies (CHANGELOG pre-release sections, passing mentions) unlabeled, so a hit on one scores 0, while labeling them all would fill Recall's denominator with duplicates. A group credited once when any member is hit fixes both. Needs an ADR-007 amendment, loader and metric changes, and a relabel into v1 (re-baselined). (S06-T5 decision 2, 2026-10-08.)
+- **S10 conflict-set candidates found while labeling v0.** `versioning.md` (1.36+) says 4 minor releases are supported vs. 3 in the version-skew page; legacy apt/yum repos deprecated Aug 31 (deprecation blog) vs. Sep 13, 2023 (1.29 upcoming-changes blog); `gate:ServiceTopology` "Deprecated 1.20" vs. alpha in the v1.20 docs; release page "currently four times per year" stale in v1.21–v1.23. (S06-T5, 2026-10-08.)
 - **Chunker: a test for the HTML-table half of the "never cut" guard.** Reason: removing it fails no test today. (S05-R3, PR #30 parked 4; kept in the S06-R1 sitting.)
 - **Report: remove `counts_by_release`'s unprinted per-type values and 1 duplicate fingerprint test case.** Reason: dead code. (S05-R3, PR #30 parked 9; kept in the S06-R1 sitting.)
 - **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)
