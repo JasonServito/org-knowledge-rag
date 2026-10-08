@@ -675,7 +675,7 @@ Expected values were computed in the sitting with the spike's normalizer (`spike
 
 ### Run S05-R3: final chunk text, ingestion report, full embed
 
-- **Status:** running (T7, T8 done)
+- **Status:** running (T7, T8, T9 done)
 - **Branch:** `s05-r3-final-corpus`
 - **Tasks, in this order:** S05-T7 (chunker fixes) → S05-T8 (ingestion report) → S05-T9 (embed the full corpus) → the slice retro (`/slice-retro`, the run's last commit).
 - **Closes the slice:** yes.

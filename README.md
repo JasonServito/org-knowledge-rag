@@ -52,6 +52,12 @@ make ingest-report          # print the report's database part alone: counts per
 make embed                  # embed each chunk text with no vector yet; paid, needs VOYAGE_API_KEY (a re-run sends 0 requests)
 ```
 
+`make embed` refuses to start, and sends nothing, when its texts come to more than `EMBED_MAX_TOKENS_PER_RUN` estimated tokens (characters / 4; default 2,000,000). The full corpus from empty is about 5.7M, so raise the cap for that one command only and keep the default:
+
+```bash
+EMBED_MAX_TOKENS_PER_RUN=6000000 make embed   # full-corpus embed, one time
+```
+
 Then ask a question. Each ask is paid (one Voyage call and one Claude call) and needs `VOYAGE_API_KEY` and `ANTHROPIC_API_KEY`:
 
 ```bash

@@ -206,7 +206,7 @@ Tasks:
 - [x] **S05-T8 `[commodity]` Ingestion report with a fingerprint.**
   - Done when: two from-empty ingests print identical reports.
   - Deps: T1–T6.
-- [ ] **S05-T9 `[commodity]` Embed the full corpus.**
+- [x] **S05-T9 `[commodity]` Embed the full corpus.**
   - Done when: a second run makes 0 requests.
   - Deps: T7, T8.
 
