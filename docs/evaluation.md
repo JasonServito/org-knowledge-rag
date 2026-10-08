@@ -58,7 +58,7 @@ S06-T6, 2026-10-08. The question vector's 10 nearest chunk texts by cosine dista
 | AC2 | 100% (43 of 43) | none |
 | AC3 | 100% (7 of 7) | none |
 | False refusals | 2.3 of 36 | 2–3 |
-| p95 latency | 10.6 s | 9.4–11.3 s |
+| p95 latency | 10.7 s | 9.4–11.3 s |
 | Cost per question | $0.029 | $0.0293–0.0296 |
 | Errors | 0 | none |
 

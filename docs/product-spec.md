@@ -67,7 +67,7 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 | p95 latency, as the eval measures it (retrieve + answer; the question vector is stored) | 9.4–11.3 s | ≤ 23 s (2× the baseline) |
 | Cost per question (mean) | $0.029 | ≤ $0.06 (2× the baseline) |
 
-- **A stage improves its target metric (AC7)** when that metric rises by at least 0.03 (about one question's worth), no other retrieval metric drops by more than 0.03, and AC1–AC3 and false refusals stay at or above the baseline's 3-run range. A paired statistical test is the upgrade once a golden set passes ~100 questions.
+- **A stage improves its target metric (AC7)** when that metric rises by at least 0.03 (about one question's worth), no other retrieval metric drops by more than 0.03, and AC1–AC3 stay at or above, and false refusals at or below, the baseline's 3-run range. A paired statistical test is the upgrade once a golden set passes ~100 questions.
 - **The +0.08 targets are about 3 questions' worth**, one rule for every metric. Hybrid search and reranking gains on this corpus are unknown, so a target that proves too easy or out of reach is revised in writing.
 - **Metrics not measured yet get their threshold in the slice that first measures them:** stale-result rate, temporal accuracy, authority-selection accuracy and router accuracy (S09); conflict precision/recall (S10); faithfulness once a grader exists.
 
