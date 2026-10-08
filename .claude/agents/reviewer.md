@@ -16,7 +16,7 @@ You're given the task ID, its contract block or approved plan, and how to see th
    - work outside the task's scope
    - breaks of an ADR or a `CLAUDE.md` rule
    - complexity the task didn't need: a dependency, abstraction or file
-4. You may run read-only commands: `git diff`, `git log`, `make check`, `uv run pytest …`.
+4. You may run read-only commands: `git diff`, `git log`, `make check`, `uv run pytest …`. Never run `git grep`, `git log -p` or other content reads on the corpus cache clones: they are blobless, so git fetches from GitHub. Query the database instead, or use `git -c protocol.allow=never`.
 
 Loops fix or simplify, never add. Refactors, extra features, extra tests and style beyond the linter are park items, never must-fix.
 

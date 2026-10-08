@@ -37,7 +37,7 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 
 | # | Criterion | How it's tested |
 |---|---|---|
-| AC1 | 100% of answered responses have ≥ 1 citation. Each citation resolves to a stored chunk with source URL, release/date, `source_type` and tier. | Eval harness schema check |
+| AC1 | 100% of answered responses have ≥ 1 citation. Each citation resolves to a stored chunk with source URL, release/date, `source_type` and tier. | Eval harness schema check. Tier joins citations in S09 (S04-R2 decision 5); until then the check covers the other fields (S06-R1 sitting, decision 4) |
 | AC2 | 0 fabricated citations: no chunk IDs or URLs that aren't in the retrieved evidence | Eval harness |
 | AC3 | All seed UNANSWERABLE questions return `insufficient_evidence` with a reason. This includes the 4 gated-Google-Doc cases. | Golden set |
 | AC4 | On the 4 seed conflict cases, the answer surfaces the conflict (claimed vs. observed, or old vs. new) rather than asserting one side | Golden set, conflict subset |
@@ -59,7 +59,7 @@ After the first baseline run, record the thresholds here.
 
 - 30–50 questions, starting from the 20 seeds in the validation gate's Appendix A.
 - Class mix per blueprint §19.1.
-- Relevance is labeled at the **document + heading-path** level, never by chunk ID, so labels survive re-chunking.
+- Relevance is labeled at the **document + heading-path** level, never by chunk ID, so labels survive re-chunking. The format, matching and counting rules are ADR-007.
 - The set is frozen once the dense baseline has been run on it. New questions go into v1, which is re-baselined.
 
 ## Done means

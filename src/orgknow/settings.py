@@ -69,3 +69,11 @@ class Settings(BaseSettings):
     langfuse_secret_key: SecretStr | None = None
     # Langfuse Cloud's EU region, the SDK's default. The US region: https://us.cloud.langfuse.com.
     langfuse_base_url: str = "https://cloud.langfuse.com"
+    # The golden set (ADR-007 D1) that `make eval-check` checks and `make eval` runs. Relative to
+    # the repo root.
+    eval_golden_path: Path = Path("eval/golden_set/v0.yaml")
+    # `make eval` writes one results folder per run here, and rebuilds the ablation table here.
+    eval_results_dir: Path = Path("eval/results")
+    # The stored question vectors, one file per embedding model (S06-R1 decision 7): a run embeds
+    # only questions with no vector here, so retrieval is exactly repeatable.
+    eval_vectors_dir: Path = Path("eval/question_vectors")

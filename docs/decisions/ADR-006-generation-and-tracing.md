@@ -54,3 +54,8 @@
 - Same question, different run: reasoning makes answers vary. S06 measures this before trusting small ablation deltas.
 - Trace links in PR briefs expire after 30 days; outputs in `eval/results/` don't.
 - Revisit triggers: the S06 baseline freeze (D1); the S11 LangGraph integration (D3); Langfuse pricing or retention changes.
+
+## Amendment 2026-10-08
+
+- **D1 confirmed for the S06 baseline (S06-R1 sitting, decision 5):** `claude-opus-5-5` at `medium` effort stays the answer model, frozen from the dense baseline on. Evidence: S04-T8's 5 traced asks cost $0.020–0.041 each with 0 reasoning tokens (`eval/results/s04/traces.json`), below this ADR's $0.07–0.11 estimate, so 3 baseline runs of 50 questions cost about $5. Rejected: Sonnet 5.5, which halves a small cost but is weaker at "insufficient evidence".
+- **D2 kept (S06-R1 sitting, decision 6):** `messages.parse` stays. A cut-off or refused answer still loses its stop reason; the eval runner records it as an error row and continues. Rejected: `messages.create` with our own validation, which would change D2 for a path seen 0 times in S04.

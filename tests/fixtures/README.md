@@ -32,3 +32,4 @@ Small real files from the Kubernetes corpus, copied byte-exact at pinned commits
 
 - `website_s04/`, `website_s05/` and `blog/`: Kubernetes documentation and blog, © The Kubernetes Authors, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - `kep_2579/`, `kep_4317/`, `kep_old/`, `kubernetes/` and `sig_release/`: © The Kubernetes Authors, licensed [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0), the license of the enhancements, kubernetes and sig-release repos.
+| `eval/demo.yaml` | Not a corpus file: 3 Appendix A seeds (#6, #13, #10) in the ADR-007 format, labeled in the S06-R1 sitting from the dev database and verified by the developer | The dev database at `main` 60bd146 (S05 corpus, fingerprint `sha256:458effad…`) |

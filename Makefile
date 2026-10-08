@@ -1,5 +1,6 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed
+.PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed \
+	eval-check eval-sections eval-smoke eval eval-table
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -71,3 +72,34 @@ reset-corpus:
 # makes 0 requests. Needs `make ingest`.
 embed:
 	uv run python -m orgknow.embeddings.embed
+
+# Validate the golden set (EVAL_GOLDEN_PATH, default eval/golden_set/v0.yaml), then check every
+# label against the dev database: one line per label with the distinct chunk texts it matches,
+# then a total. Fails if the file is invalid or a label matches nothing. Read-only; needs `make up`.
+eval-check:
+	uv run python -m orgknow.eval check
+
+# List a document's sections as golden-set labels write them, each with its distinct text count:
+# one line per heading path in any version, first appearance first; `""` is the intro. Read-only.
+# Example: make eval-sections DOC=gate:LegacyServiceAccountTokenCleanUp
+eval-sections:
+	uv run python -m orgknow.eval sections "$(DOC)"
+
+# Run the golden set's smoke questions (`smoke: true`) end to end: dense retrieval with each
+# question's stored vector (EVAL_VECTORS_DIR), one answer call, then the metrics and AC1-AC3. Writes
+# a results folder under EVAL_RESULTS_DIR (default eval/results) and rebuilds the ablation table
+# there. PAID: one Anthropic call per question with hits (needs ANTHROPIC_API_KEY), and one Voyage
+# request when a question has no stored vector (needs VOYAGE_API_KEY then; a re-run makes 0). A
+# label matching no stored text stops it before any paid call; a failed ask is a row, not a crash.
+eval-smoke:
+	uv run python -m orgknow.eval run --smoke
+
+# The same for every question of the golden set. PAID: one Anthropic call per question (S04: about
+# $0.02-0.04 each), so run it only when asked.
+eval:
+	uv run python -m orgknow.eval run
+
+# Rebuild the ablation table (EVAL_RESULTS_DIR/ablation.md) from every results folder: one row per
+# pipeline name and golden file. Free and local; `make eval` and `make eval-smoke` end with it.
+eval-table:
+	uv run python -m orgknow.eval table

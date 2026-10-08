@@ -1,0 +1,36 @@
+# The S06-R1 real-data demo set: 3 seeds from docs/research/corpus_validation_gate.md
+# Appendix A, labeled in the S06-R1 sitting (2026-10-08) from the dev database and verified
+# by the developer. Not the golden set: that is eval/golden_set/ (human-owned). ADR-007 format.
+version: demo
+questions:
+  - id: q06
+    question: What enforces pod security standards in-tree?
+    mode: CURRENT
+    answerable: true
+    expected_answer: PodSecurity admission, GA since v1.25.
+    smoke: true
+    labels:
+      # The intro opens with `feature-state for_k8s_version="v1.25" state="stable"`.
+      - document: web:/docs/concepts/security/pod-security-admission/
+        section: ""
+      # "Pod Security admission (PSA) graduated to stable" in v1.25.
+      - document: web:/blog/2022/08/25/pod-security-admission-stable/
+        section: ""
+  - id: q13
+    question: When did legacy token cleanup reach GA?
+    mode: CHANGE
+    answerable: true
+    expected_answer: v1.30 (kubernetes/kubernetes #122635).
+    smoke: true
+    labels:
+      # "Promoted feature-gate `LegacyServiceAccountTokenCleanUp` to GA ... (#122635)".
+      - document: changelog:1.30
+        section: v1.30.0 > Changes by Kind > Other (Cleanup or Flake)
+      # A gate file has no headings; its stages list `stable` from 1.30.
+      - document: gate:LegacyServiceAccountTokenCleanUp
+  - id: q10
+    question: What objections were raised in the "3-Tier Pod Security Proposal" doc comments?
+    answerable: false
+    expected_answer: Insufficient evidence; the comments are in a gated Google Doc.
+    smoke: true
+    labels: []

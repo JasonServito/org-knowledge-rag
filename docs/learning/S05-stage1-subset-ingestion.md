@@ -19,7 +19,7 @@
   - Chunks lose `{#id}` anchors (custom heading ids written after a heading) and hidden HTML comments; HTML tables stay whole; oversize lists and tables are cut between items or rows.
   - 21,552 distinct texts each got one `voyage-4-large` vector. A second run makes 0 requests.
 - **Proof that ingestion is reproducible (the spec's AC8, first part: re-ingesting gives identical version counts and hashes):**
-  - Every ingest ends with a report and a **fingerprint**: one hash over every stored value except generated ids.
+  - Every ingest ends with a report and a **fingerprint**: one hash over every stored corpus value except generated ids.
   - Two from-empty ingests printed byte-identical reports.
 
 This matters to the project's thesis because the corpus is now fixed and complete before S06 measures the first baseline. Every version carries an exact window, so later slices can test release-aware retrieval on real history.
@@ -40,7 +40,7 @@ This matters to the project's thesis because the corpus is now fixed and complet
 | CHANGELOGs `[R, R]`, dated by the lock head commit; no TOC and no Downloads sections | The lock's fetch time; keep the hash tables | sha512 rows were 42% of 7.74M CHANGELOG characters | A lock refresh re-dates all 18 (S14) |
 | Cut oversize lists between items and pipe tables (Markdown tables drawn with vertical bars) between rows, repeating the header | Keep blocks whole; cut code by lines | Texts over 1,024 tokens: 433 → 77; cut code misleads | 77 stay oversize (max 15,735 tokens) |
 | Drop HTML comment blocks from chunk text (scanner rule 6) | Keep them; test in S06 | 10.9% of KEP lines were hidden template text, with 260 fake headings | 1 indented comment left; ~12 PR-link lines lost |
-| Fingerprint over every stored value except generated ids | Ids, version hashes and windows only | One definition of "identical" that covers chunk text, claims and metadata | 52,344 rows hashed per report |
+| Fingerprint over every stored corpus value except generated ids | Ids, version hashes and windows only | One definition of "identical" that covers chunk text, claims and metadata | 52,344 rows hashed per report |
 | Full embed with a one-off 6M token cap; default stays 2M | Raise the default | The guard stays tight for later runs | 6% headroom for a rebuild from empty |
 
 ## Likely interview questions
@@ -49,7 +49,7 @@ This matters to the project's thesis because the corpus is now fixed and complet
    - Declared signals first (the site's redirect file, the page's `aliases`); git similarity ≥ 50% only as a fallback. The id is the first URL.
    - Results: 6 known moves → 6 documents; 345 gate renames → 0 new documents; a 40% pair stays two.
 2. **Q: How do you prove re-ingesting gives identical data?**
-   - A sha256 over every stored value except generated ids, rows sorted so order doesn't matter.
+   - A sha256 over every stored corpus value except generated ids, rows sorted so order doesn't matter.
    - Two from-empty ingests printed byte-identical reports; an independent script reproduced the hash over 52,344 rows.
 3. **Q: When does a version start, for a KEP and for a blog post?**
    - KEP: the last first-parent commit touching it, i.e. the merge. Blog: max(merge, publication), since Hugo hides a post until its date.
