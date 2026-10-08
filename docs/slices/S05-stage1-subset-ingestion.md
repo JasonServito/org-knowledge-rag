@@ -211,15 +211,11 @@ These mirror `docs/backlog.md`; details live here. Runs are planned one at a tim
   - decision 2: feature gates in S05
   - decision 3: the full embed is S05's last task
 - **R1 sitting (2026-10-07), done:** see run S05-R1 below. The full scope is Claude's call; the from-empty reset is decision 2; the rename rules are Claude's calls within ADR-002 D4; feature-gate stages in the chunk text are decision 1.
-- **R2 sitting:**
-  - ids for the 25 old single-file KEPs
-  - the governance-doc title rule
-  - the blog URL rules in code
-  - the CHANGELOG date and the R10 change
+- **R2 sitting (2026-10-07), done:** see run S05-R2 below. Decisions 1–9; decision 2 amends ADR-002 D4 (devil's advocate run), decisions 1 and 3 add to ADR-002 D3 and D4.
 - **R3 sitting:**
   - where a stripped anchor goes
   - the embed cap
-- No new ADR is expected: ADR-002 and ADR-003 already decide the rules. A rule that turns out wrong on real data is an ADR-002 amendment, decided in a sitting.
+- No new ADR is expected: ADR-002 and ADR-003 already decide the rules. A rule that turns out wrong on real data is an ADR-002 amendment, decided in a sitting (as R2's decisions 1–3 did).
 
 ## Run contracts
 
@@ -227,7 +223,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S05-R1: release-scoped website sources
 
-- **Status:** PR open
+- **Status:** merged (PRs #27, #28)
 - **Branch:** `s05-r1-release-scoped`. PR 1's branch `s05-r1a-docs-from-1-20` is cut at T2's last commit.
 - **Tasks, in this order:** S05-T1 (from-1.20 loop) → S05-T2 (renames and aliases) → S05-T3 (feature gates).
 - **Closes the slice:** no. T4–T9 remain (R2 and R3, each after its own sitting).
@@ -290,7 +286,7 @@ No ADR-level decision, so no devil's advocate. The link rules below implement AD
 - **Unmatched adds and deletes:** logged at INFO per release pair, with the redirect target if there is one.
 - **Two source groups:** a file matched by two groups' paths is an error, before any write.
 - **`make reset-corpus`:** `TRUNCATE documents, document_aliases, document_versions, chunks RESTART IDENTITY CASCADE` through `docker compose exec -T db psql -U orgknow -d orgknow`. Dev database only; `make test-int` uses its own database.
-- **Stages YAML:** only for `gate:` documents whose metadata has `stages`; built from the version's `metadata`.
+- **Stages YAML:** only for `gate:` documents whose metadata has `stages`; read from the version's file at chunk time: the same values as its `metadata`, in the file's key order, because Postgres `jsonb` reorders keys. (Corrected in the R2 sitting; was "built from the version's `metadata`".)
 - **Parked 10b:** `store_document` looks a document up by `canonical_id` only (a new read in `db/documents.py`), so an id that is another document's alias reaches `create_document`'s R3 check.
 - **Docs:** each task updates `docs/domain-model.md` (windows from 1.20, the link rules, gate identity, a gate's chunk text, the reset).
 
@@ -366,8 +362,8 @@ Use stricter validation for fields containing IP addresses and CIDR values.
   - The title fixed in place (`ServiceAcccount…` → `ServiceAccount…` at 1.35): same path, so one document, whose id keeps the typo.
   - `former_titles: PodHasNetworkCondition` while that gate keeps its own file: no link, no alias, no R3 error.
   - `PodInfoAPI` → `InPlacePodVerticalScalingMemoryBackedVolumes` at 40%: two documents.
-  - Stage values can carry trailing spaces (`alpha `): kept as written in `metadata` and in the YAML.
-  - 242 gate file versions have `removed: true`.
+  - Stage values can carry trailing spaces (`alpha `). YAML drops a trailing space after an unquoted value, so it is read as `alpha`; a quoted `'alpha '` keeps its space. The code trims nothing. (Corrected in the R2 sitting; was "kept as written".)
+  - 233 gate versions have `removed: true`. 242 distinct file contents have a `removed` key (238 true, 4 false); 5 of the true ones hash like the version before them, so they add no version. (Corrected in the R2 sitting; was 242.)
   - 0 duplicate titles at any release (checked). A duplicate is an error, never a silent merge.
 - **SQL:** no string-built SQL (ADR-005); the reviewer checks by hand.
 
@@ -472,6 +468,211 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 - Greptile once per PR (6 → 8 of 50). Record each PR's size in its brief.
 
 **Paid calls allowed:** none. No Voyage and no Anthropic calls, and `make embed` doesn't run. After the reset, `orgknow ask` only finds texts whose vectors were kept; that's expected until T9.
+
+### Run S05-R2: date-scoped sources and CHANGELOG
+
+- **Status:** planned
+- **Branch:** `s05-r2-date-scoped`
+- **Tasks, in this order:** S05-T4 (KEPs and governance docs) → S05-T5 (blog posts) → S05-T6 (CHANGELOG).
+- **Closes the slice:** no. T7–T9 remain (R3, after its own sitting).
+- **Goal (plain words):**
+  - Ingest every KEP in the 3 SIG folders, the governance docs, the blog posts dated from 1.20, and the 18 CHANGELOGs.
+  - A date-scoped version is dated by when its change was merged to the default branch (a blog post's first public version by when it was published).
+  - A governance doc that moves stays one document.
+  - CHANGELOG chunks hold release notes only: no generated TOC and no download tables.
+  - A re-run changes nothing.
+
+#### Decisions (made in the sitting, 2026-10-07)
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| S1 | Triage of R1's 17 parked items and T4's 2 edge cases: P2 (a CHANGELOG snapshot of its own) → T6; P4 (delete `test_spike_renames.py`) → retro; P9 (the absent-path log) → T8; P11 (a wrong docstring), E1 (a re-created KEP), E2 (a close-only re-ingest) → T4; P13 (3 R1 contract lines) corrected in this commit; the other 11 dropped (0 cases on real data, or settled by convention) | Fixing each now | Each dropped item has 0 cases on real data or is a convention already in force |
+| S2 | Bundle T4 → T5 → T6 | — | All three depend only on T1; backlog order |
+| 1 | A date-scoped version whose start is before 1.20's release date keeps its true `valid_from_date`; its `valid_from_release` is 20, the scope's first release | Clamping the date too; adding releases 1.0–1.19 | The date window is authoritative for date-scoped sources (ADR-002 D3). 67 documents (48 KEPs, 19 governance docs) start before 2020-12-08, the earliest 2019-06-29; today's code raises on all of them |
+| 2 | **ADR-002 D4 amendment.** Governance moves: R1's chain builder on the date snapshots, with the links same path, then git similarity ≥ 50% between adjacent snapshots. The first path is the id; later paths are aliases | `git log --follow` (the ADR's wording); no rename handling | Finds all 8 real moves (sig-release PR #2984, 1.36 → 1.37, 66–100%); reuses tested code. Devil's advocate run: its concession condition (the per-commit log shows the same 8 pairs and no edit before a move) was checked and holds: the 8 moves, 4 deletes and 2 adds are one commit |
+| 3 | The 25 old single-file KEPs (1.20 only) are separate documents with `kep:<sig folder>/<file name>`, e.g. `kep:sig-auth/0014-dynamic-audit-configuration` | `kep:<file name>`; linking to the later folder by title; skipping them | Keeps the S02 known limit; unique by construction; can't be read as a KEP number. Linking by title (24 of 25 match exactly) → Proposed additions |
+| 4 | A governance doc's title is the version's first `# ` heading with HTML comments removed, else its repo path. A CHANGELOG's title is `CHANGELOG-1.R` | The path always; titles in the manifest | 152 of 154 governance versions have a `# ` heading, always their first heading; the 2 without: `artifacts.md` (4 versions), `platforms/guide.md` (a "moved" stub) |
+| 5 | Blog histories follow git renames in one first-parent log of `_posts/` (the spike's method); the permalink pattern lives in the manifest | Grouping commits by URL; reading `hugo.toml` at ingest | The spike measured this method (785 histories, 417 in scope); all 69 site-config versions since 1.20 have the same permalink |
+| 6 | A CHANGELOG version's `valid_from_date` is the kubernetes lock head commit's committer time, 2026-09-30T01:30:57Z | The lock's `fetched_at`; a deeper clone | A git fact, reproducible from the clone; ADR-002 D1/D3 (no history before the first ingestion) |
+| 7 | `close_version` refuses to change a release `until` that is already set (ValueError); passing the same value is fine. R10 becomes "A window is closed once. Only an open version can be closed, a release `until` set at insert never changes, and nothing reopens or moves it" | Silently keeping it; a trigger; no change | One SQL condition where R10 already lives; the S03 review finding |
+| 8 | CHANGELOG chunks leave out the text before the first heading (the generated TOC) and every section under a `## Downloads for …` heading | Only the sha512 rows; only the rows, keeping the TOC | All 8,477 sha512 rows sit inside those sections; they are 42% of the 7.74M CHANGELOG characters, and the TOC is 3% |
+| 9 | The 50% rename threshold stays a named constant that cites ADR-002 D4. Rule: a value an ADR fixes is a constant that cites its ADR; tuning knobs stay in settings | A setting; the manifest | It's an identity rule: changing it changes `canonical_id`s, which needs an ADR, not an env var |
+| 10 | The verification plan below | — | — |
+| 11 | **1 PR**, an explicit exception to the ~800-line size alarm (estimate ~2,000–2,600 reviewable lines); the run doesn't split it | 2 stacked PRs, split after T4 (recommended) | The developer's call in the sitting |
+
+**Claude's calls (overrulable):**
+- **Merge time:** a date-scoped version starts at the committer time, in UTC, of the **last first-parent commit** touching the document's files between the previous snapshot and this one (`git log --first-parent --format=%cI <prev>..<snap> -- <paths>`). For the first snapshot, the range is all of its history. The paths are the document's files at both snapshots, so a move or a KEP slug rename is seen.
+- **Front matter** may open with 3 or more dashes, as Hugo renders it (the VAP GA post opens with `------` and renders on kubernetes.io, checked in the sitting). Applies to every source; 0 R1 files change, because none opened that way.
+- **Old single-file KEPs:** hashed with the `kep_yaml` strip list; `metadata` is the front matter; `claimed_status` comes from its `status` (24 of 25 have one), and `claimed_stage` is null (none has a `stage`). The chunk title is the front-matter `title`, with no `KEP-<n>:` prefix. The body is chunked without its front matter.
+- **Blog scope:** the page date of the version live at publication is on or after 2020-12-08 (00:00 UTC), and the post was ever published. Posts out of scope are counted, not logged one by one.
+- **Layout:**
+  - `src/orgknow/ingestion/blog.py` (new, pure functions): the Hugo URL, the publication moment, a post's versions.
+  - `git_reader.py`: first-parent commit times; the blog log reader.
+  - `history.py`: the release clamp, the re-creation guard (E1), the CHANGELOG version.
+  - `identity.py`: the old-KEP, governance, blog and CHANGELOG ids.
+  - `renames.py`: the date-snapshot link rules (same path, then similarity).
+  - `chunker.py`: the governance title; single-file KEP bodies; the CHANGELOG exclusions and title.
+  - `db/versions.py`: R10.
+  - `ingest.py`: one collector per source.
+- **Docs:** each task updates `docs/domain-model.md`. `docs/architecture.md` is updated once, at the end of the run.
+
+#### Pinned formats
+
+**Manifest scope** (`full` replaced; `s04` unchanged):
+
+```yaml
+  full:
+    docs_page: {sigs: [auth, network, release], from_release: "1.20"}
+    release_record: {repos: [website, kubernetes], from_release: "1.20"}  # kubernetes (CHANGELOG) added by T6
+    feature_gate_reference: {from_release: "1.20"}
+    kep: all  # every KEP in sources.kep.sig_dirs (T4)
+    governance_doc: all  # T4
+    blog_post: all  # T5; sources.blog_post.from_release and exclude_drafts apply
+```
+
+**Blog permalink** (added to `sources.blog_post`):
+
+```yaml
+    # Hugo's blog permalink; the same in all 69 site-config versions since 1.20 (spike §5).
+    permalink: "/:section/:year/:month/:day/:slug/"
+```
+
+**Canonical ids:**
+- KEP folder: `kep:<number>`, as in S04. A slug rename keeps the number (1669, 3257, 4444): one document.
+- Old single-file KEP: `kep:` + its path under `keps/` without `.md`: `kep:sig-auth/0014-dynamic-audit-configuration`.
+- Governance: `community:<path>`, `sig-release:<path>` (ADR-002 D4), from the chain's first path: `sig-release:release-engineering/versioning.md`, with alias `sig-release:release-engineering/reference/versioning.md`.
+- Blog: `web:` + the URL at publication, normalized like web URLs (lowercase, trailing slash): `web:/blog/2025/11/12/ingress-nginx-retirement/`.
+- CHANGELOG: `changelog:1.R`.
+
+**Blog rules (ADR-002 D2–D4, decision 5):**
+- **History:** one entry per first-parent commit on website `main` (up to the lock head) touching a post's `.md` file, following renames (`git log --first-parent --find-renames --raw -z`). An entry's state is the file's content at that commit, or none once deleted.
+- **A version** is an entry whose normalized hash (the `blog_post` strip list) differs from the previous entry's.
+- **Due time** of a state: none if it's deleted or `draft: true`; else `publishDate`, else the page date (front-matter `date`, else the filename's `YYYY-MM-DD-`, else `lastmod`), else the commit time. A date without an offset is UTC; one with an offset keeps it; `+0000` (no colon) is parsed too.
+- **Publication** is the first moment Hugo renders the post: for each entry in order, max(commit time, due time), if that is before the next entry's commit time (or it's the last entry). A post never published isn't stored.
+- **Stored versions:** the version live at publication, from the publication moment, then every later version, each from its commit time. A version superseded before publication isn't stored. After publication, a deletion or `draft: true` closes the open version at that commit; a later rendered version opens a new one.
+- **URL** (as `spikes/blog_identity.py`'s `hugo_url`): the front-matter `url:` (tokens allowed), else the permalink. `:year`/`:month`/`:day` come from the page date as written; `:slug` is the front-matter `slug`, else the filename's slug (only when the date came from the filename), else the title through the urlize approximation (lowercase, punctuation dropped, spaces to hyphens); `:section` is `blog`.
+- **Aliases:** the URL of every later stored version that differs from the id, plus the front-matter `aliases` of stored versions, never the id itself.
+- **Snapshot of a version:** repo `website`, ref `main`, the entry's commit SHA, its path then.
+
+**CHANGELOG rules (T6):**
+- 18 documents, `changelog:1.20` … `changelog:1.37`, source type `release_record`, each read from `CHANGELOG/CHANGELOG-1.R.md` at the kubernetes lock head (its own snapshot, not the website lock: parked P2).
+- One version per ingestion snapshot that changes the normalized hash (empty front matter, no strip list): release window `[R, R]` set at insert; `valid_from_date` = the head commit's time (decision 6); date `until` open.
+- Chunks: leave out the text before the first heading, and every section whose heading path holds a heading starting with `Downloads for ` (decision 8). The hash still covers the whole file.
+
+**R10 (decision 7):** the `close_version` UPDATE also requires `valid_until_release IS NULL OR valid_until_release = <passed>`; no row → ValueError naming both reasons.
+
+#### Handoffs between tasks
+
+- **T4 → T5:** first-parent merge times; the release clamp (decision 1), used by blog windows only if needed (blog dates start at 2020-12-08); the re-creation guard.
+- **T4 → T6:** nothing direct.
+- **T6 → R3:** the final source list for T7's scanner re-check; CHANGELOG oversize chunks for T7's decision.
+
+#### Edge cases (from the pre-mortem; all must be handled or tested)
+
+- **T4:**
+  - 3 KEP numbers have 2 folder names, never present together (1669, 3257, 4444): one document each.
+  - KEPs that leave the 3 SIG folders close as removed: 506 (`[21–25]`), 2004 and 2030 (`[20–21]`).
+  - KEP-1205's `kep.yaml` at 1.20 holds two YAML documents: only the first is read (already in S04's parser).
+  - Skipped with a reason: the 7 symlinks; `keps/sig-network/README.md` (an index, not a KEP); files in a KEP folder other than `README.md` and `kep.yaml` (e.g. `images/authorizer-chain-computation.md`) are ignored.
+  - Governance: the R100 move (`baseimage-exception-list.md`) adds no version; its open version keeps the old path and snapshot. Chains continue from 1.37 to `head` (`branch-creation.md`, `release-cuts.md`: 2 edits). `go.md` → `go-updates.md` at 66% links.
+  - An old path that comes back after its move: the duplicate-id error, never a silent merge (0 on real data).
+  - A KEP or governance doc deleted and re-created: its new version must start after the closed one; otherwise a ValueError for that document, not a database error (E1; 0 on real data).
+  - A re-ingest that only closes a version (E2): tested.
+- **T5:**
+  - The kubescape fragment (never published): not stored.
+  - The 1.23 and 1.24 release interviews (extensionless after PR #53902): their open versions close at that merge (2026-02-21).
+  - The VAP GA post (`------`): stored. `k8s-book-club`'s fix commit (`------` → `---` plus rewrapped lines) may add no version.
+  - 8 dates with `+0000`-style offsets; 1 with milliseconds.
+  - 3 URLs change after publication → aliases: `introducing-headlamp-plugin-for-karpenter` (09/23 → 10/06), `ingress-nginx-retirement` (11/12 → 11/11), `ccm-new-metric-route-sync-total` (02/26 → 05/15; its front-matter alias equals its id and is skipped).
+  - A post re-dated into the future after publication (ccm) keeps the post's first publication; its later versions start at their commit times (a known approximation).
+- **T6:**
+  - Stray closing fences in `CHANGELOG-1.22.md` (line 3085) and `CHANGELOG-1.36.md` (line 1602): scanner rule 3; all 371 sections must still appear.
+  - `CHANGELOG-1.38.md` exists at the head but is out of range: not read.
+  - 1.37 has 8 sections; 1.20 has 23.
+- **SQL:** no string-built SQL (ADR-005); the reviewer checks by hand.
+- **Network:** the run reads blobs by id only, as R1 does. `git grep` on a partial clone fetches missing blobs (seen in the sitting), so it isn't used.
+
+#### Files in scope
+
+- **T4:** `config/corpus_manifest.yaml` (the `full` scope's `kep` and `governance_doc`), `manifest.py`, `git_reader.py`, `history.py`, `identity.py`, `normalize.py`, `renames.py` (incl. P11's docstring), `chunker.py`, `ingest.py`, `docs/domain-model.md`, tests, fixtures (small real KEP and governance files).
+- **T5:** `config/corpus_manifest.yaml` (`blog_post` scope and `permalink`), `manifest.py`, `git_reader.py`, `blog.py` (new), `normalize.py` (the dashes and date types), `identity.py`, `ingest.py`, `docs/domain-model.md`, tests, fixtures (real post excerpts).
+- **T6:** `config/corpus_manifest.yaml` (`release_record` repos), `manifest.py`, `history.py`, `identity.py`, `chunker.py`, `ingest.py`, `db/versions.py` (R10), `docs/domain-model.md` (R10, CHANGELOG), tests, fixtures (a CHANGELOG excerpt with a Downloads section and a stray fence), `docs/architecture.md` (at the end of the run).
+- **Every task:** `docs/backlog.md` (tick), this contract's Status line.
+- **Out of scope:**
+  - `{#id}` anchors, scanner rule 5, chunk-size rules (T7); the report (T8); `make embed` (T9)
+  - any retrieval or generation change
+  - migrations (the `canonical_id` prefixes and source types already allow every new id)
+  - `eval/`
+
+#### Proof map
+
+Expected values were computed in the sitting with the spike's normalizer (`spikes/measure.py`) and plain git, never with the new code.
+
+| Task | Done when / rule | Proof | Source of expected values |
+|---|---|---|---|
+| T4 | Re-run adds 0 versions (done when) | Integration test + demo | — |
+| T4 | **KEP-2579's versions start at their merge times (done when)** | Integration test on a tiny repo with a merge commit + demo | `[21,22] [22,24] [24,25] [25,–]`, starting 2021-05-12T16:25:28Z, 2021-11-11T16:46:07Z, 2022-06-06T16:34:23Z, 2022-09-22T15:59:06Z (`git log --first-parent`, in the sitting; S04 stored 2021-05-11T20:46:27Z, …) |
+| T4 | KEP counts (done when: explained against the spike) | Demo | **141 documents / 472 versions**: 116 folders / 447 + 25 single-file / 25; 113 open at `head`. The spike counted files (153 `.md` + 200 `kep.yaml` documents); the difference is explained in the brief |
+| T4 | Older than 1.20 (decision 1) | Unit test: a 2019 merge time gives `valid_from_release` 20 with its date kept | Hand-written; 67 documents affected (git) |
+| T4 | Governance (decision 2) | Unit tests of the date link rules + integration test on a tiny repo with a move + demo | **29 documents / 140 versions** (community 12 / 73, sig-release 17 / 67; 23 open at `head`); 8 governance aliases. The spike's 37 / 143: 8 moved paths linked, 3 of whose moves change no normalized content |
+| T4 | The devil's-advocate tests | Tests | `baseimage` (R100) 3 versions, none added at 1.37; `versioning.md` 4 versions, its 1.37 one starting at PR #2984's merge (2026-05-28T11:40:47Z); an old path that returns → duplicate-id error; a chain from 1.37 to `head`; `go.md` → `go-updates.md` at 66% |
+| T4 | Old KEP ids (decision 3) | Test | `kep:sig-auth/0014-dynamic-audit-configuration`, `claimed_status` `implementable` |
+| T4 | Governance title (decision 4) | Unit tests | "Kubernetes Release Versioning"; `<!-- omit in toc -->` removed; no heading → the path |
+| T4 | E1, E2 | Unit test (re-created document → ValueError); integration test (a re-ingest that only closes) | Hand-written |
+| T5 | Re-run adds 0 versions (done when) | Integration test + demo | — |
+| T5 | Counts (done when: explained against the spike) | Demo | **417 documents / 924 ± 1 versions**: the spike's 416 posts and 1,138 − 214 = 924 versions, +1 post (VAP GA, 1 version), −1 version if `k8s-book-club`'s fix commit is whitespace-only once `------` parses. The brief names which |
+| T5 | Publication (ADR-002 D3) | Unit tests on hand-built histories | `valid_from` = max(merge, publication); a version superseded before publication isn't stored; a deletion after publication closes |
+| T5 | Id at publication, later URLs as aliases | Unit test + demo | The 3 posts above (spike §5 I) |
+| T5 | URL rules | Unit tests | The spike's hand checks: `/blog/2018/07/16/how-the-sausage-is-made-the-kubernetes-1.11-release-interview-from-the-kubernetes-podcast/`; `+0000` dates; a front-matter `url:` |
+| T6 | **18 documents, 371 patch sections (done when)** | Demo | 18 / 18 versions; 371 distinct first headings `v1.R.x` (`grep -c '^# v'`, spike §7 P) |
+| T6 | **No chunk holds a sha512 row (done when)** | Integration test + demo SQL | 0 chunks match 128 hex characters |
+| T6 | **A set release `until` can't change (done when)** | Integration test: close `[30,30]` with 31 → ValueError; with 30 → closes | Hand-written |
+| T6 | Date and window (decision 6) | Test + demo | 2026-09-30T01:30:57Z; `[R, R]` |
+| Bundle | All three together | The counts query after T6 | docs pages 64 / 405 · release records **26 / 73** (8 / 55 + 18 / 18; the spike's 29 / 73 minus the 3 moves R1 linked) · feature gates 491 / 868 · KEPs 141 / 472 · governance 29 / 140 · blog 417 / 924 ± 1 · aliases 9 (R1) + 8 governance + the blog's (3 URL changes plus front-matter aliases, each listed in the brief) |
+
+#### Break-it rules
+
+- **T4:**
+  1. **Most important.** Date by any commit instead of first-parent → the KEP-2579 test fails.
+  2. Drop the release clamp → the pre-1.20 test fails.
+  3. Drop the governance similarity rule → the `versioning.md` chain test fails.
+- **T5:**
+  1. **Most important.** `valid_from` = merge time only → the publication test fails.
+  2. Store versions superseded before publication → the superseded-draft test fails.
+  3. The latest URL as the id → the id test fails.
+- **T6:**
+  1. **Most important.** Drop the R10 condition → the `[30,30]` test fails.
+  2. Keep the Downloads sections → the sha512 test fails.
+  3. Date from `fetched_at` → the date test fails.
+- After every restore, `git status --short` is clean (new files: compare sha256).
+
+#### Real-data demos
+
+- **Every task:** `make reset-corpus && time make ingest`, the counts query (S05-R1's), then `make ingest` again: 0 new documents, versions and chunks.
+- **T4:** KEP-2579's windows; the `versioning.md` chain (id, alias, each version's windows and `source_path`); the 8 governance aliases.
+- **T5:** the 3 blog posts with later URLs (id, aliases, windows); the VAP GA and `k8s-book-club` versions.
+- **T6:** sections per CHANGELOG, and the sha512 check:
+
+  ```bash
+  docker compose exec -T db psql -U orgknow -d orgknow -c "SELECT count(*) FROM chunks WHERE text ~ '[0-9a-f]{128}'"
+  ```
+
+- Ingest run time with all sources is measured and reported.
+
+#### Bundle-level check
+
+1. `make check`
+2. `make reset-corpus && make ingest`, then `make ingest` again: 0 new documents, versions and chunks; exit 0
+3. The counts query: every value in the proof map's Bundle row
+4. `make test-int`, with the dev database ingested
+5. `git status --short` clean after every break-it restore
+
+#### PR plan
+
+- **1 PR** (decision 11): `s05-r2-date-scoped`, the contract, then T4, T5, T6. Expected above the ~800-line alarm (~2,000–2,600 reviewable lines); accepted in the sitting, so the run doesn't split it.
+- Greptile once (8 → 9 of 50). Record the PR's size in its brief.
+
+**Paid calls allowed:** none. No Voyage and no Anthropic calls, and `make embed` doesn't run.
 
 ## Retro (fill in at the end)
 
