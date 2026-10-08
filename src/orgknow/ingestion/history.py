@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 
 from orgknow.db.models import Release, Version, VersionData
-from orgknow.ingestion.manifest import Snapshot
+from orgknow.ingestion.manifest import Snapshot, SnapshotError
 from orgknow.ingestion.normalize import FileState
 
 
@@ -100,8 +100,9 @@ def date_history(
 ) -> list[VersionData]:
     """Versions of a date-scoped document (KEP, governance doc), from its snapshots, oldest first.
 
-    Raises ValueError where the dates can't make valid windows: a change dated no later than the
-    open version's start (R5), or a document re-created before its last version closed (R8, E1).
+    Raises SnapshotError (a ValueError naming the snapshot) where the dates can't make valid
+    windows: a change dated no later than the open version's start (R5), or a document re-created
+    before its last version closed (R8, E1).
     """
     versions: list[VersionData] = []
     previous: FileState | None = None
@@ -109,18 +110,20 @@ def date_history(
         if _hash(obs.state) == _hash(previous):
             continue
         if obs.changed_at is None:
-            raise ValueError(
-                f"the content changed at {obs.snapshot.label} ({obs.snapshot.sha}), "
-                "but no commit since the previous snapshot touches it"
+            raise SnapshotError(
+                obs.snapshot.label,
+                f"the content changed at {obs.snapshot.sha}, but no commit since the previous "
+                "snapshot touches it",
             )
         # The merge time: the stored text was exactly the live text from then on.
         at = obs.changed_at
         last = versions[-1] if versions else None
         if last is not None and last.valid_until_date is None:
             if at <= last.valid_from_date:
-                raise ValueError(
-                    f"the change at {obs.snapshot.label} is dated {at.isoformat()}, not after "
-                    f"the version it replaces ({last.valid_from_date.isoformat()})"
+                raise SnapshotError(
+                    obs.snapshot.label,
+                    f"the change is dated {at.isoformat()}, not after the version it replaces "
+                    f"({last.valid_from_date.isoformat()})",
                 )
             versions[-1] = last.model_copy(
                 update={
@@ -129,9 +132,10 @@ def date_history(
                 }
             )
         elif last is not None and last.valid_until_date is not None and at < last.valid_until_date:
-            raise ValueError(
-                f"the document is back at {obs.snapshot.label}, dated {at.isoformat()}, which "
-                f"is before its previous version closed ({last.valid_until_date.isoformat()})"
+            raise SnapshotError(
+                obs.snapshot.label,
+                f"the document is back, dated {at.isoformat()}, which is before its previous "
+                f"version closed ({last.valid_until_date.isoformat()})",
             )
         if obs.state is not None:
             from_release = _release_on_or_before(at, releases)

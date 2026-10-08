@@ -15,6 +15,7 @@ import pytest
 from orgknow.ingestion.git_reader import (
     GitError,
     PostCommit,
+    Skip,
     commit_time,
     merge_time,
     parse_commit_time,
@@ -37,15 +38,17 @@ def test_reads_markdown_and_skips_symlinks_and_other_files_with_a_reason(
     second = repo.commit({"docs/a.md": None, "docs/b.md": PAGE})
     snapshots = [Snapshot(24, "release-1.24", first), Snapshot(25, "release-1.25", second)]
 
-    files, skipped = read_files(repo.path, ["docs/"], snapshots, (".md",))
+    files, skipped, missing = read_files(repo.path, ["docs/", "gone/"], snapshots, (".md",))
 
     # a.md is gone at 1.25 (None); b.md is new there.
     assert files == {"docs/a.md": [PAGE, None], "docs/b.md": [None, PAGE]}
     assert skipped == [
-        "1.24 docs/diagram.svg: not a .md file",
-        "1.25 docs/diagram.svg: not a .md file",
-        "1.25 docs/link.md: symlink",
+        Skip(snapshots[0], "docs/diagram.svg", "not a .md file"),
+        Skip(snapshots[1], "docs/diagram.svg", "not a .md file"),
+        Skip(snapshots[1], "docs/link.md", "symlink"),
     ]
+    # A manifest path absent at every snapshot is returned for the caller to report (S05-T8).
+    assert missing == ["gone/"]
 
 
 @pytest.mark.parametrize(

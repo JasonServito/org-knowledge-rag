@@ -203,7 +203,7 @@ Tasks:
   - Covers `{#id}` anchors, HTML tables with a blank line in a cell, the scanner re-check, and the oversize-block decision.
   - Done when: 0 heading paths contain `{#`; the RBAC page's 30 cut HTML tables are whole; the scanner matches markdown-it, or each difference is explained. (S05-R3 sitting: also cut oversize lists and tables, drop HTML comment blocks, and the "Downloads for" rule on every source.)
   - Deps: T1–T6.
-- [ ] **S05-T8 `[commodity]` Ingestion report with a fingerprint.**
+- [x] **S05-T8 `[commodity]` Ingestion report with a fingerprint.**
   - Done when: two from-empty ingests print identical reports.
   - Deps: T1–T6.
 - [ ] **S05-T9 `[commodity]` Embed the full corpus.**

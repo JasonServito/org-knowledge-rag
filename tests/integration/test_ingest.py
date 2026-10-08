@@ -22,6 +22,7 @@ from psycopg.rows import TupleRow
 from orgknow.db.documents import find_document, resolve_document
 from orgknow.db.models import VersionData
 from orgknow.db.versions import list_versions
+from orgknow.ingestion.git_reader import Skip
 from orgknow.ingestion.ingest import Document, ReleasesMismatch, Summary, ingest, store_document
 from orgknow.ingestion.manifest import (
     BlogGroup,
@@ -552,12 +553,9 @@ def _feature_gates(make_git_repo: Callable[[str], Any]) -> Scope:
         Snapshot(minor, f"release-1.{minor}", repo.commit(files))
         for minor, files in commits.items()
     )
-    paths = (
-        REFERENCE + "feature-gates.md",
-        GATES,
-        REFERENCE + "feature-gates-removed.md",
-        REFERENCE + "feature-gates-removed/",
-    )
+    # The manifest's paths that this history holds: a path absent at every snapshot is an error
+    # (S05-T8), and it has no removed-gates page.
+    paths = (REFERENCE + "feature-gates.md", GATES)
     group = ReleaseGroup("feature_gate_reference", "website", paths, snapshots)
     return Scope("test", (group,), ())
 
@@ -791,11 +789,14 @@ def test_kep_versions_start_at_their_merge_times(
     # Skipped with a reason: the symlink (at every snapshot) and sig-network's index. The other
     # files in the KEP's folder (images/flow.md, flow.png) are ignored, not even skipped.
     assert first.skipped[:2] == [
-        "1.20 keps/sig-auth/OWNERS: not a .md/.yaml file",
-        "1.20 keps/sig-auth/link.md: symlink",
+        Skip(snapshots[0], "keps/sig-auth/OWNERS", "not a .md/.yaml file"),
+        Skip(snapshots[0], "keps/sig-auth/link.md", "symlink"),
     ]
-    assert "1.20 keps/sig-network/README.md: an index of the SIG's KEPs, not a KEP" in first.skipped
-    assert not any("flow" in line for line in first.skipped)
+    index = Skip(
+        snapshots[0], "keps/sig-network/README.md", "an index of the SIG's KEPs, not a KEP"
+    )
+    assert index in first.skipped
+    assert not any("flow" in skip.path for skip in first.skipped)
     assert first.documents == {"kep": 2}
     # A re-run adds nothing.
     assert (second.new_documents, second.new_versions, second.closed_versions) == (0, 0, 0)
@@ -1046,13 +1047,16 @@ def test_blog_posts_are_stored_from_publication_and_a_rerun_adds_nothing(
         first = _ingest(conn, tmp_path, scope)
     second = _ingest(conn, tmp_path, scope)
 
-    # The broken post is reported with its reason, every run; the others are stored.
-    broken = f"{BAD_PATH} at {bad}: front matter is not valid YAML: while parsing a flow sequence"
+    # The broken post is reported with its reason, every run, labelled with its commit's short
+    # SHA (S05-T8); the others are stored.
+    reason = "front matter is not valid YAML: while parsing a flow sequence"
+    broken = f"{bad[:8]} {BAD_PATH}: {reason}"
     assert [line.split("\n")[0] for line in first.failures] == [broken]
     assert first.documents == {"blog_post": 3}
     # Out of scope, counted (not listed one by one): the 2018 post and the draft.
-    assert "blog: 6 posts; 3 in scope; 1 never published; 1 dated before 2020-12-08" in (
-        caplog.text
+    assert (
+        "blog: 6 posts; 3 in scope; 1 never published; 1 dated before 2020-12-08; 0 with no date"
+        in caplog.text
     )
     # ingress: valid_from = max(merge, publication); 11-12 is the id, 11-11 an alias.
     published = datetime(2025, 11, 12, 17, tzinfo=UTC)

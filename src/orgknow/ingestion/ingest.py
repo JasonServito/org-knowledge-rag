@@ -24,6 +24,9 @@ with no chunks are chunked, so a re-run writes nothing.
    exit code non-zero.
 5. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
    (`chunker.py`), one transaction per version.
+6. Report (`report.py`, S05-T8): this run's counts, each skipped file once with its snapshots,
+   each failure (starting with its snapshot's label where it happened at one), then the
+   database part that `make ingest-report` prints alone, with the fingerprint.
 """
 
 import logging
@@ -45,14 +48,16 @@ from orgknow.db.versions import close_version, insert_version, list_versions
 from orgknow.ingestion.blog import (
     Entry,
     Publication,
+    commit_label,
     hugo_url,
-    in_scope,
+    out_of_scope,
     post_versions,
     publication,
 )
 from orgknow.ingestion.chunker import changelog_title, chunk_version, governance_title
 from orgknow.ingestion.git_reader import (
     PostCommit,
+    Skip,
     commit_time,
     first_present,
     merge_time,
@@ -87,6 +92,7 @@ from orgknow.ingestion.manifest import (
     ReleaseGroup,
     Scope,
     Snapshot,
+    SnapshotError,
     load_normalization,
     load_releases,
     load_scope,
@@ -111,6 +117,7 @@ from orgknow.ingestion.renames import (
     parse_redirects,
     web_link_rules,
 )
+from orgknow.ingestion.report import database_report, skip_lines, snapshot_labels
 from orgknow.settings import Settings
 
 log = logging.getLogger(__name__)
@@ -134,8 +141,25 @@ class Summary:
     closed_versions: int = 0
     unchanged_documents: int = 0
     new_chunks: int = 0
-    skipped: list[str] = field(default_factory=list)  # files or versions, with the reason
+    skipped: list[Skip] = field(default_factory=list)  # files, at each snapshot skipped
+    skipped_versions: list[str] = field(default_factory=list)  # with no text to chunk
     failures: list[str] = field(default_factory=list)  # documents or versions, with the reason
+
+
+def failure_line(what: str, exc: ValueError) -> str:
+    """A failure line, "<what>: <reason>", after the snapshot's label when the failure happened
+    at one snapshot (a SnapshotError): "1.24 <what>: <reason>" (S05-T8)."""
+    line = f"{what}: {exc}"
+    return f"{exc.label} {line}" if isinstance(exc, SnapshotError) else line
+
+
+def report_missing(missing: Sequence[str], snapshots: Sequence[Snapshot], summary: Summary) -> None:
+    """A manifest path absent at every snapshot is a failure: the manifest is wrong (its
+    missing-path rule). One absent from some snapshots only is logged by `read_files`."""
+    for path in missing:
+        summary.failures.append(
+            f"{snapshot_labels(snapshots)}: manifest path {path} is absent at every snapshot"
+        )
 
 
 class ReleasesMismatch(Exception):
@@ -170,6 +194,20 @@ def read_redirects(repo: Path, snapshot: Snapshot) -> dict[str, str]:
     return parse_redirects(decode(read_file(repo, snapshot.sha, path)))
 
 
+def file_states(
+    group: ReleaseGroup, chain: Sequence[tuple[str, bytes] | None], keys: frozenset[str]
+) -> list[FileState | None]:
+    """Each snapshot's file in a chain normalized and hashed (`docs_state`), None where absent.
+    Raises SnapshotError, with that snapshot's label, if a file can't be parsed."""
+    states: list[FileState | None] = []
+    for snapshot, link in zip(group.snapshots, chain, strict=True):
+        try:
+            states.append(None if link is None else docs_state(link[0], link[1], keys))
+        except ValueError as exc:
+            raise SnapshotError(snapshot.label, str(exc)) from exc
+    return states
+
+
 def document_from_chain(
     group: ReleaseGroup,
     chain: Sequence[tuple[str, bytes] | None],
@@ -181,10 +219,9 @@ def document_from_chain(
 
     The canonical id is the first file's URL (ADR-002 D4). The chain's later URLs and the
     front-matter `aliases` are its aliases, except its own id. Hashes use the strip list of the
-    group's source type (ADR-002 D2). Raises ValueError if a file can't be parsed.
+    group's source type (ADR-002 D2). Raises SnapshotError if a file can't be parsed.
     """
-    keys = strip[group.source_type]
-    states = [None if link is None else docs_state(link[0], link[1], keys) for link in chain]
+    states = file_states(group, chain, strip[group.source_type])
     observed = [Observed(s, state) for s, state in zip(group.snapshots, states, strict=True)]
     paths = [link[0] for link in chain if link is not None]
     canonical_id = docs_canonical_id(paths[0])
@@ -208,13 +245,18 @@ def gate_document_from_chain(
 
     The canonical id is `gate:` + the first file's front-matter `title`, as written (ADR-002
     D4); each later title is an alias. `former_titles` never become aliases: the gate a former
-    title names can keep its own file (`PodHasNetworkCondition`). Raises ValueError if a file
-    can't be parsed or has no title.
+    title names can keep its own file (`PodHasNetworkCondition`). Raises SnapshotError if a
+    file can't be parsed or has no title.
     """
-    keys = strip[group.source_type]
-    states = [None if link is None else docs_state(link[0], link[1], keys) for link in chain]
+    states = file_states(group, chain, strip[group.source_type])
     observed = [Observed(s, state) for s, state in zip(group.snapshots, states, strict=True)]
-    ids = [gate_canonical_id(state.metadata.get("title")) for state in states if state is not None]
+    ids = []
+    for snapshot, state in zip(group.snapshots, states, strict=True):
+        if state is not None:
+            try:
+                ids.append(gate_canonical_id(state.metadata.get("title")))
+            except ValueError as exc:
+                raise SnapshotError(snapshot.label, str(exc)) from exc
     return Document(
         ids[0],
         group.source_type,
@@ -291,8 +333,9 @@ def _collect_pool(
     gates: list[dict[str, bytes]] = [{} for _ in snapshots]
     group_of: dict[str, ReleaseGroup] = {}
     for group in groups:
-        files, skipped = read_files(repo, group.paths, snapshots, (".md",))
+        files, skipped, missing = read_files(repo, group.paths, snapshots, (".md",))
         summary.skipped += skipped
+        report_missing(missing, snapshots, summary)
         for path, contents in files.items():
             group_of[path] = group
             listings = gates if is_gate_file(group, path) else pages
@@ -326,7 +369,7 @@ def _collect_pool(
             try:
                 documents.append(derive(group_of[first], chain, strip, releases))
             except ValueError as exc:
-                summary.failures.append(f"{first}: {exc}")
+                summary.failures.append(failure_line(first, exc))
     return without_duplicate_ids(documents, summary)
 
 
@@ -391,20 +434,20 @@ def collect_changelogs(group: ChangelogGroup, cache_dir: Path, summary: Summary)
     repo = cache_dir / group.repo
     at = commit_time(repo, group.snapshot.sha)
     paths = [path for _, path in group.files]
-    files, skipped = read_files(repo, paths, [group.snapshot], (".md",))
+    # A listed file absent there is reported below, with the others' failures.
+    files, skipped, _ = read_files(repo, paths, [group.snapshot], (".md",))
     summary.skipped += skipped
+    label = group.snapshot.label
     documents = []
     for release, path in group.files:
         raw = files.get(path, [None])[0]
         if raw is None:
-            summary.failures.append(
-                f"{path}: absent at {group.snapshot.label} ({group.snapshot.sha})"
-            )
+            summary.failures.append(f"{label} {path}: absent ({group.snapshot.sha})")
             continue
         try:
             documents.append(changelog_document(group, release, path, raw, at))
         except ValueError as exc:
-            summary.failures.append(f"{path}: {exc}")
+            summary.failures.append(f"{label} {path}: {exc}")
     return documents
 
 
@@ -436,19 +479,22 @@ def is_other_kep_folder_file(path: str) -> bool:
 
 def kep_chains(
     files: Mapping[str, Sequence[bytes | None]], snapshots: Sequence[Snapshot]
-) -> tuple[dict[str, list[dict[str, bytes]]], list[str]]:
+) -> tuple[dict[str, list[dict[str, bytes]]], list[Skip]]:
     """Group the files read under the KEP paths into one chain per KEP id: its files at each
     snapshot ({path: raw content}, empty where it has none). A KEP folder whose name changes
     keeps its chain (the number is the id). A file that is no KEP (sig-network's README.md
-    index) is skipped: "<first snapshot holding it> <path>: <reason>"."""
+    index) is skipped at each snapshot holding it."""
     chains: dict[str, list[dict[str, bytes]]] = {}
     skipped = []
     for path, contents in sorted(files.items()):
         try:
             canonical_id = kep_file_canonical_id(path)
         except ValueError as exc:
-            first = next(i for i, raw in enumerate(contents) if raw is not None)
-            skipped.append(f"{snapshots[first].label} {path}: {exc}")
+            skipped += [
+                Skip(snapshot, path, str(exc))
+                for snapshot, raw in zip(snapshots, contents, strict=True)
+                if raw is not None
+            ]
             continue
         chain = chains.setdefault(canonical_id, [{} for _ in snapshots])
         for files_at, raw in zip(chain, contents, strict=True):
@@ -486,9 +532,14 @@ def kep_document(
     releases: Sequence[Release],
 ) -> Document:
     """One KEP from its files at each of the group's snapshots and the merge time of each
-    change (`_merge_times`). A KEP has no aliases. Raises ValueError if a snapshot's files
+    change (`_merge_times`). A KEP has no aliases. Raises SnapshotError if a snapshot's files
     can't be parsed or their dates can't make valid windows."""
-    states = [kep_files_state(files, strip, synonyms) for files in chain]
+    states = []
+    for snapshot, files in zip(group.snapshots, chain, strict=True):
+        try:
+            states.append(kep_files_state(files, strip, synonyms))
+        except ValueError as exc:
+            raise SnapshotError(snapshot.label, str(exc)) from exc
     observed = [
         Observed(snapshot, state, at)
         for snapshot, state, at in zip(group.snapshots, states, changed_at, strict=True)
@@ -510,9 +561,10 @@ def collect_keps(
     or an old single-file KEP), group its files by KEP id, and derive its versions, each dated
     by its merge time."""
     repo = cache_dir / group.repo
-    files, skipped = read_files(
+    files, skipped, missing = read_files(
         repo, group.paths, group.snapshots, (".md", ".yaml"), ignore=is_other_kep_folder_file
     )
+    report_missing(missing, group.snapshots, summary)
     chains, not_keps = kep_chains(files, group.snapshots)
     summary.skipped += skipped + not_keps
     documents = []
@@ -523,7 +575,7 @@ def collect_keps(
                 kep_document(group, canonical_id, chain, changed_at, strip, synonyms, releases)
             )
         except ValueError as exc:
-            summary.failures.append(f"{canonical_id}: {exc}")
+            summary.failures.append(failure_line(canonical_id, exc))
     return documents
 
 
@@ -538,14 +590,17 @@ def governance_document(
 
     The canonical id is `<repo>:<first path>`; each later path is an alias (ADR-002 D4, S05-R2
     decision 2). Its title is its first `# ` heading, else its path (decision 4). Raises
-    ValueError if a file can't be decoded or the dates can't make valid windows.
+    SnapshotError if a file can't be decoded or the dates can't make valid windows.
     """
     states: list[FileState | None] = []
-    for link in chain:
+    for snapshot, link in zip(group.snapshots, chain, strict=True):
         if link is None:
             states.append(None)
             continue
-        path, text = link[0], decode(link[1])
+        try:
+            path, text = link[0], decode(link[1])
+        except ValueError as exc:
+            raise SnapshotError(snapshot.label, str(exc)) from exc
         states.append(governance_state(path, text, governance_title(text, path)))
     observed = [
         Observed(snapshot, state, at)
@@ -567,8 +622,9 @@ def collect_governance(
     path, then git similarity, `date_link_rules`), and derive one document per chain, each
     version dated by its merge time. Two chains with one id are an error, never a merge."""
     repo = cache_dir / group.repo
-    files, skipped = read_files(repo, group.paths, group.snapshots, (".md",))
+    files, skipped, missing = read_files(repo, group.paths, group.snapshots, (".md",))
     summary.skipped += skipped
+    report_missing(missing, group.snapshots, summary)
     listings: list[dict[str, bytes]] = [{} for _ in group.snapshots]  # path -> raw content
     for path, contents in files.items():
         for listing, raw in zip(listings, contents, strict=True):
@@ -591,7 +647,7 @@ def collect_governance(
             documents.append(governance_document(group, chain, changed_at, releases))
         except ValueError as exc:
             first = next(path for path in paths if path is not None)
-            summary.failures.append(f"{group.repo}:{first}: {exc}")
+            summary.failures.append(failure_line(f"{group.repo}:{first}", exc))
     return without_duplicate_ids(documents, summary)
 
 
@@ -605,13 +661,16 @@ def blog_document(
 
     The canonical id is the URL at publication. The URL of each later stored version that
     differs, and the front-matter `aliases` of the stored versions, are its aliases, never the
-    id itself. Raises ValueError if the version live at publication has no URL (no page date)
-    or the dates can't make valid windows.
+    id itself. Raises SnapshotError, labelled with the commit's short SHA, if the version live at
+    publication has no URL (no page date) or the dates can't make valid windows.
     """
     versions = post_versions(group.repo, group.ref, entries, published, releases)
     urls = [hugo_url(v.metadata, v.source_path, group.permalink) for v in versions]
     if urls[0] is None:
-        raise ValueError("no URL at publication: no page date to fill the permalink")
+        raise SnapshotError(
+            commit_label(entries[published.entry].sha),
+            "no URL at publication: no page date to fill the permalink",
+        )
     canonical_id = blog_canonical_id(urls[0])
     aliases = {blog_canonical_id(url) for url in urls[1:] if url is not None}
     for version in versions:
@@ -624,8 +683,8 @@ def post_entries(
     history: Sequence[PostCommit], blobs: Mapping[str, bytes], strip: frozenset[str]
 ) -> list[Entry]:
     """A post's history with its file at each commit normalized and hashed (ADR-002 D2; `strip`
-    is the blog_post list). Raises ValueError, naming the file and the commit, if its front
-    matter can't be parsed."""
+    is the blog_post list). Raises SnapshotError, labelled with the commit's short SHA, if its
+    front matter can't be parsed."""
     entries = []
     for commit in history:
         state = None
@@ -633,7 +692,7 @@ def post_entries(
             try:
                 state = docs_state(commit.path, blobs[commit.blob], strip)
             except ValueError as exc:
-                raise ValueError(f"{commit.path} at {commit.sha}: {exc}") from exc
+                raise SnapshotError(commit_label(commit.sha), f"{commit.path}: {exc}") from exc
         entries.append(Entry(commit.committed, commit.sha, commit.path, state))
     return entries
 
@@ -648,8 +707,9 @@ def collect_blog(
     """Read the blog's history (one first-parent log up to the lock head, following renames),
     normalize and hash every post's file at each commit (`strip`: the blog_post list), and
     derive one document per post in scope: ever published, with a page date at publication on
-    or after `group.since`. Posts out of scope are counted in the log, not listed. A post whose
-    front matter can't be parsed is reported with the commit and the reason."""
+    or after `group.since`. Posts out of scope are counted in the log, not listed: never
+    published, dated before `since`, or with no date. A post whose front matter can't be parsed
+    is reported with the commit's short SHA and the reason."""
     repo = cache_dir / group.repo
     histories = post_histories(repo, group.head, group.paths)
     blobs: dict[str, bytes] = {}  # by blob id: each file content is read once
@@ -658,30 +718,32 @@ def collect_blog(
             if commit.blob is not None and commit.blob not in blobs:
                 blobs[commit.blob] = read_blob(repo, commit.blob)
     documents = []
-    never_published = dated_before = 0
+    never_published = 0
+    out_of_scope_by = Counter[str]()  # "dated before", "no date"
     for history in histories:
         try:
             entries = post_entries(history, blobs, strip)
-        except ValueError as exc:
-            summary.failures.append(str(exc))
+        except SnapshotError as exc:
+            summary.failures.append(f"{exc.label} {exc}")  # the reason starts with the path
             continue
         published = publication(entries)
         if published is None:
             never_published += 1
-        elif not in_scope(entries[published.entry], group.since):
-            dated_before += 1
+        elif reason := out_of_scope(entries[published.entry], group.since):
+            out_of_scope_by[reason] += 1
         else:
             try:
                 documents.append(blog_document(group, entries, published, releases))
             except ValueError as exc:
-                summary.failures.append(f"{history[-1].path}: {exc}")
+                summary.failures.append(failure_line(history[-1].path, exc))
     log.info(
-        "blog: %d posts; %d in scope; %d never published; %d dated before %s",
+        "blog: %d posts; %d in scope; %d never published; %d dated before %s; %d with no date",
         len(histories),
         len(documents),
         never_published,
-        dated_before,
+        out_of_scope_by["dated before"],
         f"{group.since:%Y-%m-%d}",
+        out_of_scope_by["no date"],
     )
     return without_duplicate_ids(documents, summary)
 
@@ -791,7 +853,7 @@ def chunk_versions(
             summary.failures.append(f"{where}: {exc}")
             continue
         if not chunks:
-            summary.skipped.append(f"{where} {version.source_path}: no text to chunk")
+            summary.skipped_versions.append(f"{where} {version.source_path}: no text to chunk")
             continue
         with conn.transaction():
             add_chunks(conn, version.id, chunks)
@@ -821,23 +883,27 @@ def main() -> None:
             )
         except ReleasesMismatch as exc:
             sys.exit(f"Nothing ingested: {exc}.")  # exit code 1, message on stderr
+        database = database_report(conn)
 
-    for line in summary.skipped:
-        log.info("skipped %s", line)
-    for line in summary.failures:
-        log.error("FAILED %s", line)
+    # The report (S05-T8): every list sorted, so two ingests of the same data print the same.
+    skipped = skip_lines(summary.skipped) + sorted(summary.skipped_versions)
+    failures = sorted(summary.failures)
     by_type = ", ".join(
         f"{n} {source_type}" for source_type, n in sorted(summary.documents.items())
     )
-    print(
-        f"Scope {scope.name}: {sum(summary.documents.values())} documents stored ({by_type}).\n"
+    lines = [
+        f"Scope {scope.name}: {sum(summary.documents.values())} documents stored ({by_type}).",
         f"New documents: {summary.new_documents}. New versions: {summary.new_versions}. "
         f"Closed versions: {summary.closed_versions}. "
-        f"Unchanged documents: {summary.unchanged_documents}.\n"
-        f"New chunks: {summary.new_chunks}.\n"
-        f"Skipped: {len(summary.skipped)} files or versions. "
-        f"Failed: {len(summary.failures)} documents or versions."
-    )
+        f"Unchanged documents: {summary.unchanged_documents}.",
+        f"New chunks: {summary.new_chunks}.",
+        f"Skipped: {len(skipped)} files or versions.",
+        *(f"  {line}" for line in skipped),
+        f"Failed: {len(failures)} documents or versions.",
+        *(f"  {line}" for line in failures),
+        *database,
+    ]
+    print("\n".join(lines))
     if summary.failures:
         sys.exit(1)
 

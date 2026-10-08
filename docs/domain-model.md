@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10. Amended in the S05-R3 sitting (2026-10-07): the chunking rules (S05-T7).
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10. Amended in the S05-R3 sitting (2026-10-07): the chunking rules (S05-T7), the ingestion report and its fingerprint (S05-T8).
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -225,7 +225,7 @@ Each rule has an integration test that breaks it on purpose and asserts the exac
 - `claimed_status` and `claimed_stage` appear only on KEP versions.
 - Re-ingesting creates no new versions.
 
-## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0, S04-T5, S05-T1)
+## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0, S04-T5, S05-T1, S05-T8)
 
 All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transaction to the caller (ADR-005). Inputs are Pydantic models, with timezone-aware datetimes only.
 
@@ -248,6 +248,9 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 | `search(conn, question_vector, model, k) -> list[Hit]` | The `k` texts nearest the vector by cosine distance, among `model`'s vectors that a chunk holds; ties by hash. One hit per text: it cites the chunk in the newest version holding the text (latest date window; lowest chunk id within it) and lists every holding version's release window, never merged (S04-T5) |
 | `versions_at_release(conn, document_id, release) -> list` | Versions whose release window includes `release` (inclusive). Can be several for date-scoped sources |
 | `version_at_time(conn, document_id, at) -> version \| None` | The version whose date window contains `at` (half-open) |
+| `counts_by_source_type(conn)`, `counts_by_release(conn) -> list[Counts]` | The ingestion report's counts: documents, versions, chunks and distinct texts per source type with a total row; per release (valid at R) per source type, with a total row per release (S05-T8) |
+| `chunk_id_range(conn) -> (min, max) \| None` | The lowest and highest chunk id (S05-T8) |
+| `stored_documents`, `stored_aliases`, `stored_versions`, `stored_chunks(conn) -> list` | Every stored record except generated ids, named by `canonical_id` (a chunk also by its version's `valid_from_date`): the fingerprint's input (S05-T8) |
 
 `versions_at_release` and `version_at_time` hold the window conventions in one place, and their tests cover both edges of a window.
 
@@ -355,12 +358,37 @@ The rules are `ingestion/blog.py`; the blog's history is read by `git_reader.pos
 - **Stored versions:** the version live at publication, from the publication moment, then every later version from its commit time. A version superseded before publication was never public, so it isn't stored. After publication, a deletion or `draft: true` closes the open version at that commit, and a later rendered version opens a new one. Windows then follow the date-scoped rules above (release window from the latest release on or before the start).
   - Known approximations: publication assumes the site builds on every merge; a version re-dated into the future after publication still starts at its commit.
 - **Snapshot of a version:** repo `website`, ref `main`, the entry's commit SHA, and the post's path at that commit. A move that changes no normalized content adds no version, so the open version keeps its old path and snapshot.
-- **Scope:** the page date of the version live at publication is on or after 1.20's release date (2020-12-08, 00:00 UTC), and the post was ever published. Posts out of scope are counted in the ingest log, not listed one by one.
-- **Front matter** may open with 3 or more dashes, as Hugo renders it (the VAP GA post opens with `------`). This applies to every source. A post whose front matter can't be parsed is reported with the commit and the reason, and isn't stored.
+- **Scope:** the page date of the version live at publication is on or after 1.20's release date (2020-12-08, 00:00 UTC), and the post was ever published. Posts out of scope are counted in the ingest log, not listed one by one: never published, dated before 1.20, or with no page date (S05-T8).
+- **Front matter** may open with 3 or more dashes, as Hugo renders it (the VAP GA post opens with `------`). This applies to every source. A post whose front matter can't be parsed is reported with the commit's short SHA and the reason, and isn't stored.
 - **Identity** (ADR-002 D4): `web:` + the URL at publication, lowercase, with a trailing slash: `web:/blog/2025/11/12/ingress-nginx-retirement/`.
   - The URL is the front-matter `url:` (tokens allowed), else the manifest's `permalink` (`/:section/:year/:month/:day/:slug/`). `:year`/`:month`/`:day` come from the page date as written; `:slug` is the front-matter `slug`, else the filename's (only when the date came from the filename), else the title through an approximation of Hugo's urlize (lowercase, punctuation dropped, spaces to hyphens); `:section` is `blog`.
   - **Aliases:** the URL of every later stored version that differs from the id, and every front-matter `aliases` entry of the stored versions, never the id itself. On real data: 3 URLs changed after publication (`introducing-headlamp-plugin-for-karpenter` 09/23 → 10/06, `ingress-nginx-retirement` 11/12 → 11/11, `ccm-new-metric-route-sync-total` 02/26 → 05/15, whose front-matter alias is its id), plus `web:/dockershim/` (the 2022 dockershim FAQ's `aliases`).
   - Two posts with one id are an error, never a merge (0 on real data).
+
+## Ingestion report and fingerprint (S05-T8, S05-R3 decisions 7 and 8)
+
+`make ingest` ends with the report. `make ingest-report` prints its database part alone, read from the database only (no git). The reads are in `db/report.py`; the fingerprint and the formatting are pure functions in `ingestion/report.py`.
+
+- **Run part** (`make ingest` only): this run's new documents, versions and chunks, then what was skipped and what failed. Skips aren't stored: they exist only during a run (no table).
+  - **A skipped file** (a symlink, an `OWNERS` file, an image) is one line per (file, reason), with the snapshots it was skipped at in release order, consecutive releases as a range: `keps/sig-release/OWNERS: not a .md/.yaml file (1.20–1.37, head)`. A version with no text to chunk keeps its own line: `web:/docs/concepts/security/ (version 6) content/en/docs/concepts/security/_index.md: no text to chunk`.
+  - **A failure at one snapshot** starts with that snapshot's label: `1.24`, `head`, or a blog commit's short SHA (8 hex digits; a blog commit is never labelled `head`). This covers a file that can't be parsed or decoded, a gate without a title, two folders for one KEP number, and dates that can't make valid windows (`SnapshotError`).
+  - A failure about a whole document (two chains with one id, a history mismatch, an R3 conflict) starts with the document; a link between two source types, with its release pair; a version that can't be chunked, with the version.
+  - **A manifest path absent at every snapshot** of its group is a failure (the manifest's missing-path rule: the manifest is wrong), starting with the group's snapshots: `1.20–1.37: manifest path … is absent at every snapshot`. A path absent from only some snapshots is logged (pages move). 0 on real data.
+- **Database part:**
+  - documents, versions, chunks and distinct chunk texts per source type, and in total, and the alias count
+  - per release R (each row of `releases`): the documents valid at R per source type, and the versions, chunks and distinct texts valid at R over all types. Valid at R: the version's release window contains R (inclusive, as in `versions_at_release`).
+  - the chunk id range (ids aren't in the fingerprint), and the fingerprint
+- **Fingerprint:** one definition of "identical" (AC8): every stored value except generated ids, so it covers chunk text (through its hash, R13), claims, metadata and snapshots, however the database was built.
+  - One row per stored record, each a compact JSON array, `json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`:
+    - `["document", canonical_id, source_type]`
+    - `["alias", canonical_id, alias]`
+    - `["version", canonical_id, content_hash, source_path, snapshot_repo, snapshot_ref, snapshot_sha, valid_from_release, valid_until_release, valid_from_date, valid_until_date, claimed_status, claimed_stage, metadata]`
+    - `["chunk", canonical_id, version valid_from_date, ordinal, heading_path, content_hash]`
+  - Dates are UTC ISO 8601 strings (`2020-12-08T00:00:00+00:00`); a null is JSON `null`; `metadata` is the JSON object, its keys sorted.
+  - A chunk names its version by `canonical_id` and `valid_from_date`, unique per document (R8).
+  - The rows are sorted as strings and joined with `\n`; the fingerprint is the sha256 hex of their UTF-8 bytes, printed `Fingerprint: sha256:<hex>`. An empty database gives the sha256 of the empty string (`e3b0c442…b855`).
+  - `embeddings` and `releases` aren't in it: `make embed` doesn't change it.
+- **Byte-identical:** dates print in UTC and every list is sorted, so two databases holding the same values print the same database part, and two from-empty ingests the same report. Run times stay out of it.
 
 ## Handed to S04
 

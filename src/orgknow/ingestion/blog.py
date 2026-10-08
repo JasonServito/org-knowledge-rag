@@ -35,6 +35,20 @@ FILENAME_DATE = re.compile(r"(\d{4}-\d{2}-\d{2})-(.+)")  # Hugo's :filename date
 TOKEN = re.compile(r":(\w+)")  # a permalink token: :year, :slug, ...
 
 
+def commit_label(sha: str) -> str:
+    """A blog commit's label in failure lines: its short SHA (S05-T8)."""
+    return sha[:8]
+
+
+class Commit(Snapshot):
+    """A blog post's commit on `main`, as the snapshot of a version. It isn't a locked snapshot,
+    so its label is its short SHA, never "head" (S05-T8)."""
+
+    @property
+    def label(self) -> str:
+        return commit_label(self.sha)
+
+
 @dataclass(frozen=True)
 class Entry:
     """A post at one first-parent commit on website `main` that touches its file."""
@@ -99,13 +113,16 @@ def publication(entries: Sequence[Entry]) -> Publication | None:
     return None
 
 
-def in_scope(entry: Entry, since: datetime) -> bool:
-    """Blog scope (S05-R2 sitting): the page date of the entry live at publication is on or
-    after `since` (1.20's release date, 00:00 UTC). A post with no page date is out."""
-    if entry.state is None:
-        return False
+def out_of_scope(entry: Entry, since: datetime) -> str | None:
+    """Why a post is out of the blog scope (S05-R2 sitting), or None if it's in: the page date of
+    the entry live at publication must be on or after `since` (1.20's release date, 00:00 UTC).
+    "no date" if it has no page date, "dated before" if it's earlier (S05-T8)."""
+    if entry.state is None:  # deleted: never the entry live at publication
+        return "no date"
     published_date = page_date(entry.state.metadata, entry.path)[0]
-    return published_date is not None and published_date >= since
+    if published_date is None:
+        return "no date"
+    return "dated before" if published_date < since else None
 
 
 def urlize(text: str) -> str:
@@ -150,5 +167,5 @@ def post_versions(
         rendered = due_time(entry) is not None  # neither deleted nor a draft
         at = published.at if i == published.entry else entry.committed
         state = entry.state if rendered else None
-        observed.append(Observed(Snapshot(None, ref, entry.sha), state, at))
+        observed.append(Observed(Commit(None, ref, entry.sha), state, at))
     return date_history(repo, observed, releases)

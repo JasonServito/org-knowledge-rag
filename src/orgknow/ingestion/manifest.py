@@ -93,6 +93,15 @@ class Snapshot:
         return "head" if self.release is None else f"1.{self.release}"
 
 
+class SnapshotError(ValueError):
+    """A file or document that fails at one snapshot. Its failure line starts with the
+    snapshot's label (S05-T8): "1.24 <what>: <reason>"."""
+
+    def __init__(self, label: str, reason: str) -> None:
+        super().__init__(reason)
+        self.label = label
+
+
 @dataclass(frozen=True)
 class ReleaseGroup:
     """Files read from the website's release branches, one snapshot per release (ADR-002 D1).

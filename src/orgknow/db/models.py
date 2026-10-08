@@ -80,6 +80,45 @@ class TextToEmbed(BaseModel):
     text: str
 
 
+class Counts(BaseModel):
+    """The ingestion report's counts for one group of stored rows (S05-T8). `release` and
+    `source_type` say which group; None means all (a total)."""
+
+    release: int | None = None
+    source_type: str | None = None
+    documents: int
+    versions: int
+    chunks: int
+    texts: int  # distinct chunk texts (content hashes): one vector each
+
+
+# The fingerprint's view of each stored record (S05-R3 decision 8): every stored value except
+# generated ids. A record names its document by canonical_id, and a chunk names its version by
+# the version's valid_from_date, unique per document (R8).
+
+
+class StoredDocument(BaseModel):
+    canonical_id: str
+    source_type: str
+
+
+class StoredAlias(BaseModel):
+    canonical_id: str  # the document it points to
+    alias: str
+
+
+class StoredVersion(VersionData):
+    canonical_id: str
+
+
+class StoredChunk(BaseModel):
+    canonical_id: str
+    valid_from_date: AwareDatetime  # its version's
+    ordinal: int
+    heading_path: list[str]
+    content_hash: str
+
+
 class Hit(BaseModel):
     """One dense-retrieval result: a distinct chunk text near the question (S04-R2 decision 4).
 

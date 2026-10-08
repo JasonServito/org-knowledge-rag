@@ -17,12 +17,12 @@ from orgknow.ingestion.blog import (
     Publication,
     due_time,
     hugo_url,
-    in_scope,
+    out_of_scope,
     page_date,
     post_versions,
     publication,
 )
-from orgknow.ingestion.manifest import load_releases
+from orgknow.ingestion.manifest import SnapshotError, load_releases
 from orgknow.ingestion.normalize import FileState, docs_state
 
 ROOT = Path(__file__).parents[2]
@@ -333,10 +333,30 @@ def test_scope_is_the_page_date_at_publication_from_1_20() -> None:
     path = POSTS + "2020/x.md"
     when = "2020-12-10T00:00:00+00:00"
 
-    assert in_scope(_entry(when, path, _post("title: X\ndate: 2020-12-08")), SINCE)
-    assert not in_scope(_entry(when, path, _post("title: X\ndate: 2020-12-07")), SINCE)
+    assert out_of_scope(_entry(when, path, _post("title: X\ndate: 2020-12-08")), SINCE) is None
+    assert out_of_scope(_entry(when, path, _post("title: X\ndate: 2020-12-07")), SINCE) == (
+        "dated before"
+    )
     # An instant: 23:00 at -08:00 is 07:00 UTC on 12-08.
     late = _post("title: X\ndate: 2020-12-07T23:00:00-08:00")
-    assert in_scope(_entry(when, path, late), SINCE)
-    # No page date at all: out of scope (it has no URL either).
-    assert not in_scope(_entry(when, path, _post("title: X")), SINCE)
+    assert out_of_scope(_entry(when, path, late), SINCE) is None
+    # No page date at all: out of scope (it has no URL either), counted apart (S05-T8).
+    assert out_of_scope(_entry(when, path, _post("title: X")), SINCE) == "no date"
+
+
+def test_a_window_error_names_the_blog_commit_by_its_short_sha() -> None:
+    # Hand-made: committer times on main can go backwards. The third commit is dated before the
+    # second, so its version can't start after the one it replaces. The error names that
+    # commit's short SHA, not "head" (S05-T8).
+    path = POSTS + "2025/x.md"
+    entries = [
+        _entry("2025-01-01T00:00:00+00:00", path, _post("title: X\ndate: 2024-12-31"), "a" * 40),
+        _entry("2025-01-03T00:00:00+00:00", path, _post("title: Y\ndate: 2024-12-31"), "b" * 40),
+        _entry("2025-01-02T00:00:00+00:00", path, _post("title: Z\ndate: 2024-12-31"), "c" * 40),
+    ]
+    published = publication(entries)
+    assert published is not None
+
+    with pytest.raises(SnapshotError, match="not after the version it replaces") as error:
+        post_versions("website", "main", entries, published, RELEASES)
+    assert error.value.label == "cccccccc"
