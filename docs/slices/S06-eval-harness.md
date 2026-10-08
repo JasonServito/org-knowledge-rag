@@ -103,7 +103,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S06-R1: eval harness
 
-- **Status:** planned
+- **Status:** PR open
 - **Branch:** `s06-r1-eval-harness`
 - **Tasks, in this order:** S06-T1 (golden-set format and loader) → S06-T2 (retrieval metrics) → S06-T3 (answer checks AC1–AC3) → S06-T4 (eval runner and ablation table).
 - **Closes the slice:** no. T5 (`[human]` labels) and T6 (the paid baseline) follow.
