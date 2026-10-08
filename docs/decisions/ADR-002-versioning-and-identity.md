@@ -143,7 +143,7 @@ Decided by the developer in the S05-R2 sitting; the evidence was checked on the 
 
 | Where | Was | Now | Evidence |
 |---|---|---|---|
-| D3 release window of date-scoped sources | "Latest release on or before that date" | The same, but never before the scope's first release; the date stays true | 67 KEPs and governance docs start before 1.20's release date (the earliest 2019-06-29) |
+| D3 release window of date-scoped sources | "Latest release on or before that date" | The same, but never before the scope's first release; the date stays true | 67 KEPs and governance docs start before 1.20's release date (the earliest KEP 2019-06-29, the earliest governance doc 2018-12-05; corrected in the S05-R3 sitting) |
 | D4 governance renames | `git log --follow` (never run) | Same path, then git similarity ≥ 50% between adjacent snapshots; the first path is the id | The only moves in range: 8 files in sig-release PR #2984 (1.36 → 1.37), at 66–100%. The per-commit log shows the same 8 pairs and no edit before a move. A devil's advocate argued for `--follow`; its concession condition holds |
 | D4 old single-file KEPs | No id (only the known limit) | `kep:<sig folder>/<file name>`; still separate documents | 25 files at the 1.20 snapshot, none with a KEP number |
 
