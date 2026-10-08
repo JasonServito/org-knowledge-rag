@@ -11,7 +11,8 @@ An ADR records **one decision**, why it was made, and what it costs. ADRs are th
 | [003](ADR-003-authority-and-status.md) | Source types, authority tiers, status taxonomy | Accepted (amended in S02 and S05-R2) |
 | [004](ADR-004-toolchain.md) | Development toolchain | Accepted (amended through S04) |
 | [005](ADR-005-data-access.md) | Data access approach | Accepted |
-| [006](ADR-006-generation-and-tracing.md) | Generation model, structured output, tracing | Accepted |
+| [006](ADR-006-generation-and-tracing.md) | Generation model, structured output, tracing | Accepted (amended in S06-R1) |
+| [007](ADR-007-golden-set-and-labeling.md) | Golden-set schema and labeling | Accepted |
 
 The queue of upcoming ADRs is in `docs/backlog.md`.
 

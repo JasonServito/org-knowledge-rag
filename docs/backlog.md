@@ -214,14 +214,25 @@ Tasks:
 
 - **Outcome:** a frozen golden set v0 (30–50 questions, human-verified) and a committed dense-baseline row in the ablation table.
 - **Exit:** `make eval-smoke` and `make eval` work; `docs/evaluation.md` is written; thresholds are recorded in the product spec.
-- **Candidate tasks:**
-  - ADR-007: golden-set schema and labeling (document + heading-path labels)
-  - loader and label → chunk mapping
-  - Recall@K, MRR, nDCG
-  - AC1–AC3 schema checks
-  - results format and ablation-table generator
-  - `[human]` write and verify the questions
-  - optional Streamlit inspector
+- **Slice doc:** `docs/slices/S06-eval-harness.md`. ADR-007 Accepted in the S06-R1 sitting.
+- [ ] **S06-T1 `[core]` Golden-set format and loader.**
+  - Done when: a malformed file fails with the question id and field; a label matching 0 stored chunks is reported; hand-written fixtures cover each ADR-007 rule.
+  - Deps: ADR-007.
+- [ ] **S06-T2 `[core]` Retrieval metrics.**
+  - Done when: Recall@K, Hit@K, MRR, nDCG@K and distinct sections match hand-calculated values, edge cases included.
+  - Deps: T1.
+- [ ] **S06-T3 `[core]` Answer checks AC1–AC3.**
+  - Done when: each check passes and fails on hand-built answers.
+  - Deps: T1.
+- [ ] **S06-T4 `[commodity]` Eval runner and ablation table.**
+  - Done when: `make eval-smoke` writes the pinned results format; a failed ask is a recorded row; a second run makes 0 Voyage requests.
+  - Deps: T2, T3.
+- [ ] **S06-T5 `[human]` Write and verify golden set v0.**
+  - Done when: the label check passes and the developer has verified every question.
+  - Deps: T1.
+- [ ] **S06-T6 `[commodity]` Dense baseline.**
+  - Done when: 3 runs of `make eval` on the frozen v0 are committed with their spread; `docs/evaluation.md` is written; thresholds are in the product spec.
+  - Deps: T4, T5.
 
 ### ⬜ S07 Hybrid retrieval *(Stage 4)*
 
@@ -316,19 +327,20 @@ ADRs are decided when their slice starts, not earlier.
 *(Agents append items here with a one-line reason. They are not scheduled until moved into a slice.)*
 
 - **Evaluate Jev (TypeSafe) as a query-mode router (ADR-009) and evidence grader (S11); candidate only.** Reason: a fast typed-decision model might beat rules at mode routing and an LLM at sufficiency grading. Adopt only on ablation evidence. (Researched 2026-09-27; Jev is early access, v1.13.)
-  - **S06 prerequisites:** the ADR-007 golden-set schema includes a human-labeled `expected_mode` per question; add false-refusal rate to the metrics in `docs/evaluation.md`.
+  - **S06 prerequisites:** met in the S06-R1 sitting: ADR-007's `mode` is the human-labeled expected mode, and the harness records the false-refusal rate.
   - **S09:** ADR-009 compares rules / LLM / Jev. Build rules first; try Jev only if rules miss the router-accuracy threshold.
   - **S11:** compare an LLM grader with a Jev Noul grader on AC3 and false-refusal rate.
   - **If adopted:** new ADR (dependency); small interface + test fake; pinned version (never `jev-latest`); threshold in config.
   - **Out of bounds:** citation validation (AC2 stays deterministic), date/release resolution, "needs retrieval?" routing.
 - **Community SIG annual reports as WHY-evidence source (deferred).** Reason: `community/sig-{release,auth,network}/annual-report-*.md` (2020–2025) explain SIG priorities and rationale; left out of manifest v0 to keep governance scope to README/charter. (Found in S02-T1.)
-- **S06 experiment: merge a section under 64 tokens into its first subsection.** Reason: 14% of sections on the S04 scope (30–32% on the full corpus) are under 64 tokens. Measure the effect on Recall@K with the S06 harness before adopting it. Related: greedy packing can end a chunk on an intro and start the next with its list (Pod Security Admission "Exemptions": "…current policy level:"). (Found in S02-T3b; S04-R1 sitting decision 5 kept chunking without merging; packing note from S04-R1, PR #22.)
+- **Post-baseline experiment (moved out of S06 in the S06-R1 sitting, decision 9): merge a section under 64 tokens into its first subsection.** Merging changes heading paths, so labels must be re-checked (ADR-007 label check), and the row is compared with the frozen baseline. The same applies to stripping Hugo shortcodes (`{{< glossary_tooltip … >}}`, `{{< feature-state … >}}`) from chunk text (S04 slice doc). Reason: 14% of sections on the S04 scope (30–32% on the full corpus) are under 64 tokens. Measure the effect on Recall@K with the S06 harness before adopting it. Related: greedy packing can end a chunk on an intro and start the next with its list (Pod Security Admission "Exemptions": "…current policy level:"). (Found in S02-T3b; S04-R1 sitting decision 5 kept chunking without merging; packing note from S04-R1, PR #22.)
 - **Playwright end-to-end tests + screenshots for the S17 Next.js UI.** Reason: verify UI behavior once a UI exists. Evaluate in the S17 sitting. (Workflow review 2026-10-04.)
 - **Cloud runs test (`claude --cloud`).** Reason: lets the laptop stay off on run nights. Check Docker Postgres, the corpus cache, and that the merge gate still holds. Trigger: keeping the laptop on becomes a burden. (Workflow review 2026-10-04.)
-- **Make R3 race-free before a second writer exists (S14 at the latest).** Reason: R3's cross-table part (no alias equals a `canonical_id`) is a check-then-insert in `create_document` and `add_alias`. Two concurrent writers can each miss the other's uncommitted row and both commit the same identifier. Options: a transaction-level advisory lock in both functions, or one shared identifiers table with a single UNIQUE. Safe today: one writer. Same class: two `make embed` runs at once both pay for the same texts, and the second aborts on the primary key. (Found by Greptile on PRs #19, #20 and #22.)
+- **Make R3 race-free before a second writer exists (S14 at the latest).** Reason: R3's cross-table part (no alias equals a `canonical_id`) is a check-then-insert in `create_document` and `add_alias`. Two concurrent writers can each miss the other's uncommitted row and both commit the same identifier. Options: a transaction-level advisory lock in both functions, or one shared identifiers table with a single UNIQUE. Safe today: one writer. Same class: two `make embed` runs at once both pay for the same texts, and the second aborts on the primary key. Also: `make ingest-report` reads in several queries, so a report taken during an ingest could mix moments; a REPEATABLE READ read-only snapshot in its two entry points fixes it (Greptile on PR #30). (Found by Greptile on PRs #19, #20 and #22.)
 - **S14: keep past `head` SHAs in the lock.** (Moved from S05 in the S05 sitting, 2026-10-07: it matters only when the lock is refreshed; S05 keeps the 2026-09-30 lock.) Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.) The 18 CHANGELOG versions too: a lock refresh re-dates them and gives a history mismatch (S05-R2, PR #29 parked 17).
-- **S06 sitting (S04-R2 question 1; moved in the S05 sitting): keep the stop reason when the model is cut off.** Reason: if the model is cut off or refuses partway through its JSON, `messages.parse` raises before it returns, so `GenerationError` has no stop reason and no token usage. The ask still fails cleanly (one stderr line, exit 1). Options: keep it for S04, or switch to `messages.create` with the same `output_config` and validate `ModelAnswer` ourselves on `end_turn`, which keeps both on every path but amends ADR-006 D2. Decide before the S06 baseline. (PR #24 question 1; Greptile on PR #24.)
-- **S06: store the question vectors for eval runs.** Reason: Voyage's question vector varies between calls; a second retrieval for the same question moved distances by up to 0.0044 and swapped near-ties (seed #6 rank 10, seed #9 ranks 8–9). Fix the vectors, or repeat runs, before trusting small ablation deltas. (S04-T8, PR #25.)
 - **S09: near-duplicate crowding in the top 10.** Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)
-- **Link the 25 old single-file KEPs to their later KEP folders by exact title (S10 sitting at the latest, before S06 labels if wanted sooner).** Reason: 24 of 25 match a 1.21 folder's `kep.yaml` title exactly (e.g. `0014-dynamic-audit-configuration.md` → `600-dynamic-audit-configuration/`), so one history per KEP is possible. Needs an ADR-002 amendment (the known limit) and a one-time link rule; changing ids after S06 means relabeling. (S05-R2 sitting, decision 3, option C.)
+- **Link the 25 old single-file KEPs to their later KEP folders by exact title (S10 sitting at the latest, before S06 labels if wanted sooner).** Reason: 24 of 25 match a 1.21 folder's `kep.yaml` title exactly (e.g. `0014-dynamic-audit-configuration.md` → `600-dynamic-audit-configuration/`), so one history per KEP is possible. Needs an ADR-002 amendment (the known limit) and a one-time link rule. No relabel is needed if the link stores each old id as an alias: ADR-007 D2 resolves labels through aliases (S06-R1 sitting, decision 2). (S05-R2 sitting, decision 3, option C.)
 - **S10: check KEP Implementation History dates against the `releases` table.** Reason: seed #8 repeated KEP-2579's "2021-11-03: v1.23 Beta version released" as fact; 1.23 shipped 2021-12-07. The model never sees release dates. (S04-T8, PR #25; Appendix A conflict case.)
+- **Chunker: a test for the HTML-table half of the "never cut" guard.** Reason: removing it fails no test today. (S05-R3, PR #30 parked 4; kept in the S06-R1 sitting.)
+- **Report: remove `counts_by_release`'s unprinted per-type values and 1 duplicate fingerprint test case.** Reason: dead code. (S05-R3, PR #30 parked 9; kept in the S06-R1 sitting.)
+- **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)

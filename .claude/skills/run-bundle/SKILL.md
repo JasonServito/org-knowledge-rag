@@ -28,6 +28,7 @@ You are the main session of a run. The developer is away, so never wait for an a
    - the task ID, and "first read `CLAUDE.md` and the run contract in `<slice doc>`"
    - the task's contract lines: done when, proof map, break-it rules, demo command, files in scope
    - "Follow per-task loop steps 1–2: tests first, show red → green, apply the no-progress rule. Don't commit. Report the files changed, the commands run with copied output, the break-it results, and anything parked."
+   - "Don't run `git grep`, `git log -p` or other content reads on the corpus cache clones: they are blobless, so git fetches from GitHub. Query the database instead, or use `git -c protocol.allow=never`." (S06-R1 sitting, parked question 2)
 
    Don't pass it earlier subagents' output.
 2. **Review** (step 3). Start a `reviewer` subagent with the task's contract block and the diff: `git diff HEAD` (staged and unstaged) plus the untracked files in `git status --short`. It returns must-fix and park lists.

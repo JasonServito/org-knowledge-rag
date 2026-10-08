@@ -9,6 +9,7 @@
     { "path": "docs/decisions/ADR-004-toolchain.md", "description": "ADR-004: development toolchain" },
     { "path": "docs/decisions/ADR-005-data-access.md", "description": "ADR-005: data access approach and where rules are enforced" },
     { "path": "docs/decisions/ADR-006-generation-and-tracing.md", "description": "ADR-006: generation model, structured output and tracing" },
+    { "path": "docs/decisions/ADR-007-golden-set-and-labeling.md", "description": "ADR-007: golden-set schema, label matching and metric counting" },
     { "path": "docs/domain-model.md", "description": "Domain model: tables, rules R1-R15 and data-access functions" }
   ]
 }
