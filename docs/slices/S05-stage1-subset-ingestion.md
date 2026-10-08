@@ -471,7 +471,7 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 
 ### Run S05-R2: date-scoped sources and CHANGELOG
 
-- **Status:** running (T4, T5, T6 done)
+- **Status:** PR open
 - **Branch:** `s05-r2-date-scoped`
 - **Tasks, in this order:** S05-T4 (KEPs and governance docs) → S05-T5 (blog posts) → S05-T6 (CHANGELOG).
 - **Closes the slice:** no. T7–T9 remain (R3, after its own sitting).
