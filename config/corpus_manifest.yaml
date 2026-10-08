@@ -202,7 +202,7 @@ scopes:
   # S05: grows task by task until it is the whole manifest (S05-R1 sitting).
   full:
     docs_page: {sigs: [auth, network, release], from_release: "1.20"}
-    release_record: {repos: [website], from_release: "1.20"}  # T6 adds kubernetes (CHANGELOG)
+    release_record: {repos: [website, kubernetes], from_release: "1.20"}  # kubernetes (CHANGELOG) added by T6
     feature_gate_reference: {from_release: "1.20"}  # added by T3
     kep: all  # every KEP in sources.kep.sig_dirs (T4)
     governance_doc: all  # T4

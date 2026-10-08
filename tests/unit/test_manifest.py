@@ -135,6 +135,7 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
     assert keps.snapshots[-1].label == "head"
     assert docs.snapshots[0].label == "1.24"
     assert scope.blog is None  # no blog in S04
+    assert scope.changelogs is None  # no CHANGELOG in S04
 
 
 def test_loads_the_full_scope_from_1_20() -> None:
@@ -219,6 +220,33 @@ def test_loads_the_full_scope_from_1_20() -> None:
         datetime(2020, 12, 8, tzinfo=UTC),
         "/:section/:year/:month/:day/:slug/",
     )
+    # S05-T6: the CHANGELOGs (the kubernetes entry of sources.release_record), one file per
+    # release 1.20 -> 1.37, all read at the kubernetes lock head: a snapshot of their own, not a
+    # website release branch (parked P2). CHANGELOG-1.38.md exists at the head, but 1.38 isn't a
+    # manifest release, so it's never listed.
+    changelogs = scope.changelogs
+    assert changelogs is not None
+    assert (changelogs.source_type, changelogs.repo) == ("release_record", "kubernetes")
+    assert changelogs.snapshot == Snapshot(
+        None, "master", "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5"
+    )
+    assert changelogs.files[0] == (20, "CHANGELOG/CHANGELOG-1.20.md")
+    assert changelogs.files[-1] == (37, "CHANGELOG/CHANGELOG-1.37.md")
+    assert [release for release, _ in changelogs.files] == list(range(20, 38))
+    assert all(path == f"CHANGELOG/CHANGELOG-1.{r}.md" for r, path in changelogs.files)
+
+
+def test_changelogs_are_read_only_from_the_locked_default_branch(tmp_path: Path) -> None:
+    # The lock holds only the default branch's head, so a CHANGELOG entry naming another branch
+    # can't be read at the lock's SHA.
+    text = REAL_MANIFEST.read_text(encoding="utf-8")
+    old = "      branch: master\n"
+    assert text.count(old) == 1
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(text.replace(old, "      branch: release-1.37\n"), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"kubernetes branch release-1\.37 is not the locked"):
+        load_scope(manifest, REAL_LOCK, "full")
 
 
 @pytest.mark.parametrize(

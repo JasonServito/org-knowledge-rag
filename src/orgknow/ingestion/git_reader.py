@@ -99,6 +99,12 @@ def parse_commit_time(text: str) -> datetime:
     return at.astimezone(UTC)
 
 
+def commit_time(repo: Path, sha: str) -> datetime:
+    """The committer time, in UTC, of commit `sha` itself. A CHANGELOG version starts at the lock
+    head's (S05-R2 decision 6): a git fact, read from the clone."""
+    return parse_commit_time(_git(repo, "log", "-1", "--format=%cI", sha).decode().strip())
+
+
 def merge_time(repo: Path, since: str | None, until: str, paths: Sequence[str]) -> datetime | None:
     """When the last change to `paths` in `since..until` (all of `until`'s history if `since` is
     None) was merged into the default branch: the committer time, in UTC, of the last

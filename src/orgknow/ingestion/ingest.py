@@ -9,15 +9,16 @@ with no chunks are chunked, so a re-run writes nothing.
    and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
 2. Read (git): every snapshot of the scope, the release-scoped groups first (docs pages,
    website release records, feature gates, with each release's redirect file), then the
-   date-scoped groups (KEPs, governance docs), with the merge time of each change, then the
-   blog's first-parent log and each post's files by blob id. A git failure stops here, before
-   any write.
+   CHANGELOGs at the kubernetes lock head, with that commit's time, then the date-scoped groups
+   (KEPs, governance docs), with the merge time of each change, then the blog's first-parent log
+   and each post's files by blob id. A git failure stops here, before any write.
 3. Derive (pure): link the files of a page, gate or governance doc that moved into one chain
    (`renames.py`; the unmatched adds and deletes are logged per snapshot pair), group a KEP's
    files by its number, then per document normalize and hash each snapshot with its group's
-   strip list and build its versions. A blog post's versions start at its publication
-   (`blog.py`); posts out of scope are counted. A document that can't be parsed, a link
-   between two source types, or two chains with one id is reported; the others continue.
+   strip list and build its versions. A CHANGELOG-1.R has one version, `[R, R]`. A blog post's
+   versions start at its publication (`blog.py`); posts out of scope are counted. A document
+   that can't be parsed, a link between two source types, or two chains with one id is
+   reported; the others continue.
 4. Store (DB): one transaction per document. A history mismatch or an R3 conflict (an id that
    is another document's alias) is reported, leaves that document untouched, and makes the
    exit code non-zero.
@@ -49,9 +50,10 @@ from orgknow.ingestion.blog import (
     post_versions,
     publication,
 )
-from orgknow.ingestion.chunker import chunk_version, governance_title
+from orgknow.ingestion.chunker import changelog_title, chunk_version, governance_title
 from orgknow.ingestion.git_reader import (
     PostCommit,
+    commit_time,
     first_present,
     merge_time,
     post_histories,
@@ -63,6 +65,7 @@ from orgknow.ingestion.git_reader import (
 from orgknow.ingestion.history import (
     HistoryMismatch,
     Observed,
+    changelog_version,
     date_history,
     plan_changes,
     release_history,
@@ -71,6 +74,7 @@ from orgknow.ingestion.identity import (
     KEP_FOLDER_FILES,
     alias_id,
     blog_canonical_id,
+    changelog_canonical_id,
     docs_canonical_id,
     gate_canonical_id,
     governance_canonical_id,
@@ -78,6 +82,7 @@ from orgknow.ingestion.identity import (
 )
 from orgknow.ingestion.manifest import (
     BlogGroup,
+    ChangelogGroup,
     DateGroup,
     ReleaseGroup,
     Scope,
@@ -88,6 +93,7 @@ from orgknow.ingestion.manifest import (
 )
 from orgknow.ingestion.normalize import (
     FileState,
+    content_hash,
     decode,
     docs_state,
     governance_state,
@@ -356,6 +362,50 @@ def _log_renames(
         lines.append((after, logging.INFO, f"added {path}"))
     for after, level, message in sorted(lines, key=lambda line: line[0]):
         log.log(level, "%s: %s", _pair(snapshots, after), message)
+
+
+def changelog_document(
+    group: ChangelogGroup, release: int, path: str, raw: bytes, at: datetime
+) -> Document:
+    """CHANGELOG-1.R from its file at the group's snapshot: `changelog:1.R`, with one version
+    `[R, R]` from `at`, the snapshot commit's time (S05-R2 decision 6), and no aliases.
+
+    It has no front matter: the whole file is hashed with no strip list, the TOC and download
+    tables included, though they make no chunk. Its metadata holds only its title,
+    `CHANGELOG-1.R` (decision 4). Raises ValueError if the file can't be decoded.
+    """
+    state = FileState(
+        content_hash=content_hash({}, decode(raw), frozenset()),
+        source_path=path,
+        metadata={"title": changelog_title(release)},
+    )
+    version = changelog_version(group.repo, group.snapshot, state, release, at)
+    return Document(changelog_canonical_id(release), group.source_type, [version], [])
+
+
+def collect_changelogs(group: ChangelogGroup, cache_dir: Path, summary: Summary) -> list[Document]:
+    """Read each CHANGELOG-1.R.md at the group's snapshot (the kubernetes lock head) and derive one
+    document per release, each version dated by the snapshot commit's time. Only the files the
+    group lists are read (CHANGELOG-1.38.md is out of range). A listed file absent there, or not
+    valid UTF-8, is reported."""
+    repo = cache_dir / group.repo
+    at = commit_time(repo, group.snapshot.sha)
+    paths = [path for _, path in group.files]
+    files, skipped = read_files(repo, paths, [group.snapshot], (".md",))
+    summary.skipped += skipped
+    documents = []
+    for release, path in group.files:
+        raw = files.get(path, [None])[0]
+        if raw is None:
+            summary.failures.append(
+                f"{path}: absent at {group.snapshot.label} ({group.snapshot.sha})"
+            )
+            continue
+        try:
+            documents.append(changelog_document(group, release, path, raw, at))
+        except ValueError as exc:
+            summary.failures.append(f"{path}: {exc}")
+    return documents
 
 
 def _merge_times(
@@ -697,6 +747,8 @@ def ingest(
         )
     summary = Summary()
     documents = collect_release_scoped(scope, cache_dir, strip, releases, summary)
+    if scope.changelogs is not None:
+        documents += collect_changelogs(scope.changelogs, cache_dir, summary)
     for group in scope.date_groups:
         if group.source_type == "kep":
             documents += collect_keps(

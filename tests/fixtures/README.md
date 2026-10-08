@@ -20,6 +20,8 @@ Small real files from the Kubernetes corpus, copied byte-exact at pinned commits
 | `blog/<post>/<commit>-excerpt.md` | kubernetes/website, the post's file as website commit `<commit>` (on `main`'s first-parent line) left it, the first lines: `validating-admission-policy-ga` (`3a358ed2`, `2de4371a`: 1–12), `ingress-nginx-retirement` (`35d8dfc2`, `2b1598fc`, `fe122837`: 1–12), `headlamp-karpenter-plugin` (`e5c44148`, `5eaca101`: 1–12), `ccm-metric-route-sync-total` (`02ab95c9`: 1–12; `73f7fa85`: 1–15), `kubernetes-1.23-release-interview` (`27d1959c`: 1–10) | The named commits, all before the lock's website head `256a1f49` |
 | `blog/k8s-book-club/<commit>.md` | kubernetes/website, `content/en/blog/_posts/2024-02-22-k8s-book-club/index.md`, whole file, as commits `ccb153d2` (opens with `------`) and `2912b59c` (the fix) left it | Each file's `git hash-object` equals the blob at that commit (`74e2c4f7`, `11091f1b`) |
 | `kubernetes/CHANGELOG-1.22-excerpt.md` | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes), `CHANGELOG/CHANGELOG-1.22.md`, lines 3082–3193 | `7c596ad7` |
+| `kubernetes/CHANGELOG-1.22-beta.1-excerpt.md` | kubernetes/kubernetes, `CHANGELOG/CHANGELOG-1.22.md`, lines 3019–3303: the whole `v1.22.0-beta.1` section (its stray closing fence is the file's line 3085), then `v1.22.0-beta.0`'s download tables | `7c596ad7` |
+| `kubernetes/CHANGELOG-1.37-excerpt.md` | kubernetes/kubernetes, `CHANGELOG/CHANGELOG-1.37.md`, lines 1–250: the generated TOC and the whole `v1.37.1` section | `7c596ad7` |
 
 ## License
 

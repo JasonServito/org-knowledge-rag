@@ -8,6 +8,8 @@ The rules are in docs/domain-model.md, "How windows are derived":
 - KEPs and governance docs (date-scoped): a version starts at its merge time, the committer time
   of the last first-parent commit touching the files since the previous snapshot; the previous
   version closes at that same instant. Its release window never starts before the first release.
+- CHANGELOG-1.R: read at an ingestion snapshot, a version speaks for release R only, `[R, R]`, and
+  starts at that snapshot commit's time (S05-R2 decision 6).
 """
 
 from collections.abc import Sequence
@@ -136,6 +138,19 @@ def date_history(
             versions.append(_new_version(repo, obs.snapshot, obs.state, from_release, at))
         previous = obs.state
     return versions
+
+
+def changelog_version(
+    repo: str, snapshot: Snapshot, state: FileState, release: int, at: datetime
+) -> VersionData:
+    """The version of CHANGELOG-1.R read at an ingestion snapshot (ADR-002 D1, D3).
+
+    Its release window is `[R, R]`, set at insert: the file describes release R, whenever it's
+    read. Its date window starts at `at`, the snapshot commit's committer time (S05-R2 decision
+    6), and stays open: the clone has no history, so nothing before this snapshot is known.
+    """
+    version = _new_version(repo, snapshot, state, release, at)
+    return version.model_copy(update={"valid_until_release": release})
 
 
 # --- Re-ingest: compare and extend (S04-R1 decision 2) -----------------------------------------

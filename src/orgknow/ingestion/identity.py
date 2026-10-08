@@ -1,6 +1,6 @@
 """Canonical document ids (ADR-002 D4): a rendered page by its URL (a blog post by its URL at
 publication), a feature gate by its name, a KEP by its number, a governance doc by its repo and
-first path."""
+first path, a CHANGELOG by its release."""
 
 DOCS_ROOT = "content/en/"
 # The two files of a KEP folder (`keps/<sig>/<number>-<slug>/`); any other file in it is ignored.
@@ -76,6 +76,11 @@ def governance_canonical_id(repo: str, path: str) -> str:
     """`<repo>:<path>` (ADR-002 D4): community:sig-auth/charter.md, or
     sig-release:release-engineering/versioning.md. Ingestion passes a chain's first path."""
     return f"{repo}:{path}"
+
+
+def changelog_canonical_id(release: int) -> str:
+    """`changelog:1.R` for CHANGELOG-1.R.md, the release notes of release 1.R (ADR-002 D4)."""
+    return f"changelog:1.{release}"
 
 
 def gate_canonical_id(title: object) -> str:

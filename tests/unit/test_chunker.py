@@ -12,15 +12,22 @@ Fixtures are real corpus files, copied byte-exact at the locked SHAs (CC BY 4.0 
   (enhancements 2df83383, S05-T4).
 - sig_release/versioning/1.37.md: release-engineering/reference/versioning.md (sig-release
   9ad626fd, S05-T4).
+- kubernetes/CHANGELOG-1.37-excerpt.md: CHANGELOG/CHANGELOG-1.37.md lines 1-250, the generated
+  TOC and the whole v1.37.1 section (kubernetes 7c596ad7, S05-T6).
+- kubernetes/CHANGELOG-1.22-beta.1-excerpt.md: CHANGELOG/CHANGELOG-1.22.md lines 3019-3303, the
+  whole v1.22.0-beta.1 section (its stray fence at excerpt line 67), then v1.22.0-beta.0's
+  downloads (kubernetes 7c596ad7, S05-T6).
 
 Expected values were read from the files by hand (line numbers below are the fixture's own,
 1-based), never computed by the chunker.
 """
 
+import re
 from pathlib import Path
 
 from orgknow.ingestion.chunker import (
     Block,
+    changelog_title,
     chunk_markdown,
     chunk_text,
     chunk_version,
@@ -414,3 +421,69 @@ def test_a_governance_doc_without_an_h1_heading_is_titled_by_its_path() -> None:
     assert governance_title(text, "release-engineering/platforms/guide.md") == (
         "release-engineering/platforms/guide.md"
     )
+
+
+# --- CHANGELOGs: release notes only (S05-T6, S05-R2 decisions 4 and 8) -----------------------
+
+SHA512 = re.compile(r"[0-9a-f]{128}")  # a row of a download table (the demo query's pattern)
+CHANGES = ("Changes by Kind",)
+DEPENDENCIES = ("Dependencies",)
+
+
+def test_a_changelog_title_is_its_file_name() -> None:
+    assert changelog_title(37) == "CHANGELOG-1.37"
+
+
+def test_changelog_chunks_leave_out_the_toc_and_the_download_tables() -> None:
+    raw = (FIXTURES / "kubernetes" / "CHANGELOG-1.37-excerpt.md").read_bytes()
+    assert len(SHA512.findall(raw.decode())) == 22  # the input has them (grep -c, by hand)
+
+    chunks = chunk_version(
+        "changelog:1.37", "release_record", {"title": "CHANGELOG-1.37"}, raw, 512
+    )
+
+    # Lines 1-155 are the generated TOC (before the first heading, line 157): no chunk. Lines
+    # 160-220 are `## Downloads for v1.37.1` and its 5 tables: no chunk. `# v1.37.1`, `## Changelog
+    # since v1.37.0`, `## Changes by Kind` and `## Dependencies` have no text of their own.
+    assert [tuple(c.heading_path) for c in chunks] == [
+        ("v1.37.1", *CHANGES, "Feature"),  # line 227
+        ("v1.37.1", *CHANGES, "Failing Test"),  # line 231
+        ("v1.37.1", *CHANGES, "Bug or Regression"),  # lines 235-239
+        ("v1.37.1", *DEPENDENCIES, "Added"),  # line 244
+        ("v1.37.1", *DEPENDENCIES, "Changed"),  # line 247
+        ("v1.37.1", *DEPENDENCIES, "Removed"),  # line 250
+    ]
+    assert [c.ordinal for c in chunks] == [0, 1, 2, 3, 4, 5]
+    assert chunks[0].text == (
+        "Source: release_record\nTitle: CHANGELOG-1.37\nDocument: changelog:1.37\n"
+        "Section: v1.37.1 > Changes by Kind > Feature\n\n"
+        + _lines(FIXTURES / "kubernetes" / "CHANGELOG-1.37-excerpt.md")[226]
+    )
+    assert not any(SHA512.search(c.text) or "GENERATED_TOC" in c.text for c in chunks)
+
+
+def test_download_tables_after_a_stray_fence_are_left_out_too() -> None:
+    raw = (FIXTURES / "kubernetes" / "CHANGELOG-1.22-beta.1-excerpt.md").read_bytes()
+    assert len(SHA512.findall(raw.decode())) == 46  # both sections' tables (grep -c, by hand)
+
+    chunks = chunk_version(
+        "changelog:1.22", "release_record", {"title": "CHANGELOG-1.22"}, raw, 512
+    )
+
+    # The stray "  ```" at line 67 (in API Change) closes at the next list item (rule 3), so
+    # `# v1.22.0-beta.0` (line 239) is still a heading and its downloads (242-285) are left out.
+    # A long section packs into several chunks; each heading path is listed once, in order.
+    beta_1 = "v1.22.0-beta.1"
+    assert list(dict.fromkeys(tuple(c.heading_path) for c in chunks)) == [
+        (beta_1, "Urgent Upgrade Notes", "(No, really, you MUST read this before you upgrade)"),
+        (beta_1, *CHANGES, "Deprecation"),
+        (beta_1, *CHANGES, "API Change"),
+        (beta_1, *CHANGES, "Feature"),
+        (beta_1, *CHANGES, "Documentation"),
+        (beta_1, *CHANGES, "Bug or Regression"),
+        (beta_1, *CHANGES, "Other (Cleanup or Flake)"),
+        (beta_1, *DEPENDENCIES, "Added"),
+        (beta_1, *DEPENDENCIES, "Changed"),
+        (beta_1, *DEPENDENCIES, "Removed"),
+    ]
+    assert not any(SHA512.search(c.text) or "Downloads for" in c.text for c in chunks)

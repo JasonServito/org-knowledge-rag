@@ -12,6 +12,7 @@ from orgknow.ingestion.history import (
     Close,
     HistoryMismatch,
     Observed,
+    changelog_version,
     date_history,
     plan_changes,
     release_history,
@@ -240,6 +241,38 @@ def test_docs_windows_with_a_gap_and_a_return_to_earlier_text() -> None:
     ]
     assert versions[0].snapshot_ref == "release-1.24"
     assert versions[0].metadata == {"title": "Example"}
+
+
+# --- CHANGELOG: one file per release, read at the kubernetes lock head ------------------------
+
+# The kubernetes lock head (config/corpus_manifest.lock.yaml) and its committer time, as
+# `git log -1 --format=%cI 7c596ad7` prints it in the clone (S05-R2 decision 6).
+KUBERNETES_HEAD = Snapshot(None, "master", "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5")
+HEAD_TIME = _utc(2026, 9, 30, 1, 30, 57)
+
+
+def test_a_changelog_version_speaks_for_its_release_from_the_head_commit_time() -> None:
+    state = FileState(
+        content_hash="c" * 64,
+        source_path="CHANGELOG/CHANGELOG-1.30.md",
+        metadata={"title": "CHANGELOG-1.30"},
+    )
+
+    version = changelog_version("kubernetes", KUBERNETES_HEAD, state, 30, HEAD_TIME)
+
+    # Release window [30, 30], set at insert; date window from the head commit's time, open.
+    assert _window(version) == (
+        HEAD_TIME,
+        None,
+        30,
+        30,
+        None,
+        None,
+        "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5",
+    )
+    assert (version.snapshot_repo, version.snapshot_ref) == ("kubernetes", "master")
+    assert (version.source_path, version.content_hash) == ("CHANGELOG/CHANGELOG-1.30.md", "c" * 64)
+    assert version.metadata == {"title": "CHANGELOG-1.30"}
 
 
 # --- plan_changes: compare and extend ----------------------------------------------------------

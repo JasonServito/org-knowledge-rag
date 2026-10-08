@@ -25,6 +25,7 @@ from orgknow.db.versions import list_versions
 from orgknow.ingestion.ingest import Document, ReleasesMismatch, Summary, ingest, store_document
 from orgknow.ingestion.manifest import (
     BlogGroup,
+    ChangelogGroup,
     DateGroup,
     ReleaseGroup,
     Scope,
@@ -1088,3 +1089,66 @@ def test_blog_posts_are_stored_from_publication_and_a_rerun_adds_nothing(
     assert (second.new_documents, second.new_versions, second.closed_versions) == (0, 0, 0)
     assert (second.unchanged_documents, second.new_chunks) == (3, 0)
     assert [line.split("\n")[0] for line in second.failures] == [broken]
+
+
+# --- CHANGELOGs (S05-T6) ---------------------------------------------------------------------
+
+KUBERNETES = FIXTURES / "kubernetes"
+CHANGELOG_22 = "CHANGELOG/CHANGELOG-1.22.md"
+CHANGELOG_37 = "CHANGELOG/CHANGELOG-1.37.md"
+
+
+def _kubernetes(make_git_repo: Callable[[str], Any]) -> str:
+    """The kubernetes repo at its lock head, with the head's real committer time: two real
+    CHANGELOG excerpts (1.22's v1.22.0-beta.1 section, whose stray fence is followed by
+    v1.22.0-beta.0's downloads; 1.37's TOC and v1.37.1 section) and a CHANGELOG-1.38.md, which is
+    out of range. Returns the head."""
+    repo = make_git_repo("kubernetes")
+    return repo.commit(
+        {
+            CHANGELOG_22: (KUBERNETES / "CHANGELOG-1.22-beta.1-excerpt.md").read_bytes(),
+            CHANGELOG_37: (KUBERNETES / "CHANGELOG-1.37-excerpt.md").read_bytes(),
+            "CHANGELOG/CHANGELOG-1.38.md": b"# v1.38.0-alpha.1\n\nOut of range.\n",
+        },
+        when="2026-09-30T03:30:57+02:00",
+    )
+
+
+def test_changelogs_speak_for_their_release_and_hold_no_download_rows(
+    conn: Conn, tmp_path: Path, make_git_repo: Callable[[str], Any]
+) -> None:
+    head = _kubernetes(make_git_repo)
+    files = ((22, CHANGELOG_22), (37, CHANGELOG_37))
+    changelogs = ChangelogGroup(
+        "release_record", "kubernetes", Snapshot(None, "master", head), files
+    )
+    scope = Scope("test", (), (), changelogs=changelogs)
+
+    first = _ingest(conn, tmp_path, scope)
+    second = _ingest(conn, tmp_path, scope)
+
+    assert (first.failures, first.documents) == ([], {"release_record": 2})
+    # [R, R] set at insert; from the head commit's committer time, open (decision 6).
+    head_time = datetime(2026, 9, 30, 1, 30, 57, tzinfo=UTC)
+    assert _windows(conn, "changelog:1.22") == [(22, 22, head_time, None)]
+    assert _windows(conn, "changelog:1.37") == [(37, 37, head_time, None)]
+    assert find_document(conn, "changelog:1.38") is None  # never listed, never read
+    # No chunk holds a sha512 row (done when): the two files hold 68 (grep -c, by hand).
+    counts = conn.execute(
+        "SELECT count(*), count(*) FILTER (WHERE c.text ~ '[0-9a-f]{128}') FROM chunks c "
+        "JOIN document_versions v ON v.id = c.document_version_id "
+        "JOIN documents d ON d.id = v.document_id WHERE d.canonical_id LIKE 'changelog:%'"
+    ).fetchone()
+    assert counts is not None and counts[0] > 0 and counts[1] == 0
+    (text,) = conn.execute(
+        "SELECT c.text FROM chunks c JOIN document_versions v ON v.id = c.document_version_id "
+        "JOIN documents d ON d.id = v.document_id "
+        "WHERE d.canonical_id = 'changelog:1.37' AND c.ordinal = 0"
+    ).fetchone() or (None,)
+    assert text.startswith(
+        "Source: release_record\nTitle: CHANGELOG-1.37\nDocument: changelog:1.37\n"
+        "Section: v1.37.1 > Changes by Kind > Feature\n\n- Kubernetes is now built using Go"
+    )
+    # A re-run adds nothing.
+    assert (second.new_documents, second.new_versions, second.closed_versions) == (0, 0, 0)
+    assert (second.unchanged_documents, second.new_chunks, second.failures) == (2, 0, [])

@@ -19,6 +19,8 @@ from orgknow.ingestion.ingest import (
     Document,
     Summary,
     blog_document,
+    changelog_document,
+    collect_changelogs,
     document_from_chain,
     gate_document_from_chain,
     governance_document,
@@ -32,6 +34,7 @@ from orgknow.ingestion.ingest import (
 )
 from orgknow.ingestion.manifest import (
     BlogGroup,
+    ChangelogGroup,
     DateGroup,
     ReleaseGroup,
     Snapshot,
@@ -663,3 +666,85 @@ def test_a_front_matter_alias_equal_to_the_id_is_skipped() -> None:
 
     assert document.canonical_id == "web:/blog/2026/02/26/ccm-new-metric-route-sync-total/"
     assert document.aliases == ["web:/blog/2026/05/15/ccm-new-metric-route-sync-total/"]
+
+
+# --- CHANGELOGs (S05-T6) ---------------------------------------------------------------------
+
+CHANGELOG_37 = ROOT / "tests" / "fixtures" / "kubernetes" / "CHANGELOG-1.37-excerpt.md"
+CHANGELOGS = ChangelogGroup(
+    "release_record",
+    "kubernetes",
+    # The kubernetes lock head (config/corpus_manifest.lock.yaml).
+    Snapshot(None, "master", "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5"),
+    ((37, "CHANGELOG/CHANGELOG-1.37.md"),),
+)
+# The head commit's committer time, as `git log -1 --format=%cI 7c596ad7` prints it in the clone.
+HEAD_TIME = datetime(2026, 9, 30, 1, 30, 57, tzinfo=UTC)
+
+
+def test_a_changelog_is_one_document_speaking_for_its_release() -> None:
+    raw = CHANGELOG_37.read_bytes()
+
+    document = changelog_document(CHANGELOGS, 37, "CHANGELOG/CHANGELOG-1.37.md", raw, HEAD_TIME)
+
+    assert (document.canonical_id, document.source_type) == ("changelog:1.37", "release_record")
+    assert document.aliases == []
+    (version,) = document.versions
+    # [R, R], set at insert; the date window from the head commit's time, open (decision 6).
+    assert (version.valid_from_release, version.valid_until_release) == (37, 37)
+    assert (version.valid_from_date, version.valid_until_date) == (HEAD_TIME, None)
+    assert (version.snapshot_repo, version.snapshot_ref, version.snapshot_sha) == (
+        "kubernetes",
+        "master",
+        "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5",
+    )
+    assert version.source_path == "CHANGELOG/CHANGELOG-1.37.md"
+    # No front matter: the metadata holds only the title (decision 4).
+    assert version.metadata == {"title": "CHANGELOG-1.37"}
+
+
+def test_a_changelog_hash_covers_the_text_left_out_of_chunks() -> None:
+    # The TOC and the download tables are not chunked (decision 8), but they are hashed: an edit
+    # to either is a new version, as for any source (ADR-002 D2).
+    text = CHANGELOG_37.read_text(encoding="utf-8")
+    sha512_row = "| 5138cca25b67c329"  # line 168, the first Source Code row
+    toc_entry = "- [v1.37.1](#v1371)"  # line 3
+    assert text.count(sha512_row) == 1 and text.count(toc_entry) == 1
+
+    def version_hash(changed: str) -> str:
+        document = changelog_document(
+            CHANGELOGS, 37, "CHANGELOG/CHANGELOG-1.37.md", changed.encode(), HEAD_TIME
+        )
+        return document.versions[0].content_hash
+
+    hashes = {
+        version_hash(text),
+        version_hash(text.replace(sha512_row, "| 0000cca25b67c329")),
+        version_hash(text.replace(toc_entry, "- [v1.37.2](#v1372)")),
+    }
+    assert len(hashes) == 3
+
+
+def test_a_listed_changelog_that_is_absent_or_not_utf8_is_reported(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # Hand-made: 1.35 isn't valid UTF-8, 1.36 is missing at the head, 1.37 is the real excerpt.
+    repo = make_git_repo("kubernetes")
+    head = repo.commit(
+        {
+            "CHANGELOG/CHANGELOG-1.35.md": b"# v1.35.0\n\n\xff\n",
+            "CHANGELOG/CHANGELOG-1.37.md": CHANGELOG_37.read_bytes(),
+        },
+        when="2026-09-30T03:30:57+02:00",
+    )
+    files = tuple((r, f"CHANGELOG/CHANGELOG-1.{r}.md") for r in (35, 36, 37))
+    group = ChangelogGroup("release_record", "kubernetes", Snapshot(None, "master", head), files)
+    summary = Summary()
+
+    documents = collect_changelogs(group, repo.path.parent, summary)
+
+    # The others are still stored, dated by the head commit's time.
+    assert [d.canonical_id for d in documents] == ["changelog:1.37"]
+    assert documents[0].versions[0].valid_from_date == HEAD_TIME
+    assert summary.failures[0].startswith("CHANGELOG/CHANGELOG-1.35.md: not valid UTF-8")
+    assert summary.failures[1:] == [f"CHANGELOG/CHANGELOG-1.36.md: absent at head ({head})"]

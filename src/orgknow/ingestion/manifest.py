@@ -134,6 +134,17 @@ class BlogGroup:
     permalink: str  # Hugo's blog permalink, e.g. /:section/:year/:month/:day/:slug/
 
 
+@dataclass(frozen=True)
+class ChangelogGroup:
+    """The CHANGELOGs: one file per release in scope, all read at the repo's lock head (ADR-002
+    D1). Their snapshot is their own, not a website release branch (S05-R2, parked P2)."""
+
+    source_type: str  # release_record
+    repo: str  # kubernetes
+    snapshot: Snapshot  # the default branch at the lock head; release None ("head")
+    files: tuple[tuple[int, str], ...]  # (release, path): (20, "CHANGELOG/CHANGELOG-1.20.md")
+
+
 def _same_files(a: str, b: str) -> bool:
     """Whether some file is matched by both manifest paths (one ending in "/" is a folder)."""
     return a == b or (a.endswith("/") and b.startswith(a)) or (b.endswith("/") and a.startswith(b))
@@ -147,6 +158,7 @@ class Scope:
     release_groups: tuple[ReleaseGroup, ...]
     date_groups: tuple[DateGroup, ...]  # the KEPs, then the governance docs
     blog: BlogGroup | None = None
+    changelogs: ChangelogGroup | None = None
 
     def __post_init__(self) -> None:
         """Refuse a scope where one file would be read by two groups, so stored twice."""
@@ -164,7 +176,9 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
     """Resolve the manifest's `scopes.<name>` against its sources and the lock's SHAs.
 
     Release-scoped groups (docs pages, website release records, feature gates) are read from
-    each release's branch, from the group's `from_release` to the latest. Date-scoped groups
+    each release's branch, from the group's `from_release` to the latest. A release-record source
+    with a `branch` (the CHANGELOGs) has one file per release in scope, all read at that branch's
+    lock head, which must be the repo's locked default branch. Date-scoped groups
     (KEPs, governance docs) are read from their repo's default branch at every release date,
     plus `head` (ADR-002 D1). `kep: all` reads every KEP in `sources.kep.sig_dirs`; otherwise
     `kep: {traced: [...]}` reads only those KEPs' directories. `blog_post: all` reads the blog's
@@ -179,18 +193,21 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
     sources = manifest["sources"]
     versions = [str(entry["version"]) for entry in manifest["releases"]["list"]]
 
-    def release_snapshots(from_release: str) -> tuple[Snapshot, ...]:
+    def scope_versions(from_release: str) -> list[str]:
         if from_release not in versions:
             raise ValueError(
                 f"scope {name!r}: from_release {from_release} is not a manifest release"
             )
+        return versions[versions.index(from_release) :]
+
+    def release_snapshots(from_release: str) -> tuple[Snapshot, ...]:
         return tuple(
             Snapshot(
                 int(v.removeprefix("1.")),
                 lock["website_releases"][v]["ref"],
                 lock["website_releases"][v]["sha"],
             )
-            for v in versions[versions.index(from_release) :]
+            for v in scope_versions(from_release)
         )
 
     docs = scope["docs_page"]
@@ -203,18 +220,38 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
             release_snapshots(docs["from_release"]),
         )
     ]
+    changelogs = None
     if "release_record" in scope:
         records = scope["release_record"]
         by_repo = {entry["repo"]: entry for entry in sources["release_record"]}
-        groups += [
-            ReleaseGroup(
+        for repo in records["repos"]:
+            entry = by_repo[repo]
+            if "branch" not in entry:  # the website's: read at each release branch
+                groups.append(
+                    ReleaseGroup(
+                        "release_record",
+                        str(repo),
+                        tuple(entry["paths"]),
+                        release_snapshots(records["from_release"]),
+                    )
+                )
+                continue
+            # The CHANGELOGs (S05-T6): the lock holds only the default branch's head.
+            if entry["branch"] != lock["repos"][repo]["default_branch"]:
+                raise ValueError(
+                    f"release_record {repo} branch {entry['branch']} is not the locked default "
+                    f"branch {lock['repos'][repo]['default_branch']}"
+                )
+            (template,) = entry["paths"]  # e.g. CHANGELOG/CHANGELOG-{version}.md
+            changelogs = ChangelogGroup(
                 "release_record",
                 str(repo),
-                tuple(by_repo[repo]["paths"]),
-                release_snapshots(records["from_release"]),
+                Snapshot(None, str(entry["branch"]), lock["repos"][repo]["head"]),
+                tuple(
+                    (int(v.removeprefix("1.")), template.format(version=v))
+                    for v in scope_versions(records["from_release"])
+                ),
             )
-            for repo in records["repos"]
-        ]
     if "feature_gate_reference" in scope:
         gates = sources["feature_gate_reference"]
         groups.append(
@@ -274,4 +311,4 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
             datetime.combine(dates[str(posts["from_release"])], time(), UTC),
             str(posts["permalink"]),
         )
-    return Scope(name, tuple(groups), tuple(date_groups), blog)
+    return Scope(name, tuple(groups), tuple(date_groups), blog, changelogs)

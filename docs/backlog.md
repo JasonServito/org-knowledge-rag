@@ -196,7 +196,7 @@ Tasks:
 - [x] **S05-T5 `[core]` Blog posts.**
   - Done when: a re-run adds 0 versions; the counts are explained against the spike.
   - Deps: T1.
-- [ ] **S05-T6 `[core]` CHANGELOG.**
+- [x] **S05-T6 `[core]` CHANGELOG.**
   - Done when: 18 documents, 371 patch sections; no sha512 rows in chunks; a set release `until` can't change.
   - Deps: T1.
 - [ ] **S05-T7 `[core]` Chunker fixes.**

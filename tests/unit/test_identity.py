@@ -5,6 +5,7 @@ import pytest
 from orgknow.ingestion.identity import (
     alias_id,
     blog_canonical_id,
+    changelog_canonical_id,
     docs_canonical_id,
     gate_canonical_id,
     governance_canonical_id,
@@ -163,3 +164,9 @@ def test_blog_canonical_id(url: str, expected: str) -> None:
 def test_a_relative_blog_url_has_no_id() -> None:
     with pytest.raises(ValueError, match="not a site path"):
         blog_canonical_id("blog/2020/05/x")
+
+
+@pytest.mark.parametrize(("release", "expected"), [(20, "changelog:1.20"), (37, "changelog:1.37")])
+def test_changelog_canonical_id(release: int, expected: str) -> None:
+    # The run contract's pinned id: `changelog:1.R`, for CHANGELOG-1.R.md.
+    assert changelog_canonical_id(release) == expected

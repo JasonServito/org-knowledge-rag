@@ -15,6 +15,7 @@ import pytest
 from orgknow.ingestion.git_reader import (
     GitError,
     PostCommit,
+    commit_time,
     merge_time,
     parse_commit_time,
     post_histories,
@@ -70,6 +71,18 @@ def test_a_commit_time_without_an_offset_is_refused() -> None:
 
 
 PATHS = ["kep/README.md", "kep/kep.yaml"]
+
+
+def test_commit_time_is_the_commits_own_committer_time_in_utc(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # A CHANGELOG version starts at the lock head's committer time (S05-R2 decision 6): the head
+    # itself, whatever its parents touched.
+    repo = make_git_repo("kubernetes")
+    repo.commit({"CHANGELOG/CHANGELOG-1.30.md": b"# v1.30.0\n"}, when="2024-04-17T10:00:00-07:00")
+    head = repo.commit({"README.md": b"x"}, when="2026-09-30T03:30:57+02:00")
+
+    assert commit_time(repo.path, head) == datetime(2026, 9, 30, 1, 30, 57, tzinfo=UTC)
 
 
 def test_merge_time_is_the_last_commit_touching_the_files_since_the_previous_snapshot(

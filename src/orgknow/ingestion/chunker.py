@@ -11,7 +11,11 @@
   text.
 - A feature gate's body starts with its `stages` (and `removed`) front matter as YAML, then a
   blank line (S05-R1 decision 1): the gate's stages live only in its front matter.
-- A KEP folder's README and a governance doc have no front matter: the whole file is the body.
+- A KEP folder's README, a governance doc and a CHANGELOG have no front matter: the whole file is
+  the body.
+- A CHANGELOG's chunks hold its release notes only (S05-R2 decision 8): the text before the first
+  heading (the generated TOC) and every section under a `## Downloads for …` heading (the sha512
+  download tables) make no chunk.
 
 Headings and code blocks come from a hand-written line scanner with exactly 4 rules (decision 6):
 1. A line starting at column 0 with 1-6 `#` and then a space is a heading, unless inside a
@@ -44,6 +48,7 @@ FENCE = re.compile(r"^( *)(`{3,}|~{3,})")  # rules 2 and 3: the indent and the m
 HIGHLIGHT_OPEN = re.compile(r"^\s*\{\{<\s*highlight\b.*>\}\}\s*$")  # rule 4
 HIGHLIGHT_CLOSE = re.compile(r"^\s*\{\{<\s*/highlight\s*>\}\}\s*$")
 HTML_COMMENT = re.compile(r"<!--.*?-->")
+DOWNLOADS = "Downloads for "  # a CHANGELOG heading over download tables (S05-R2 decision 8)
 
 
 @dataclass(frozen=True)
@@ -220,6 +225,18 @@ def governance_title(text: str, path: str) -> str:
     return path
 
 
+def changelog_title(release: int) -> str:
+    """A CHANGELOG's title: its file name, CHANGELOG-1.R (S05-R2 decision 4)."""
+    return f"CHANGELOG-1.{release}"
+
+
+def is_release_notes(heading_path: Sequence[str]) -> bool:
+    """Whether a CHANGELOG section is release notes, so it is chunked (S05-R2 decision 8): not
+    the text before the first heading (the generated TOC), nor any section under a `## Downloads
+    for …` heading (the sha512 download tables)."""
+    return bool(heading_path) and not any(h.startswith(DOWNLOADS) for h in heading_path)
+
+
 def stages_yaml(front_matter: Mapping[str, Any]) -> str:
     """A gate's `stages`, then `removed` if it has one, as YAML: nothing else, keys in the file's
     own order, values as YAML read them (S05-R1 decision 1)."""
@@ -237,26 +254,35 @@ def chunk_version(
 
     A docs page, and an old single-file KEP, is chunked without its front matter. A KEP folder's
     version is chunked from its README; its kep.yaml is the version's `metadata`, which gives the
-    title (`document_title`). A governance doc has no front matter: the whole file is chunked,
-    under the title its metadata holds. A gate (`gate:` id) with `stages` gets them as YAML
+    title (`document_title`). A governance doc and a CHANGELOG have no front matter: the whole
+    file is chunked, under the title its metadata holds. A CHANGELOG (`changelog:` id) keeps its
+    release notes only (`is_release_notes`). A gate (`gate:` id) with `stages` gets them as YAML
     before its body, read from the file's front matter: the same values as `metadata`, in the
     file's order (Postgres jsonb reorders keys). Raises ValueError for a file that can't be
     decoded or has no title.
     """
     title = document_title(canonical_id, source_type, metadata)
     text = decode(raw)
-    if source_type == "governance_doc" or (source_type == "kep" and _is_kep_folder(canonical_id)):
+    is_changelog = canonical_id.startswith("changelog:")
+    if (
+        source_type == "governance_doc"
+        or is_changelog
+        or (source_type == "kep" and _is_kep_folder(canonical_id))
+    ):
         body = text
     else:
         front_matter, body = split_front_matter(text)
         if canonical_id.startswith("gate:") and "stages" in front_matter:
             # One blank line between the YAML and the body, also when the body starts with one.
             body = stages_yaml(front_matter) + "\n" + body.lstrip("\n")
+    parts = chunk_markdown(body, max_tokens)
+    if is_changelog:
+        parts = [(path, part) for path, part in parts if is_release_notes(path)]
     return [
         NewChunk(
             ordinal=ordinal,
             heading_path=list(path),
             text=chunk_text(source_type, title, canonical_id, path, part),
         )
-        for ordinal, (path, part) in enumerate(chunk_markdown(body, max_tokens))
+        for ordinal, (path, part) in enumerate(parts)
     ]
