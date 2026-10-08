@@ -17,6 +17,16 @@ Fixtures are real corpus files, copied byte-exact at the locked SHAs (CC BY 4.0 
 - kubernetes/CHANGELOG-1.22-beta.1-excerpt.md: CHANGELOG/CHANGELOG-1.22.md lines 3019-3303, the
   whole v1.22.0-beta.1 section (its stray fence at excerpt line 67), then v1.22.0-beta.0's
   downloads (kubernetes 7c596ad7, S05-T6).
+- website_s04/rbac/table-excerpt-1.37.md: rbac.md lines 645-698, an HTML table with 3 blank lines
+  inside its cells (website 256a1f49, S05-T7).
+- kep_4317/README-excerpt-head.md: keps/sig-auth/4317-pod-certificates/README.md lines 901-994,
+  with the comment block of lines 932-992 (enhancements 4be81e27, S05-T7).
+- blog/kubernetes-configuration-best-practices/5b9bb69f.md: the post's whole file as website
+  commit 5b9bb69f left it; 4 headings have a tab after their `###` (S05-T7).
+- kubernetes/CHANGELOG-1.27-excerpt.md: CHANGELOG/CHANGELOG-1.27.md lines 2450-2466, part of a
+  list that opens with an indented continuation line (kubernetes 7c596ad7, S05-T7).
+- website_s05/feature-gates-page/excerpt-1.28.md: feature-gates.md lines 52-63, the start of the
+  first table (website 6b57c309, release-1.28, S05-T7).
 
 Expected values were read from the files by hand (line numbers below are the fixture's own,
 1-based), never computed by the chunker.
@@ -27,6 +37,7 @@ from pathlib import Path
 
 from orgknow.ingestion.chunker import (
     Block,
+    Heading,
     changelog_title,
     chunk_markdown,
     chunk_text,
@@ -94,7 +105,7 @@ def test_a_hash_line_inside_a_hugo_highlight_block_is_not_a_heading() -> None:
     lines = _lines(FIXTURES / "website_s04" / "authorization" / "excerpt-1.37.md")
 
     assert _paths(lines) == [
-        ("Example configuration {#authz-config-example}",),
+        ("Example configuration",),  # line 1 ends with ` {#authz-config-example}` (S05-T7)
         ("Authorization configuration and reloads",),
     ]
 
@@ -137,11 +148,12 @@ def test_an_oversize_code_block_is_exactly_one_chunk() -> None:
     assert [
         body for _, body in chunks if "# CAUTION: this is an example configuration." in body
     ] == [code_block]
-    heading = ("Authentication configuration from a file {#using-authentication-configuration}",)
+    # Line 1 ends with ` {#using-authentication-configuration}`, which is dropped (S05-T7).
+    heading = ("Authentication configuration from a file",)
     assert {path for path, _ in chunks} == {heading}  # its `#` lines are not headings either
 
 
-def test_a_table_is_never_cut() -> None:
+def test_a_table_within_the_limit_is_never_cut() -> None:
     # 1,200 + 2 (blank line) + 1,031 = 2,233 characters > 2,048: the table starts a new chunk,
     # whole, although 846 more characters would fit next to the first paragraph.
     paragraph = "a" * 1200
@@ -355,10 +367,11 @@ def test_only_a_gate_document_with_stages_gets_the_yaml() -> None:
 # --- Old single-file KEPs and governance docs (S05-T4) -----------------------------------------
 
 OLD_KEP = "kep:sig-auth/0014-dynamic-audit-configuration"
+OLD_KEP_FILE = FIXTURES / "kep_old" / "0014-dynamic-audit-configuration-excerpt-1.20.md"
 
 
 def test_an_old_single_file_kep_is_chunked_without_front_matter_or_kep_prefix() -> None:
-    raw = (FIXTURES / "kep_old" / "0014-dynamic-audit-configuration-excerpt-1.20.md").read_bytes()
+    raw = OLD_KEP_FILE.read_bytes()
 
     chunks = chunk_version(OLD_KEP, "kep", {"title": "Dynamic Audit Configuration"}, raw, 512)
 
@@ -368,13 +381,14 @@ def test_an_old_single_file_kep_is_chunked_without_front_matter_or_kep_prefix() 
         ["Dynamic Audit Control", "Table of Contents"],
         ["Dynamic Audit Control", "Summary"],
     ]
-    assert chunks[0].text.startswith(
+    # Lines 27 `<!-- toc -->` and 55 `<!-- /toc -->` are one-line comment blocks: dropped (rule 6,
+    # S05-T7). The visible table of contents between them, lines 28-54, stays.
+    assert chunks[0].text == (
         "Source: kep\n"
         "Title: Dynamic Audit Configuration\n"
         "Document: kep:sig-auth/0014-dynamic-audit-configuration\n"
         "Section: Dynamic Audit Control > Table of Contents\n"
-        "\n"
-        "<!-- toc -->\n"
+        "\n" + "\n".join(_lines(OLD_KEP_FILE)[27:54])
     )
     assert all("status: implementable" not in c.text for c in chunks)
 
@@ -487,3 +501,303 @@ def test_download_tables_after_a_stray_fence_are_left_out_too() -> None:
         (beta_1, *DEPENDENCIES, "Removed"),
     ]
     assert not any(SHA512.search(c.text) or "Downloads for" in c.text for c in chunks)
+
+
+# --- Heading text: anchors, inline comments, tabs (S05-T7) -------------------------------------
+
+
+def test_a_heading_loses_its_anchor_and_inline_comments() -> None:
+    lines = [
+        "## Example configuration {#authz-config-example}",  # authorization.md, a spaced anchor
+        "Text.",
+        # Line 42 of the Gateway API v1.2 post (website 022282e5): no space before the anchor.
+        "### Change to `.status.supportedFeatures` (experimental){#status-supported-features}",
+        "Text.",
+        "# Branch Manager Handbook <!-- omit in toc -->",  # a sig-release heading
+        "Text.",
+        "## Both {#both} <!-- omit in toc -->",
+        "Text.",
+        "## Not at the end {#kept} of the line",
+        "Text.",
+    ]
+
+    assert _paths(lines) == [
+        ("Example configuration",),
+        ("Example configuration", "Change to `.status.supportedFeatures` (experimental)"),
+        ("Branch Manager Handbook",),
+        ("Branch Manager Handbook", "Both"),
+        ("Branch Manager Handbook", "Not at the end {#kept} of the line"),
+    ]
+
+
+def test_a_governance_title_drops_the_anchor_too() -> None:
+    text = "# Release Team Handbook {#handbook} <!-- omit in toc -->\n\nText.\n"
+
+    assert governance_title(text, "release-team/README.md") == "Release Team Handbook"
+
+
+BEST_PRACTICES = FIXTURES / "blog" / "kubernetes-configuration-best-practices" / "5b9bb69f.md"
+
+
+def test_a_tab_after_the_hashes_makes_a_heading() -> None:
+    _, body = split_front_matter(decode(BEST_PRACTICES.read_bytes()))
+
+    headings = [(h.level, h.text) for h in scan(body.split("\n")) if isinstance(h, Heading)]
+
+    # `grep -n '^#'` on the file: 25 lines. File line 180 is inside a ```bash block, so 24
+    # headings; lines 40, 43, 54 and 158 have a tab after `###` (marked "tab").
+    assert headings == [
+        (2, "General configuration practices"),
+        (3, "Use the latest stable API version"),
+        (3, "Store configuration in version control"),
+        (3, "Write configs in YAML not JSON"),
+        (3, "Keep configuration simple and minimal"),  # tab
+        (3, "Group related objects together"),  # tab
+        (3, "Add helpful annotations"),  # tab
+        (2, "Managing Workloads: Pods, Deployments, and Jobs"),
+        (3, "Use Deployments for apps that should always be running"),
+        (3, "Use Jobs for tasks that should finish"),
+        (2, "Service Configuration and Networking"),
+        (3, "Create Services before workloads that use them"),
+        (3, "Use DNS for Service discovery"),
+        (3, "Avoid `hostPort` and `hostNetwork` unless absolutely necessary"),
+        (3, "Use headless Services for internal discovery"),
+        (2, "Working with labels effectively"),
+        (3, "Use semantics labels"),
+        (3, "Use common Kubernetes labels"),
+        (3, "Manipulate labels for debugging"),  # tab
+        (2, "Handy kubectl tips"),
+        (3, "Apply entire directories"),
+        (3, "Use label selectors to get or delete resources"),
+        (3, "Quickly create Deployments and Services"),
+        (2, "Conclusion"),
+    ]
+
+
+# --- Rule 5: an HTML table is one block (S05-T7) -----------------------------------------------
+
+RBAC_TABLE = FIXTURES / "website_s04" / "rbac" / "table-excerpt-1.37.md"
+
+
+def test_an_html_table_with_blank_lines_in_its_cells_is_one_block() -> None:
+    # 54 lines, `<table>` to `</table>`; lines 22, 34 and 47 are blank (inside <td> cells).
+    lines = _lines(RBAC_TABLE)[:54]  # the file ends with a newline: drop the empty last item
+
+    assert scan(lines) == [Block(0, 54)]
+    # 2,264 characters (566 tokens) > 512: still one chunk, the whole table.
+    assert chunk_markdown("## User-facing roles\n\n" + "\n".join(lines), MAX_TOKENS) == [
+        (("User-facing roles",), "\n".join(lines))
+    ]
+
+
+def test_an_html_table_opener_ends_a_paragraph_and_runs_to_its_closing_line() -> None:
+    lines = [
+        "Text before.",  # 0
+        "  <TABLE class=x>",  # 1: up to 3 spaces, any case; ends the paragraph
+        "<tr><td>a",
+        "",
+        "# not a heading</td></tr>",  # 4: inside the table
+        "</table> trailing",  # 5: the first line containing </table>
+        "After.",  # 6
+        "<table><tr><td>one line</td></tr></table>",  # 7: opens and closes on one line
+        "",
+        "<table>",  # 9: never closed: runs to the end of the body
+        "",
+        "# not a heading either",
+    ]
+
+    assert scan(lines) == [Block(0, 1), Block(1, 6), Block(6, 7), Block(7, 8), Block(9, 12)]
+
+
+# --- Rule 6: HTML comment blocks are dropped (S05-T7) ------------------------------------------
+
+KEP_4317 = FIXTURES / "kep_4317" / "README-excerpt-head.md"
+
+
+def test_a_kep_template_comment_makes_no_section_and_no_text() -> None:
+    raw = KEP_4317.read_bytes()
+
+    chunks = chunk_version("kep:4317", "kep", {"title": "Pod Certificates"}, raw, MAX_TOKENS)
+
+    # Line 1 is `### Graduation Criteria`, lines 3-30 its text. Lines 32-92 are a comment block
+    # holding `#### Alpha` (59), `#### Beta` (64), `#### GA` (70) and `#### Deprecation` (86): no
+    # section. Line 94, `### Upgrade / Downgrade Strategy`, has no text: no chunk.
+    assert [(c.heading_path, c.text) for c in chunks] == [
+        (
+            ["Graduation Criteria"],
+            "Source: kep\nTitle: KEP-4317: Pod Certificates\nDocument: kep:4317\n"
+            "Section: Graduation Criteria\n\n" + "\n".join(_lines(KEP_4317)[2:30]),
+        )
+    ]
+    assert not any("<!--" in c.text or "Define graduation milestones" in c.text for c in chunks)
+
+
+def test_comment_blocks_drop_whole_lines_and_keep_the_blank_lines_around_them() -> None:
+    lines = [
+        "# Title",  # 0
+        "Text one.",  # 1
+        "<!-- a comment opener ends a paragraph -->",  # 2: one line, dropped
+        "Text two.",  # 3
+        "",  # 4
+        "  <!--",  # 5: up to 3 spaces
+        "# not a heading",  # 6
+        "",  # 7: a blank line inside the comment goes with it
+        "--> text after the closing marker is dropped too",  # 8
+        "",  # 9
+        "Inline <!-- kept --> in a paragraph line.",  # 10
+        "```html",  # 11
+        "<!-- inside a code block: kept -->",  # 12
+        "```",  # 13
+        "<!-- never closed: runs to the end of the body",  # 14
+        "## not a heading either",  # 15
+    ]
+
+    # Lines 4 and 9 (blank, outside the comment) stay; lines 2 and 5-8 don't.
+
+    assert chunk_markdown("\n".join(lines), MAX_TOKENS) == [
+        (
+            ("Title",),
+            "Text one.\n"
+            "Text two.\n"
+            "\n"
+            "\n"
+            "Inline <!-- kept --> in a paragraph line.\n"
+            "```html\n"
+            "<!-- inside a code block: kept -->\n"
+            "```",
+        )
+    ]
+
+
+# --- Decision 1: oversize lists and pipe tables are cut (S05-T7) -------------------------------
+
+CHANGELOG_27 = FIXTURES / "kubernetes" / "CHANGELOG-1.27-excerpt.md"
+
+
+def test_an_oversize_list_is_cut_between_items() -> None:
+    lines = _lines(CHANGELOG_27)[:17]  # one paragraph block: no blank line
+
+    # Line lengths (awk): 105 103 95 181 | 351 | 248 | 231 | 322 | 210 | 196 | 295 | 156 80 308 |
+    # 114 194 | 148. Lines 1-4 continue the item before the excerpt; lines 13-14 are nested items
+    # of line 12, and line 16 continues line 15. 3,353 characters in all (839 tokens).
+    # Up to 200 tokens (800 characters), packed greedily by hand:
+    # 1-4 (487; + line 5 would be 839) | 5-6 (600) | 7-9 (765) | 10-11 (492) | 12-14 (546) | 15-17.
+    def text(first: int, last: int) -> str:  # fixture lines, 1-based, inclusive
+        return "\n".join(lines[first - 1 : last])
+
+    chunks = chunk_markdown("\n".join(lines), 200)
+
+    assert [body for _, body in chunks] == [
+        text(1, 4),
+        text(5, 6),
+        text(7, 9),
+        text(10, 11),
+        text(12, 14),
+        text(15, 17),
+    ]
+
+
+def test_list_cut_points_are_items_at_the_smallest_indent() -> None:
+    # The contract's pinned format, plus `2)`, a `---` line and an item longer than the limit.
+    lines = [
+        "  continuation of the previous item",
+        "- Item A",
+        "  more text of A",
+        "  - nested item of A",
+        "- Item B",
+        "1. Item C (numbered lists alike)",
+        "---",
+        "2) Item D, longer than the limit on its own",
+    ]
+
+    # Up to 5 tokens (20 characters): every piece is a chunk of its own; none is cut further.
+    assert [body for _, body in chunk_markdown("\n".join(lines), 5)] == [
+        "  continuation of the previous item",
+        "- Item A\n  more text of A\n  - nested item of A",
+        "- Item B",
+        "1. Item C (numbered lists alike)\n---",
+        "2) Item D, longer than the limit on its own",
+    ]
+
+
+def test_a_code_block_or_a_list_within_the_limit_is_not_cut() -> None:
+    code = "```yaml\n- a: 1\n- b: 2\n- c: 3\n```"  # 32 characters (8 tokens), list-like lines
+    short_list = "- one\n- two"  # 11 characters (3 tokens)
+
+    assert chunk_markdown(f"{code}\n\n{short_list}", 7) == [((), code), ((), short_list)]
+
+
+FEATURE_GATES_28 = FIXTURES / "website_s05" / "feature-gates-page" / "excerpt-1.28.md"
+
+
+def test_an_oversize_pipe_table_is_cut_between_rows_with_its_header_repeated() -> None:
+    body = FEATURE_GATES_28.read_text(encoding="utf-8")
+    # Line lengths (awk): 44, 0, 90 (the table shortcode), 0, then the table: 45 45 51 45 60 53
+    # 59 53 (418 characters with newlines, 105 tokens). Up to 55 tokens (220 characters), by hand:
+    # shortcode + blank + header, delimiter, first row = 235 > 220, so the shortcode is alone;
+    # 45+45+51+45 (+3) = 189, + row 60 = 250 > 220; header (91) + 60 + 53 (+2) = 206, + row 59 =
+    # 266 > 220; header + 59 + 53 (+2) = 205.
+    header = (
+        "| Feature | Default | Stage | Since | Until |\n"
+        "|---------|---------|-------|-------|-------|"
+    )
+    section = ("Feature gates for Alpha or Beta features",)
+
+    chunks = chunk_markdown(body, 55)
+
+    assert chunks == [
+        (
+            section,
+            '{{< table caption="Feature gates for features in Alpha or Beta states" '
+            'sortable="true" >}}',
+        ),
+        (
+            section,
+            f"{header}\n"
+            "| `APIListChunking` | `false` | Alpha | 1.8 | 1.8 |\n"
+            "| `APIListChunking` | `true` | Beta | 1.9 | |",
+        ),
+        (
+            section,
+            f"{header}\n"
+            "| `APIPriorityAndFairness` | `false` | Alpha | 1.18 | 1.19 |\n"
+            "| `APIPriorityAndFairness` | `true` | Beta | 1.20 | |",
+        ),
+        (
+            section,
+            f"{header}\n"
+            "| `APIResponseCompression` | `false` | Alpha | 1.7 | 1.15 |\n"
+            "| `APIResponseCompression` | `true` | Beta | 1.16 | |",
+        ),
+    ]
+
+
+# --- Decision 4: no "Downloads for" section in any source (S05-T7) ----------------------------
+
+
+def test_a_docs_page_drops_downloads_sections_but_keeps_its_text_before_the_first_heading() -> None:
+    # The shape of the 1.20 release notes page (web:/docs/setup/release/notes/), shortened.
+    raw = (
+        b"---\ntitle: v1.20 Release Notes\n---\n\nBefore any heading.\n\n# v1.20.0\n\nIntro.\n\n"
+        b"## Downloads for v1.20.0\n\n### Source Code\n\nfilename | sha512 hash\n-------- | ---\n"
+        b"[kubernetes.tar.gz](https://dl.k8s.io/v1.20.0/kubernetes.tar.gz) | `"
+        + b"a"
+        * 128
+        + b"`\n"
+        b"\n## Changelog since v1.19.0\n\nNotes.\n"
+    )
+
+    chunks = chunk_version(
+        "web:/docs/setup/release/notes/",
+        "release_record",
+        {"title": "v1.20 Release Notes"},
+        raw,
+        512,
+    )
+
+    # The table-of-contents rule stays CHANGELOG-only: the text before `# v1.20.0` is kept.
+    assert [(c.heading_path, c.text.split("\n\n", 1)[1]) for c in chunks] == [
+        ([], "Before any heading."),
+        (["v1.20.0"], "Intro."),
+        (["v1.20.0", "Changelog since v1.19.0"], "Notes."),
+    ]

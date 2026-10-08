@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10.
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10. Amended in the S05-R3 sitting (2026-10-07): the chunking rules (S05-T7).
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -117,7 +117,7 @@ Section: <heading path joined with " > ">
   - a docs page, release record, gate or blog post: the front-matter `title`
   - a KEP folder: `KEP-<number>: <kep.yaml title>`
   - an old single-file KEP: its front-matter `title`, with no `KEP-<n>:` prefix (it has no number)
-  - a governance doc (S05-R2 decision 4): the version's first `# ` heading with HTML comments removed (`# Google Cloud Platform <!-- omit in toc -->` → `Google Cloud Platform`), else its repo path. Ingestion stores it as the version's metadata `title`, so the chunk header and citations read it like any other title.
+  - a governance doc (S05-R2 decision 4): the version's first `# ` heading, as the chunker reads it (see "Chunking rules": no inline HTML comment, no `{#id}` anchor, none inside a comment block; `# Google Cloud Platform <!-- omit in toc -->` → `Google Cloud Platform`), else its repo path. Ingestion stores it as the version's metadata `title`, so the chunk header and citations read it like any other title.
   - a CHANGELOG (decision 4): its file name, `CHANGELOG-1.R`, stored the same way.
 - **Section:** omitted when the heading path is empty (text before the first heading).
 
@@ -148,6 +148,53 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 - **Not in the header:** release window, `version_status`, tier. They change when a newer version arrives, or depend on the question (ADR-003 D3), so they're attached to each retrieved chunk from these tables at answer time (product spec must-have 2, amended).
 
 **CHANGELOG chunks hold release notes only** (S05-R2 decision 8). The text before the first heading (the generated table of contents) and every section whose heading path holds a heading starting with `Downloads for ` (the sha512 download tables) make no chunk. Those sections hold every sha512 row of the 18 files (8,397 at the lock head). The version's hash still covers the whole file. Chunks fall per patch section (`v1.R.x` is the heading path's first element): 371 sections in the 18 files at the lock head.
+- **Every source** drops `Downloads for ` sections (S05-R3 decision 4): the 1.20 release notes page (`web:/docs/setup/release/notes/`) is the only other document with them. The table-of-contents rule stays CHANGELOG-only.
+
+### Chunking rules
+
+S04-R1 decisions 5 and 6, amended in the S05-R3 sitting (decisions 1–4). Code: `ingestion/chunker.py`, pure functions.
+
+**Sections.** Every heading (H1–H6) starts a section, and a chunk never spans two. A section with no text of its own makes no chunk. No merging, no overlap. The heading path is the enclosing headings, outermost first.
+
+**Heading text.** Inline HTML comments are removed, then a trailing Hugo anchor (`\s*\{#[^}]*\}\s*$`), then the text is trimmed (S05-R3 decision 3): `## Example configuration {#authz-config-example}` → `Example configuration`, `### … (experimental){#status-supported-features}` → `… (experimental)`. The anchor is dropped everywhere: section names, chunk headers, governance titles. An anchor in the middle of the text stays.
+
+**The line scanner** finds headings and blocks with 6 rules:
+
+1. A line starting at column 0 with 1–6 `#` and then a space or a tab is a heading, unless inside a code block, an HTML table or an HTML comment.
+2. A fence (```` ``` ```` or `~~~`, 3 or more) closes only on a line holding the same character, at least as long.
+3. A fence opened with indent N also closes at the first non-blank line indented less than N (its list item ended).
+4. `{{< highlight … >}}` … `{{< /highlight >}}` is a code block.
+5. Outside a code block, a line starting (after at most 3 spaces) with `<table` (any case) opens an HTML table, which runs to the first line containing `</table>`. It's one block, blank lines in its cells included (S05-R3).
+6. Outside a code block, a line starting (after at most 3 spaces) with `<!--` opens an HTML comment block, which runs to the first line containing `-->` (the opening line counts, so `<!-- toc -->` is a block of one line). It makes no text and no heading; text after `-->` on its closing line goes with it (S05-R3 decision 2).
+
+Rules 5 and 6 also end a paragraph. A table or comment that never closes runs to the end of the body. A comment inside a code block, and a one-line comment inside a paragraph line, stay.
+
+**Blocks and packing.** A block is a paragraph (up to a blank line or the start of another block), a code block or an HTML table. A section's blocks are packed greedily into bodies of at most `CHUNK_MAX_TOKENS` (characters ÷ 4, default 512). A body is the raw lines from its first block to its last, blank lines included and comment blocks left out. A block over the limit is a body on its own, except an oversize list or pipe table, which is cut first (S05-R3 decision 1):
+
+- **Only a paragraph block over the limit is cut.** Code blocks and HTML tables are never cut (cut code misleads).
+- **A pipe table** is a paragraph whose 2nd line is a delimiter row (only `|`, `-`, `:` and spaces, with at least one `|` and one `-`). It's cut between rows, and every piece after the first starts with the table's first 2 lines, so a row keeps its column names:
+
+  ```
+  | Feature | Default | Stage | Since | Until |
+  |---------|---------|-------|-------|-------|
+  | `APIPriorityAndFairness` | `false` | Alpha | 1.18 | 1.19 |
+  …
+  ```
+
+- **A list** (any other paragraph) is cut before each item at the block's smallest list-marker indent: a line matching `^( *)([-*+]|\d{1,9}[.)])[ \t]`. Nested items and continuation lines stay with their item; lines before the first item are the first piece. `---` is not an item (a marker needs a space or tab after it). A table inside a list is cut as a list. Cut points are marked `▶`:
+
+  ```
+    continuation of the previous item
+  ▶- Item A
+    more text of A
+    - nested item of A
+  ▶- Item B
+  ▶1. Item C
+  ```
+
+- The pieces are packed like blocks, so neighbouring pieces share a chunk up to the limit. A single item or row over the limit is a chunk on its own.
+
+On the full corpus (S05-T7): 77 distinct texts stay over 1,024 estimated tokens (433 before), of which 69 are code blocks or HTML tables, 7 lists or pipe tables (each one item or one row) and 1 a one-line paragraph.
 
 ## Rules
 
@@ -209,7 +256,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 | When | What | Why |
 |---|---|---|
 | ~~S04 sitting (S04-T3 header)~~ | **Done (S04-R1 sitting):** the header holds no per-version field, so `embeddings` is keyed by `(content_hash, model)` (migration `0003`) | Identical sections share text: 69% of sections repeat on the S04 scope, 52% on the full corpus (spike §3) |
-| S05 sitting | The hand-written Markdown scanner (S04-R1 decision 6), re-checked against markdown-it on the new sources | It matched CommonMark on all S04 data, but CHANGELOG list-item headings already differ (2 in `CHANGELOG-1.36`) |
+| ~~S05 sitting~~ | **Done (S05-T7):** the scanner re-checked against markdown-it on all 2,882 stored files (`spikes/scanner_recheck.py`). The remaining 558 heading differences in 30 files are `#` lines in Hugo highlight blocks (474) or after a ```` ``` ```` line with a backtick in its info string (12), and headings inside list items (68) or indented 1–3 spaces (4) | Before rules 5 and 6 and the tab: 822 in 80 files |
 | S09 sitting | ADR-005's plain-SQL choice, if retrieval needs more than ~4 combined query variants | See ADR-005 |
 | S15 | `btree_gist` on the RDS instance | Verified on the local image only |
 | Kubernetes 2.0 | The `releases.minor` key | Assumes major version 1 |

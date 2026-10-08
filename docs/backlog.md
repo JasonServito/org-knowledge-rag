@@ -199,7 +199,7 @@ Tasks:
 - [x] **S05-T6 `[core]` CHANGELOG.**
   - Done when: 18 documents, 371 patch sections; no sha512 rows in chunks; a set release `until` can't change.
   - Deps: T1.
-- [ ] **S05-T7 `[core]` Chunker fixes.**
+- [x] **S05-T7 `[core]` Chunker fixes.**
   - Covers `{#id}` anchors, HTML tables with a blank line in a cell, the scanner re-check, and the oversize-block decision.
   - Done when: 0 heading paths contain `{#`; the RBAC page's 30 cut HTML tables are whole; the scanner matches markdown-it, or each difference is explained. (S05-R3 sitting: also cut oversize lists and tables, drop HTML comment blocks, and the "Downloads for" rule on every source.)
   - Deps: T1–T6.
