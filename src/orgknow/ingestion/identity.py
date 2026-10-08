@@ -1,4 +1,5 @@
-"""Canonical document ids (ADR-002 D4): a rendered page by its URL, a KEP by its number."""
+"""Canonical document ids (ADR-002 D4): a rendered page by its URL, a feature gate by its name,
+a KEP by its number."""
 
 DOCS_ROOT = "content/en/"
 
@@ -28,3 +29,14 @@ def alias_id(alias: str) -> str:
 def kep_canonical_id(number: int) -> str:
     """`kep:` + the KEP's number (its directory number, also its tracking issue)."""
     return f"kep:{number}"
+
+
+def gate_canonical_id(title: object) -> str:
+    """`gate:` + a feature gate's front-matter `title`, as written: case and typos kept.
+
+    StrictIPCIDRValidation -> gate:StrictIPCIDRValidation. Gate files have no URL (Hugo doesn't
+    render them), so the name is the id. Raises ValueError if the title isn't a non-empty string.
+    """
+    if not isinstance(title, str) or not title.strip():
+        raise ValueError(f"a feature gate needs a front-matter title, not {title!r}")
+    return f"gate:{title}"

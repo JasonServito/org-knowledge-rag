@@ -6,6 +6,7 @@ Every repo here is a tiny local one built by the test (no network).
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -131,3 +132,28 @@ def test_similar_renames_without_paths_reads_nothing(make_git_repo: Callable[[st
 
     # An empty pathspec would diff the whole tree; no paths means no renames.
     assert similar_renames(repo.path, before, after, []) == []
+
+
+GATE_FIXTURES = Path(__file__).parents[1] / "fixtures" / "website_s05" / "feature-gates"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "renamed"),
+    [
+        # The gate renamed in the docs at 1.33: git scores the real pair 93% (spike §4 E).
+        ("APIServingWithRoute/1.32.md", "APIServingWithRoutine/1.33.md", True),
+        # Two different gates, 1.36 -> 1.37: 40%, from the shared front matter (spike §4 E).
+        ("PodInfoAPI/1.36.md", "InPlacePodVerticalScalingMemoryBackedVolumes/1.37.md", False),
+    ],
+)
+def test_similar_renames_on_real_gate_files(
+    make_git_repo: Callable[[str], Any], old: str, new: str, renamed: bool
+) -> None:
+    repo = make_git_repo("website")
+    old_path, new_path = f"gates/{old.split('/')[0]}.md", f"gates/{new.split('/')[0]}.md"
+    before = repo.commit({old_path: (GATE_FIXTURES / old).read_bytes()})
+    after = repo.commit({old_path: None, new_path: (GATE_FIXTURES / new).read_bytes()})
+
+    found = similar_renames(repo.path, before, after, [old_path, new_path])
+
+    assert found == ([(old_path, new_path)] if renamed else [])

@@ -138,9 +138,9 @@ def test_loads_the_full_scope_from_1_20() -> None:
     scope = load_scope(REAL_MANIFEST, REAL_LOCK, "full")
 
     # Expected values read by hand from config/corpus_manifest.yaml (sources.docs_page.sigs of
-    # auth, network and release, in that order; the website entry of sources.release_record)
-    # and config/corpus_manifest.lock.yaml (website_releases).
-    docs, records = scope.release_groups
+    # auth, network and release, in that order; the website entry of sources.release_record;
+    # sources.feature_gate_reference) and config/corpus_manifest.lock.yaml (website_releases).
+    docs, records, gates = scope.release_groups
     assert (docs.source_type, docs.repo) == ("docs_page", "website")
     assert docs.paths == (
         "content/en/docs/concepts/security/",
@@ -168,6 +168,14 @@ def test_loads_the_full_scope_from_1_20() -> None:
         "content/en/docs/reference/using-api/deprecation-guide.md",
     )
     assert records.snapshots == docs.snapshots
+    assert (gates.source_type, gates.repo) == ("feature_gate_reference", "website")
+    assert gates.paths == (
+        "content/en/docs/reference/command-line-tools-reference/feature-gates.md",
+        "content/en/docs/reference/command-line-tools-reference/feature-gates/",
+        "content/en/docs/reference/command-line-tools-reference/feature-gates-removed.md",
+        "content/en/docs/reference/command-line-tools-reference/feature-gates-removed/",
+    )
+    assert gates.snapshots == docs.snapshots
     assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
 
 

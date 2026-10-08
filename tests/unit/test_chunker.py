@@ -7,6 +7,7 @@ Fixtures are real corpus files, copied byte-exact at the locked SHAs (CC BY 4.0 
 - website_s04/authentication/excerpt-1.32.md: authentication.md lines 332-499 (website a6b9d383).
 - kubernetes/CHANGELOG-1.22-excerpt.md: CHANGELOG/CHANGELOG-1.22.md lines 3082-3193 (kubernetes
   7c596ad7).
+- website_s05/feature-gates/<gate>/1.N.md: the gate's file at release 1.N (S05-T3).
 
 Expected values were read from the files by hand (line numbers below are the fixture's own,
 1-based), never computed by the chunker.
@@ -214,3 +215,126 @@ def test_chunking_the_same_input_twice_gives_identical_texts() -> None:
 
     assert len(first) > 1
     assert [c.text for c in first] == [c.text for c in second]
+
+
+# --- A gate's stages in its chunk text (S05-R1 decision 1) ------------------------------------
+
+GATES = FIXTURES / "website_s05" / "feature-gates"
+
+
+def test_a_gate_chunk_starts_with_its_stages_as_yaml() -> None:
+    raw = (GATES / "StrictIPCIDRValidation" / "1.37.md").read_bytes()
+    # The version's metadata as Postgres jsonb returns it: keys reordered (shortest first). The
+    # YAML keeps the file's own order, so the stored text doesn't depend on that.
+    metadata = {
+        "title": "StrictIPCIDRValidation",
+        "stages": [
+            {"stage": "alpha", "toVersion": "1.35", "fromVersion": "1.33", "defaultValue": False},
+            {"stage": "beta", "fromVersion": "1.36", "defaultValue": True},
+        ],
+    }
+
+    chunks = chunk_version(
+        "gate:StrictIPCIDRValidation", "feature_gate_reference", metadata, raw, 512
+    )
+
+    # The pinned chunk text, typed by hand from the fixture: header, YAML, body.
+    assert [(c.ordinal, c.heading_path, c.text) for c in chunks] == [
+        (
+            0,
+            [],
+            "Source: feature_gate_reference\n"
+            "Title: StrictIPCIDRValidation\n"
+            "Document: gate:StrictIPCIDRValidation\n"
+            "\n"
+            "stages:\n"
+            "- stage: alpha\n"
+            "  defaultValue: false\n"
+            "  fromVersion: '1.33'\n"
+            "  toVersion: '1.35'\n"
+            "- stage: beta\n"
+            "  defaultValue: true\n"
+            "  fromVersion: '1.36'\n"
+            "\n"
+            "Use stricter validation for fields containing IP addresses and CIDR values.\n"
+            "\n"
+            "In particular, with this feature gate enabled, octets within IPv4 addresses are\n"
+            "not allowed to have any leading `0`s, and IPv4-mapped IPv6 values (e.g.\n"
+            "`::ffff:192.168.0.1`) are forbidden. These sorts of values can potentially cause\n"
+            "security problems when different components interpret the same string as\n"
+            "referring to different IP addresses (as in CVE-2021-29923).\n"
+            "\n"
+            "This tightening applies only to fields in build-in API kinds, and not to\n"
+            "custom resource kinds, values in Kubernetes configuration files, or\n"
+            "command-line arguments.",
+        )
+    ]
+
+
+def test_removed_follows_the_stages_and_one_blank_line_precedes_the_body() -> None:
+    # Hand-written after PodHasNetworkCondition at 1.37, which has `removed: true` after its
+    # stages, with a body that starts with a blank line, as 34 of the 864 distinct real gate
+    # files (1.29-1.37) do.
+    # The text still has exactly one blank line between the YAML and the body.
+    raw = (
+        b"---\ntitle: PodHasNetworkCondition\ncontent_type: feature_gate\n_build:\n"
+        b"  list: never\n  render: false\n\nstages:\n  - stage: alpha \n"
+        b'    defaultValue: false\n    fromVersion: "1.25"\n    toVersion: "1.27"\n\n'
+        b"removed: true\n---\n\nEnable the kubelet to mark the PodHasNetwork condition.\n"
+    )
+    metadata = {"title": "PodHasNetworkCondition", "stages": [], "removed": True}
+
+    (chunk,) = chunk_version(
+        "gate:PodHasNetworkCondition", "feature_gate_reference", metadata, raw, 512
+    )
+
+    assert chunk.text == (
+        "Source: feature_gate_reference\n"
+        "Title: PodHasNetworkCondition\n"
+        "Document: gate:PodHasNetworkCondition\n"
+        "\n"
+        "stages:\n"
+        "- stage: alpha\n"
+        "  defaultValue: false\n"
+        "  fromVersion: '1.25'\n"
+        "  toVersion: '1.27'\n"
+        "removed: true\n"
+        "\n"
+        "Enable the kubelet to mark the PodHasNetwork condition."
+    )
+
+
+def test_stage_values_are_kept_as_yaml_reads_them() -> None:
+    # The real 1.32 file writes `- stage: alpha ` with a trailing space. In YAML, trailing spaces
+    # after a plain value aren't part of it, so the value is `alpha`; a quoted value keeps its
+    # spaces. Nothing is trimmed or mapped on top of what YAML reads.
+    real = (GATES / "APIServingWithRoute" / "1.32.md").read_bytes()
+    assert b"  - stage: alpha \n" in real
+    quoted = real.replace(b"  - stage: alpha \n", b"  - stage: 'alpha '\n")
+    metadata = {"title": "APIServingWithRoute"}
+
+    (plain,) = chunk_version(
+        "gate:APIServingWithRoute", "feature_gate_reference", metadata, real, 512
+    )
+    (spaced,) = chunk_version(
+        "gate:APIServingWithRoute", "feature_gate_reference", metadata, quoted, 512
+    )
+
+    assert "\n\nstages:\n- stage: alpha\n  defaultValue: false\n" in plain.text
+    assert "\n\nstages:\n- stage: 'alpha '\n  defaultValue: false\n" in spaced.text
+
+
+def test_only_a_gate_document_with_stages_gets_the_yaml() -> None:
+    page = b"---\ntitle: Feature Gates\nstages:\n  - stage: alpha\n---\nThe gates.\n"
+    no_stages = b"---\ntitle: SomeGate\ncontent_type: feature_gate\n---\nA gate.\n"
+
+    # The feature-gates page is a `web:` document; a gate file without `stages` has nothing to add.
+    (web,) = chunk_version(
+        "web:/docs/gates/", "feature_gate_reference", {"title": "Feature Gates"}, page, 512
+    )
+    (bare,) = chunk_version(
+        "gate:SomeGate", "feature_gate_reference", {"title": "SomeGate"}, no_stages, 512
+    )
+
+    assert web.text.endswith("Document: web:/docs/gates/\n\nThe gates.")
+    assert bare.text.endswith("Document: gate:SomeGate\n\nA gate.")

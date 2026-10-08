@@ -1,7 +1,9 @@
 """Parts of `make ingest` that need no database: the releases check, a document from its chain
-of files, and reading the redirect file (from a tiny local git repo).
+of files (a web page or a feature gate), and reading the redirect file (from a tiny local git
+repo).
 
-Expected values are typed by hand from config/corpus_manifest.yaml (release dates, strip lists).
+Expected values are typed by hand from config/corpus_manifest.yaml (release dates, strip lists)
+and the contract's gate cases.
 """
 
 from collections.abc import Callable
@@ -9,9 +11,27 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from orgknow.db.models import Release
-from orgknow.ingestion.ingest import document_from_chain, read_redirects, release_problems
-from orgknow.ingestion.manifest import ReleaseGroup, Snapshot, load_normalization, load_releases
+import pytest
+
+from orgknow.db.models import Release, VersionData
+from orgknow.ingestion.ingest import (
+    Document,
+    Summary,
+    document_from_chain,
+    gate_document_from_chain,
+    is_gate_file,
+    read_redirects,
+    release_problems,
+    without_duplicate_ids,
+)
+from orgknow.ingestion.manifest import (
+    ReleaseGroup,
+    Snapshot,
+    load_normalization,
+    load_releases,
+    load_scope,
+)
+from orgknow.ingestion.renames import build_chains, gate_link_rules
 
 ROOT = Path(__file__).parents[2]
 MANIFEST = ROOT / "config" / "corpus_manifest.yaml"
@@ -201,3 +221,202 @@ def test_redirects_come_from_static_redirects_before_the_base_file(
     assert redirects_at(both) == {"/docs/a/": "/docs/from-redirects/"}
     assert redirects_at(base_only) == {"/docs/a/": "/docs/from-base/"}
     assert redirects_at(neither) == {}
+
+
+# --- Feature gates (S05-T3) --------------------------------------------------------------------
+
+GATES = "content/en/docs/reference/command-line-tools-reference/feature-gates/"
+GATE_FIXTURES = ROOT / "tests/fixtures/website_s05/feature-gates"
+LOCK = ROOT / "config" / "corpus_manifest.lock.yaml"
+
+
+def _gate_group(*releases: int) -> ReleaseGroup:
+    """The real feature-gate group of the full scope, cut to the given releases."""
+    gates = next(
+        group
+        for group in load_scope(MANIFEST, LOCK, "full").release_groups
+        if group.source_type == "feature_gate_reference"
+    )
+    snapshots = tuple(s for s in gates.snapshots if s.release in releases)
+    return ReleaseGroup(gates.source_type, gates.repo, gates.paths, snapshots)
+
+
+def _gate_documents(group: ReleaseGroup, listings: list[dict[str, bytes]]) -> list[Document]:
+    """Chain the gate files with the gate rules (git finds no renames), then derive each gate."""
+    types = {path: group.source_type for listing in listings for path in listing}
+    chains = build_chains(listings, gate_link_rules(), lambda after, paths: [], types)
+    strip, releases = load_normalization(MANIFEST), load_releases(MANIFEST)
+    return [
+        gate_document_from_chain(
+            group,
+            [
+                None if p is None else (p, listing[p])
+                for p, listing in zip(paths, listings, strict=True)
+            ],
+            strip,
+            releases,
+        )
+        for paths in chains.paths
+    ]
+
+
+def _release_windows(document: Document) -> list[tuple[int, int | None]]:
+    return [(v.valid_from_release, v.valid_until_release) for v in document.versions]
+
+
+def _gate_file(title: str, former_titles: str = "") -> bytes:
+    """A gate file shaped as the real ones; `former_titles` is a YAML list line, if any."""
+    return (
+        f"---\ntitle: {title}\n{former_titles}content_type: feature_gate\n_build:\n"
+        "  list: never\n  render: false\n\nstages:\n  - stage: beta\n"
+        f'    defaultValue: true\n    fromVersion: "1.33"\n---\nThe {title} gate.\n'
+    ).encode()
+
+
+def test_a_gate_whose_title_is_fixed_in_place_is_one_document() -> None:
+    # ServiceAccountNodeAudienceRestriction.md had the title `ServiceAcccount…` (three c's) at
+    # 1.33 and 1.34; 1.35 fixed it in the same file. Same path: one document, whose id keeps the
+    # typo (ADR-002 D4: the first title), with the fixed title as its alias.
+    path = GATES + "ServiceAccountNodeAudienceRestriction.md"
+    typo = _gate_file("ServiceAcccountNodeAudienceRestriction")
+    fixed = _gate_file("ServiceAccountNodeAudienceRestriction")
+
+    documents = _gate_documents(
+        _gate_group(33, 34, 35), [{path: typo}, {path: typo}, {path: fixed}]
+    )
+
+    assert [(d.canonical_id, d.source_type, d.aliases) for d in documents] == [
+        (
+            "gate:ServiceAcccountNodeAudienceRestriction",
+            "feature_gate_reference",
+            ["gate:ServiceAccountNodeAudienceRestriction"],
+        )
+    ]
+    # The title is in the hash (never stripped), so the fix is a new version.
+    assert _release_windows(documents[0]) == [(33, 34), (35, None)]
+
+
+def test_a_gate_renamed_by_similarity_is_identified_by_its_first_title() -> None:
+    # The real files: APIServingWithRoute at 1.32, APIServingWithRoutine at 1.33 (93% similar).
+    old, new = GATES + "APIServingWithRoute.md", GATES + "APIServingWithRoutine.md"
+    chain = [
+        (old, (GATE_FIXTURES / "APIServingWithRoute" / "1.32.md").read_bytes()),
+        (new, (GATE_FIXTURES / "APIServingWithRoutine" / "1.33.md").read_bytes()),
+    ]
+
+    document = gate_document_from_chain(
+        _gate_group(32, 33), chain, load_normalization(MANIFEST), load_releases(MANIFEST)
+    )
+
+    assert document.canonical_id == "gate:APIServingWithRoute"
+    assert document.aliases == ["gate:APIServingWithRoutine"]
+    assert _release_windows(document) == [(32, 32), (33, None)]
+    assert [v.source_path for v in document.versions] == [old, new]
+
+
+def test_former_titles_are_not_aliases() -> None:
+    # At 1.37, PodReadyToStartContainersCondition names PodHasNetworkCondition in former_titles,
+    # and PodHasNetworkCondition keeps its own file: two documents, no alias, nothing linked.
+    net, ready = (
+        GATES + "PodHasNetworkCondition.md",
+        GATES + "PodReadyToStartContainersCondition.md",
+    )
+    former = "former_titles:\n  - PodHasNetworkCondition\n"
+    listings = [
+        {net: _gate_file("PodHasNetworkCondition")},
+        {
+            net: _gate_file("PodHasNetworkCondition"),
+            ready: _gate_file("PodReadyToStartContainersCondition", former),
+        },
+    ]
+
+    documents = _gate_documents(_gate_group(36, 37), listings)
+
+    assert [(d.canonical_id, d.aliases) for d in documents] == [
+        ("gate:PodHasNetworkCondition", []),
+        ("gate:PodReadyToStartContainersCondition", []),
+    ]
+    # Kept in the version's metadata, for later slices.
+    assert documents[1].versions[0].metadata["former_titles"] == ["PodHasNetworkCondition"]
+
+
+def test_a_gates_stages_and_removed_flag_are_in_its_metadata() -> None:
+    raw = _gate_file("PodHasNetworkCondition").replace(b"---\nThe", b"removed: true\n---\nThe")
+
+    document = gate_document_from_chain(
+        _gate_group(37),
+        [(GATES + "PodHasNetworkCondition.md", raw)],
+        load_normalization(MANIFEST),
+        load_releases(MANIFEST),
+    )
+
+    metadata = document.versions[0].metadata
+    assert metadata["stages"] == [{"stage": "beta", "defaultValue": True, "fromVersion": "1.33"}]
+    assert metadata["removed"] is True
+    assert metadata["_build"] == {"list": "never", "render": False}  # stripped, still stored
+
+
+def test_a_gate_file_without_a_title_fails() -> None:
+    raw = b"---\ncontent_type: feature_gate\n---\nNo title.\n"
+
+    with pytest.raises(ValueError, match="a feature gate needs a front-matter title"):
+        gate_document_from_chain(
+            _gate_group(37),
+            [(GATES + "Untitled.md", raw)],
+            load_normalization(MANIFEST),
+            load_releases(MANIFEST),
+        )
+
+
+@pytest.mark.parametrize(
+    ("path", "gate"),
+    [
+        # The two pages before 1.29: files the manifest names one by one.
+        ("content/en/docs/reference/command-line-tools-reference/feature-gates.md", False),
+        ("content/en/docs/reference/command-line-tools-reference/feature-gates-removed.md", False),
+        # From 1.29, each page is its folder's index.md (a page bundle).
+        (GATES + "index.md", False),
+        (
+            "content/en/docs/reference/command-line-tools-reference/feature-gates-removed/index.md",
+            False,
+        ),
+        # Every other file in the folders is one gate.
+        (GATES + "StrictIPCIDRValidation.md", True),
+        (GATES + "pod-ready-to-start-containers.md", True),
+    ],
+)
+def test_which_feature_gate_files_are_gates(path: str, gate: bool) -> None:
+    assert is_gate_file(_gate_group(37), path) is gate
+
+
+def test_a_docs_page_is_never_a_gate() -> None:
+    assert not is_gate_file(RECORDS, "content/en/docs/setup/release/notes.md")
+
+
+def _document(canonical_id: str, path: str) -> Document:
+    version = VersionData(
+        content_hash="a" * 64,
+        source_path=path,
+        snapshot_repo="website",
+        snapshot_ref="main",
+        snapshot_sha="0" * 40,
+        valid_from_release=37,
+        valid_from_date=datetime(2026, 8, 26, tzinfo=UTC),
+    )
+    return Document(canonical_id, "feature_gate_reference", [version], [])
+
+
+def test_two_chains_with_one_id_are_an_error_never_a_merge() -> None:
+    # Two gate files with one title at one release (0 on real data): two chains, one id.
+    first = _document("gate:A", GATES + "A.md")
+    second = _document("gate:A", GATES + "a-copy.md")
+    other = _document("gate:B", GATES + "B.md")
+    summary = Summary()
+
+    kept = without_duplicate_ids([first, other, second], summary)
+
+    assert kept == [other]
+    assert summary.failures == [
+        f"gate:A: 2 chains have this id, so none is stored (first files: {GATES}A.md, "
+        f"{GATES}a-copy.md)"
+    ]
