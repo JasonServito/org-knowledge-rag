@@ -138,8 +138,8 @@ def question_key(question: str) -> str:
 
 
 def load_vectors(path: Path) -> dict[str, list[float]]:
-    """The stored question vectors by key. A missing or empty file holds none; a vector that
-    isn't 1024 numbers is an EvalError."""
+    """The stored question vectors by key. A missing or empty file holds none; a vector of the
+    wrong length is an EvalError."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
