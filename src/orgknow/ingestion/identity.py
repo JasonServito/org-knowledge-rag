@@ -1,5 +1,6 @@
-"""Canonical document ids (ADR-002 D4): a rendered page by its URL, a feature gate by its name,
-a KEP by its number, a governance doc by its repo and first path."""
+"""Canonical document ids (ADR-002 D4): a rendered page by its URL (a blog post by its URL at
+publication), a feature gate by its name, a KEP by its number, a governance doc by its repo and
+first path."""
 
 DOCS_ROOT = "content/en/"
 # The two files of a KEP folder (`keps/<sig>/<number>-<slug>/`); any other file in it is ignored.
@@ -26,6 +27,18 @@ def alias_id(alias: str) -> str:
     if not alias.startswith("/"):
         raise ValueError(f"relative alias {alias!r} is not supported (S04 has only absolute ones)")
     return f"web:{alias.lower().rstrip('/')}/"
+
+
+def blog_canonical_id(url: str) -> str:
+    """`web:` + the URL a blog post was served at when first published (ADR-002 D4), normalized
+    like every web URL: lowercase, with a trailing slash.
+
+    /blog/2020/05/Introducing-PodTopologySpread -> web:/blog/2020/05/introducing-podtopologyspread/
+    Raises ValueError if the URL isn't a site path (starting with `/`).
+    """
+    if not url.startswith("/"):
+        raise ValueError(f"blog URL {url!r} is not a site path")
+    return f"web:{url.lower().rstrip('/')}/"
 
 
 def kep_canonical_id(number: int) -> str:

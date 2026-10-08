@@ -14,9 +14,11 @@ from typing import Any
 import pytest
 
 from orgknow.db.models import Release, VersionData
+from orgknow.ingestion.blog import Entry, publication
 from orgknow.ingestion.ingest import (
     Document,
     Summary,
+    blog_document,
     document_from_chain,
     gate_document_from_chain,
     governance_document,
@@ -29,6 +31,7 @@ from orgknow.ingestion.ingest import (
     without_duplicate_ids,
 )
 from orgknow.ingestion.manifest import (
+    BlogGroup,
     DateGroup,
     ReleaseGroup,
     Snapshot,
@@ -36,6 +39,7 @@ from orgknow.ingestion.manifest import (
     load_releases,
     load_scope,
 )
+from orgknow.ingestion.normalize import docs_state
 from orgknow.ingestion.renames import build_chains, date_link_rules, gate_link_rules
 
 ROOT = Path(__file__).parents[2]
@@ -560,3 +564,102 @@ def test_an_old_path_back_after_its_move_is_a_duplicate_id_error() -> None:
         "sig-release:release-engineering/versioning.md: 2 chains have this id, so none is "
         "stored (first files: release-engineering/versioning.md, release-engineering/versioning.md)"
     ]
+
+
+# --- Blog posts: the id is the URL at publication; later URLs are aliases (S05-T5) ------------
+
+BLOG = ROOT / "tests" / "fixtures" / "blog"
+POSTS = "content/en/blog/_posts/"
+BLOG_GROUP = BlogGroup(
+    "blog_post",
+    "website",
+    "main",
+    "256a1f49419171f6c7fbdb1857146da1c63eb533",
+    (POSTS,),
+    datetime(2020, 12, 8, tzinfo=UTC),
+    "/:section/:year/:month/:day/:slug/",
+)
+
+
+def _post_entries(history: list[tuple[str, str, str | None]]) -> list[Entry]:
+    """(committer time as git prints it, path then, fixture under tests/fixtures/blog/)."""
+    strip = load_normalization(MANIFEST)["blog_post"]
+    return [
+        Entry(
+            datetime.fromisoformat(when).astimezone(UTC),
+            "c" * 40,
+            path,
+            None if name is None else docs_state(path, (BLOG / name).read_bytes(), strip),
+        )
+        for when, path, name in history
+    ]
+
+
+def _blog_document(history: list[tuple[str, str, str | None]]) -> Document:
+    entries = _post_entries(history)
+    published = publication(entries)
+    assert published is not None
+    return blog_document(BLOG_GROUP, entries, published, load_releases(MANIFEST))
+
+
+def test_a_blog_post_is_identified_by_its_url_at_publication() -> None:
+    # Spike §5 I, post 5: published at 17:00 UTC as 11-12 (the run contract's pinned id); its
+    # last version is dated 11-11, so that URL is an alias. Real commit times and excerpts.
+    path = POSTS + "2025-11-12-ingress-nginx-retirement.md"
+    document = _blog_document(
+        [
+            ("2025-11-12T07:49:40-08:00", path, "ingress-nginx-retirement/35d8dfc2-excerpt.md"),
+            ("2025-11-12T09:17:42-08:00", path, "ingress-nginx-retirement/2b1598fc-excerpt.md"),
+            ("2025-11-12T09:53:41-08:00", path, "ingress-nginx-retirement/fe122837-excerpt.md"),
+            (
+                "2026-02-21T17:01:37+05:30",
+                POSTS + "2025/ingress-nginx-retirement.md",
+                "ingress-nginx-retirement/fe122837-excerpt.md",
+            ),
+        ]
+    )
+
+    assert document.canonical_id == "web:/blog/2025/11/12/ingress-nginx-retirement/"
+    assert document.aliases == ["web:/blog/2025/11/11/ingress-nginx-retirement/"]
+    assert document.source_type == "blog_post"
+    assert len(document.versions) == 3  # the year-folder move (R100) adds none
+
+
+def test_a_blog_url_changed_by_a_rename_is_an_alias() -> None:
+    # Spike §5 I, post 4: published as 09-23 (`date: draft`, so the bundle folder's date), then
+    # renamed and dated 10-06 (website `_redirects.base` maps the old URL to the new one).
+    folder = "headlamp-karpenter-plugin"
+    document = _blog_document(
+        [
+            (
+                "2025-10-05T09:54:57-07:00",
+                POSTS + f"2025-09-23-{folder}/index.md",
+                f"{folder}/e5c44148-excerpt.md",
+            ),
+            (
+                "2025-10-06T18:23:12+01:00",
+                POSTS + f"2025-10-06-{folder}/index.md",
+                f"{folder}/5eaca101-excerpt.md",
+            ),
+        ]
+    )
+
+    assert document.canonical_id == (
+        "web:/blog/2025/09/23/introducing-headlamp-plugin-for-karpenter/"
+    )
+    assert document.aliases == ["web:/blog/2025/10/06/introducing-headlamp-plugin-for-karpenter/"]
+
+
+def test_a_front_matter_alias_equal_to_the_id_is_skipped() -> None:
+    # Spike §5 I, post 6: published as 02-26, re-dated 05-15. The new version's `aliases` list
+    # the old URL twice (with and without a slash): both are the id, so neither is an alias.
+    path = POSTS + "2026/ccm-metric-route-sync-total.md"
+    document = _blog_document(
+        [
+            ("2026-04-22T11:13:14-07:00", path, "ccm-metric-route-sync-total/02ab95c9-excerpt.md"),
+            ("2026-05-16T00:18:30+05:30", path, "ccm-metric-route-sync-total/73f7fa85-excerpt.md"),
+        ]
+    )
+
+    assert document.canonical_id == "web:/blog/2026/02/26/ccm-new-metric-route-sync-total/"
+    assert document.aliases == ["web:/blog/2026/05/15/ccm-new-metric-route-sync-total/"]

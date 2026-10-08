@@ -8,6 +8,7 @@ only the re-run test's scope reads. The enhancements repo replays KEP-2579's rea
 around its real kep.yaml files.
 """
 
+import logging
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -23,6 +24,7 @@ from orgknow.db.models import VersionData
 from orgknow.db.versions import list_versions
 from orgknow.ingestion.ingest import Document, ReleasesMismatch, Summary, ingest, store_document
 from orgknow.ingestion.manifest import (
+    BlogGroup,
     DateGroup,
     ReleaseGroup,
     Scope,
@@ -949,3 +951,140 @@ def test_a_moved_governance_doc_stays_one_document(
     # A re-run adds nothing.
     assert (second.new_documents, second.new_versions, second.new_chunks) == (0, 0, 0)
     assert second.failures == []
+
+
+# --- Blog posts: one first-parent log of the posts' folder (S05-T5) ---------------------------
+
+BLOG = FIXTURES / "blog"
+POSTS = "content/en/blog/_posts/"
+INGRESS_PATH = POSTS + "2025-11-12-ingress-nginx-retirement.md"
+VAP_PATH = POSTS + "2024-04-24-validating-admission-policy-ga/index.md"
+INTERVIEW_PATH = POSTS + "2022-04-29-kubernetes-1.23-release-interview.md"
+BAD_PATH = POSTS + "2026-01-05-broken-front-matter.md"
+INGRESS = "web:/blog/2025/11/12/ingress-nginx-retirement/"
+VAP = "web:/blog/2024/04/24/validating-admission-policy-ga/"
+INTERVIEW = (
+    "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/"
+)
+
+
+def _website_blog(make_git_repo: Callable[[str], Any]) -> tuple[str, str]:
+    """Real posts at their real first-parent commit times on website main: the 1.23 release
+    interview, the VAP GA post (`------`; its first version through a pull request, merged at
+    its real merge time), the ingress-nginx retirement post's 3 versions, then PR #53902's
+    year-folder move (2026-02-21), which moves two posts unchanged and the interview to a file
+    with no extension. Also: the real 1.11 interview (2018, out of scope), a hand-made draft
+    (never published), and a hand-made post with broken front matter. Returns (the broken
+    post's commit, head)."""
+    repo = make_git_repo("website")
+    sausage = (BLOG / "kubernetes-1-11-release-interview-excerpt.md").read_bytes()
+    repo.commit({POSTS + "2018-07-16-sausage.md": sausage}, when="2018-07-16T09:00:00-07:00")
+    interview = (BLOG / "kubernetes-1.23-release-interview" / "27d1959c-excerpt.md").read_bytes()
+    repo.commit({INTERVIEW_PATH: interview}, when="2022-04-28T08:15:50-07:00")
+    vap = BLOG / "validating-admission-policy-ga"
+    _pull_request(
+        repo,
+        "vap-ga",
+        [({VAP_PATH: (vap / "3a358ed2-excerpt.md").read_bytes()}, "2024-04-19T10:00:00-07:00")],
+        "2024-04-20T14:11:16-07:00",
+    )
+    repo.commit({VAP_PATH: (vap / "2de4371a-excerpt.md").read_bytes()}, "2024-04-23T05:05:52-07:00")
+    ingress = BLOG / "ingress-nginx-retirement"
+    for name, when in [
+        ("35d8dfc2", "2025-11-12T07:49:40-08:00"),
+        ("2b1598fc", "2025-11-12T09:17:42-08:00"),
+        ("fe122837", "2025-11-12T09:53:41-08:00"),
+    ]:
+        repo.commit({INGRESS_PATH: (ingress / f"{name}-excerpt.md").read_bytes()}, when)
+    draft = b"---\ntitle: A draft\ndate: XXXX-XX-XX\ndraft: true\n---\n\nNot yet.\n"
+    repo.commit({POSTS + "XXXX-XX-XX-draft.md": draft}, when="2025-12-01T00:00:00+00:00")
+    bad = repo.commit(
+        {BAD_PATH: b"---\ntitle: [unclosed\n---\n\nText.\n"}, when="2026-01-05T00:00:00+00:00"
+    )
+    head = repo.commit(
+        {
+            INGRESS_PATH: None,
+            POSTS + "2025/ingress-nginx-retirement.md": (
+                ingress / "fe122837-excerpt.md"
+            ).read_bytes(),
+            VAP_PATH: None,
+            POSTS + "2024/validating-admission-policy-ga/index.md": (
+                vap / "2de4371a-excerpt.md"
+            ).read_bytes(),
+            INTERVIEW_PATH: None,
+            POSTS + "2022/kubernetes-1.23-release-interview": interview,
+        },
+        when="2026-02-21T17:01:37+05:30",
+    )
+    return bad, head
+
+
+def _blog_scope(head: str) -> Scope:
+    blog = BlogGroup(
+        "blog_post",
+        "website",
+        "main",
+        head,
+        (POSTS,),
+        datetime(2020, 12, 8, tzinfo=UTC),
+        "/:section/:year/:month/:day/:slug/",
+    )
+    return Scope("test", (), (), blog)
+
+
+def test_blog_posts_are_stored_from_publication_and_a_rerun_adds_nothing(
+    conn: Conn,
+    tmp_path: Path,
+    make_git_repo: Callable[[str], Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    bad, head = _website_blog(make_git_repo)
+    scope = _blog_scope(head)
+
+    with caplog.at_level(logging.INFO):
+        first = _ingest(conn, tmp_path, scope)
+    second = _ingest(conn, tmp_path, scope)
+
+    # The broken post is reported with its reason, every run; the others are stored.
+    broken = f"{BAD_PATH} at {bad}: front matter is not valid YAML: while parsing a flow sequence"
+    assert [line.split("\n")[0] for line in first.failures] == [broken]
+    assert first.documents == {"blog_post": 3}
+    # Out of scope, counted (not listed one by one): the 2018 post and the draft.
+    assert "blog: 6 posts; 3 in scope; 1 never published; 1 dated before 2020-12-08" in (
+        caplog.text
+    )
+    # ingress: valid_from = max(merge, publication); 11-12 is the id, 11-11 an alias.
+    published = datetime(2025, 11, 12, 17, tzinfo=UTC)
+    t1 = datetime(2025, 11, 12, 17, 17, 42, tzinfo=UTC)
+    t2 = datetime(2025, 11, 12, 17, 53, 41, tzinfo=UTC)
+    assert _windows(conn, INGRESS) == [
+        (34, 34, published, t1),
+        (34, 34, t1, t2),
+        (34, None, t2, None),
+    ]
+    assert _aliases(conn) == [("web:/blog/2025/11/11/ingress-nginx-retirement/", INGRESS)]
+    # VAP GA: its pull request's text was superseded before its date, so only the 04-23 text
+    # is stored, from the date; the year-folder move adds no version (R100).
+    assert _windows(conn, VAP) == [(30, None, datetime(2024, 4, 24, tzinfo=UTC), None)]
+    vap_id = find_document(conn, VAP)
+    assert vap_id is not None
+    assert [v.source_path for v in list_versions(conn, vap_id)] == [VAP_PATH]
+    # The interview, moved to a file with no extension: its version closes at that merge.
+    moved = datetime(2026, 2, 21, 11, 31, 37, tzinfo=UTC)
+    assert _windows(conn, INTERVIEW) == [(23, 35, datetime(2022, 4, 29, tzinfo=UTC), moved)]
+    # Chunked from the version's own file: the `------` front matter is not in the text.
+    (vap_chunk,) = conn.execute(
+        "SELECT c.text FROM chunks c JOIN document_versions v ON v.id = c.document_version_id "
+        "WHERE v.document_id = %s ORDER BY c.ordinal LIMIT 1",
+        (vap_id,),
+    ).fetchone() or (None,)
+    assert vap_chunk.startswith(
+        "Source: blog_post\n"
+        "Title: Kubernetes 1.30: Validating Admission Policy Is Generally Available\n"
+        f"Document: {VAP}\n\n"
+        "On behalf of the Kubernetes project"
+    )
+    # A re-run adds nothing.
+    assert (second.new_documents, second.new_versions, second.closed_versions) == (0, 0, 0)
+    assert (second.unchanged_documents, second.new_chunks) == (3, 0)
+    assert [line.split("\n")[0] for line in second.failures] == [broken]

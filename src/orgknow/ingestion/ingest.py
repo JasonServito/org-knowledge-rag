@@ -9,13 +9,15 @@ with no chunks are chunked, so a re-run writes nothing.
    and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
 2. Read (git): every snapshot of the scope, the release-scoped groups first (docs pages,
    website release records, feature gates, with each release's redirect file), then the
-   date-scoped groups (KEPs, governance docs), with the merge time of each change. A git
-   failure stops here, before any write.
+   date-scoped groups (KEPs, governance docs), with the merge time of each change, then the
+   blog's first-parent log and each post's files by blob id. A git failure stops here, before
+   any write.
 3. Derive (pure): link the files of a page, gate or governance doc that moved into one chain
    (`renames.py`; the unmatched adds and deletes are logged per snapshot pair), group a KEP's
    files by its number, then per document normalize and hash each snapshot with its group's
-   strip list and build its versions. A document that can't be parsed, a link between two
-   source types, or two chains with one id is reported; the others continue.
+   strip list and build its versions. A blog post's versions start at its publication
+   (`blog.py`); posts out of scope are counted. A document that can't be parsed, a link
+   between two source types, or two chains with one id is reported; the others continue.
 4. Store (DB): one transaction per document. A history mismatch or an R3 conflict (an id that
    is another document's alias) is reported, leaves that document untouched, and makes the
    exit code non-zero.
@@ -39,10 +41,21 @@ from orgknow.db.documents import add_alias, create_document, find_document, reso
 from orgknow.db.models import NewVersion, Release, VersionData
 from orgknow.db.releases import list_releases
 from orgknow.db.versions import close_version, insert_version, list_versions
+from orgknow.ingestion.blog import (
+    Entry,
+    Publication,
+    hugo_url,
+    in_scope,
+    post_versions,
+    publication,
+)
 from orgknow.ingestion.chunker import chunk_version, governance_title
 from orgknow.ingestion.git_reader import (
+    PostCommit,
     first_present,
     merge_time,
+    post_histories,
+    read_blob,
     read_file,
     read_files,
     similar_renames,
@@ -57,12 +70,14 @@ from orgknow.ingestion.history import (
 from orgknow.ingestion.identity import (
     KEP_FOLDER_FILES,
     alias_id,
+    blog_canonical_id,
     docs_canonical_id,
     gate_canonical_id,
     governance_canonical_id,
     kep_file_canonical_id,
 )
 from orgknow.ingestion.manifest import (
+    BlogGroup,
     DateGroup,
     ReleaseGroup,
     Scope,
@@ -530,6 +545,97 @@ def collect_governance(
     return without_duplicate_ids(documents, summary)
 
 
+def blog_document(
+    group: BlogGroup,
+    entries: Sequence[Entry],
+    published: Publication,
+    releases: Sequence[Release],
+) -> Document:
+    """One blog post from its history and its publication (ADR-002 D3, D4).
+
+    The canonical id is the URL at publication. The URL of each later stored version that
+    differs, and the front-matter `aliases` of the stored versions, are its aliases, never the
+    id itself. Raises ValueError if the version live at publication has no URL (no page date)
+    or the dates can't make valid windows.
+    """
+    versions = post_versions(group.repo, group.ref, entries, published, releases)
+    urls = [hugo_url(v.metadata, v.source_path, group.permalink) for v in versions]
+    if urls[0] is None:
+        raise ValueError("no URL at publication: no page date to fill the permalink")
+    canonical_id = blog_canonical_id(urls[0])
+    aliases = {blog_canonical_id(url) for url in urls[1:] if url is not None}
+    for version in versions:
+        front_matter = {str(key).lower(): value for key, value in version.metadata.items()}
+        aliases |= {alias_id(alias) for alias in front_matter.get("aliases") or []}
+    return Document(canonical_id, group.source_type, versions, sorted(aliases - {canonical_id}))
+
+
+def post_entries(
+    history: Sequence[PostCommit], blobs: Mapping[str, bytes], strip: frozenset[str]
+) -> list[Entry]:
+    """A post's history with its file at each commit normalized and hashed (ADR-002 D2; `strip`
+    is the blog_post list). Raises ValueError, naming the file and the commit, if its front
+    matter can't be parsed."""
+    entries = []
+    for commit in history:
+        state = None
+        if commit.blob is not None:
+            try:
+                state = docs_state(commit.path, blobs[commit.blob], strip)
+            except ValueError as exc:
+                raise ValueError(f"{commit.path} at {commit.sha}: {exc}") from exc
+        entries.append(Entry(commit.committed, commit.sha, commit.path, state))
+    return entries
+
+
+def collect_blog(
+    group: BlogGroup,
+    cache_dir: Path,
+    strip: frozenset[str],
+    releases: Sequence[Release],
+    summary: Summary,
+) -> list[Document]:
+    """Read the blog's history (one first-parent log up to the lock head, following renames),
+    normalize and hash every post's file at each commit (`strip`: the blog_post list), and
+    derive one document per post in scope: ever published, with a page date at publication on
+    or after `group.since`. Posts out of scope are counted in the log, not listed. A post whose
+    front matter can't be parsed is reported with the commit and the reason."""
+    repo = cache_dir / group.repo
+    histories = post_histories(repo, group.head, group.paths)
+    blobs: dict[str, bytes] = {}  # by blob id: each file content is read once
+    for history in histories:
+        for commit in history:
+            if commit.blob is not None and commit.blob not in blobs:
+                blobs[commit.blob] = read_blob(repo, commit.blob)
+    documents = []
+    never_published = dated_before = 0
+    for history in histories:
+        try:
+            entries = post_entries(history, blobs, strip)
+        except ValueError as exc:
+            summary.failures.append(str(exc))
+            continue
+        published = publication(entries)
+        if published is None:
+            never_published += 1
+        elif not in_scope(entries[published.entry], group.since):
+            dated_before += 1
+        else:
+            try:
+                documents.append(blog_document(group, entries, published, releases))
+            except ValueError as exc:
+                summary.failures.append(f"{history[-1].path}: {exc}")
+    log.info(
+        "blog: %d posts; %d in scope; %d never published; %d dated before %s",
+        len(histories),
+        len(documents),
+        never_published,
+        dated_before,
+        f"{group.since:%Y-%m-%d}",
+    )
+    return without_duplicate_ids(documents, summary)
+
+
 def store_document(
     conn: psycopg.Connection[TupleRow], document: Document, summary: Summary
 ) -> None:
@@ -598,6 +704,8 @@ def ingest(
             )
         else:
             documents += collect_governance(group, cache_dir, releases, summary)
+    if scope.blog is not None:
+        documents += collect_blog(scope.blog, cache_dir, strip["blog_post"], releases, summary)
     for document in documents:
         try:
             store_document(conn, document, summary)

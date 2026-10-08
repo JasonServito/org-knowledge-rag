@@ -4,6 +4,7 @@ import pytest
 
 from orgknow.ingestion.identity import (
     alias_id,
+    blog_canonical_id,
     docs_canonical_id,
     gate_canonical_id,
     governance_canonical_id,
@@ -137,3 +138,28 @@ def test_gate_canonical_id(title: str, expected: str) -> None:
 def test_a_gate_without_a_title_has_no_id(title: object) -> None:
     with pytest.raises(ValueError, match="a feature gate needs a front-matter title"):
         gate_canonical_id(title)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # The run contract's pinned blog id: `web:` + the URL at publication.
+        (
+            "/blog/2025/11/12/ingress-nginx-retirement/",
+            "web:/blog/2025/11/12/ingress-nginx-retirement/",
+        ),
+        # Normalized like web URLs: lowercase, a trailing slash (a front-matter `url:` has
+        # neither, e.g. the PodTopologySpread post's).
+        (
+            "/blog/2020/05/Introducing-PodTopologySpread",
+            "web:/blog/2020/05/introducing-podtopologyspread/",
+        ),
+    ],
+)
+def test_blog_canonical_id(url: str, expected: str) -> None:
+    assert blog_canonical_id(url) == expected
+
+
+def test_a_relative_blog_url_has_no_id() -> None:
+    with pytest.raises(ValueError, match="not a site path"):
+        blog_canonical_id("blog/2020/05/x")

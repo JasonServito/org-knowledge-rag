@@ -1,4 +1,5 @@
-"""Read locked snapshots from the corpus clones with the `git` command.
+"""Read locked snapshots, and the blog's history up to the locked head, from the corpus clones
+with the `git` command.
 
 The clones are partial (`--filter=blob:none`): git fetches a missing file content from GitHub
 the first time it's read. Any git failure (offline, an unknown SHA) raises GitError and stops
@@ -8,6 +9,7 @@ ingestion; a file is never skipped because git failed.
 import logging
 import subprocess
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -118,9 +120,9 @@ def first_present(repo: Path, sha: str, paths: Sequence[str]) -> str | None:
 
 
 # ADR-002 D4: git's default rename threshold, the fallback after the declared signals for web
-# pages and gates, and the only rename signal for governance docs (S05-R2 decisions 2 and 9). An
-# identity rule, not a tuning knob: changing it changes canonical ids. Untuned: every docs
-# rename it was graded on is real (spike §4 F).
+# pages and gates, the only rename signal for governance docs (S05-R2 decisions 2 and 9), and
+# what follows a moved blog post (decision 5). An identity rule, not a tuning knob: changing it
+# changes canonical ids. Untuned: every docs rename it was graded on is real (spike §4 F).
 RENAME_SIMILARITY = "50%"
 
 
@@ -152,3 +154,68 @@ def similar_renames(
         elif status:
             next(tokens)
     return renames
+
+
+def read_blob(repo: Path, blob: str) -> bytes:
+    """A file's content by its blob id (as `git log --raw` lists it)."""
+    return _git(repo, "cat-file", "blob", blob)
+
+
+@dataclass(frozen=True)
+class PostCommit:
+    """One first-parent commit on the default branch that touches a blog post's file."""
+
+    committed: datetime  # committer time, UTC
+    sha: str
+    path: str  # the post's file at this commit
+    blob: str | None  # its content's blob id; None: deleted by this commit
+
+
+def post_histories(repo: Path, head: str, paths: Sequence[str]) -> list[list[PostCommit]]:
+    """The history of every `.md` file under `paths` (folders), in one first-parent log of the
+    default branch up to `head` (ADR-002 D3, S05-R2 decision 5): per post, one entry per commit
+    touching it, oldest first; posts in order of first commit.
+
+    git's rename detection (50%, ADR-002 D4) follows a moved post, so a move continues its
+    history; renames are scored among `.md` files only. A file that loses its `.md` (website PR
+    #53902's two extensionless interviews) is deleted there: Hugo doesn't render it.
+    """
+    out = _git(
+        repo,
+        "log",
+        "--first-parent",
+        "--diff-merges=first-parent",  # a merge's changes against main before it
+        f"--find-renames={RENAME_SIMILARITY}",
+        "--raw",
+        "--no-abbrev",
+        "-z",
+        "--format=@%H %cI",
+        head,
+        "--",
+        *(f"{path}*.md" for path in paths),
+    )
+    # -z output, newest commit first: "@<sha> <time>", then per file
+    # ":<modes> <old blob> <new blob> <status>" and its path, or for a rename its old and new path.
+    commits: list[tuple[str, datetime, list[tuple[str | None, str, str | None]]]] = []
+    tokens = (token.lstrip("\n") for token in out.decode().split("\0"))
+    for token in tokens:
+        if token.startswith("@"):
+            commit, time_text = token[1:].split(" ")
+            commits.append((commit, parse_commit_time(time_text), []))
+        elif token.startswith(":"):
+            new_blob, status = token.split()[3:5]
+            moved_from = next(tokens) if status.startswith("R") else None
+            deleted = set(new_blob) == {"0"}
+            commits[-1][2].append((moved_from, next(tokens), None if deleted else new_blob))
+    histories: list[list[PostCommit]] = []
+    current: dict[str, list[PostCommit]] = {}  # path -> the history of the post there
+    for sha, committed, changes in reversed(commits):
+        for old, path, blob in changes:
+            # A move continues the moved post's history. A history it displaces stays listed.
+            history = current.pop(old, None) if old is not None else current.get(path)
+            if history is None:
+                history = []
+                histories.append(history)
+            current[path] = history
+            history.append(PostCommit(committed, sha, path, blob))
+    return histories

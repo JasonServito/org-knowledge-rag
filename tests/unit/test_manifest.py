@@ -1,10 +1,11 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from orgknow.ingestion.manifest import (
+    BlogGroup,
     DateGroup,
     ReleaseGroup,
     Scope,
@@ -133,6 +134,7 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
     )
     assert keps.snapshots[-1].label == "head"
     assert docs.snapshots[0].label == "1.24"
+    assert scope.blog is None  # no blog in S04
 
 
 def test_loads_the_full_scope_from_1_20() -> None:
@@ -205,6 +207,38 @@ def test_loads_the_full_scope_from_1_20() -> None:
     assert sig_release.snapshots[-1] == Snapshot(
         None, "master", "49d129fa10676ef91d821c006494bfddd5d1fcd2"
     )
+    # S05-T5: the blog, one first-parent log of sources.blog_post.paths on website main up to
+    # the lock's website head; in scope from 1.20's release date (2020-12-08, 00:00 UTC); the
+    # pinned permalink.
+    assert scope.blog == BlogGroup(
+        "blog_post",
+        "website",
+        "main",
+        "256a1f49419171f6c7fbdb1857146da1c63eb533",
+        ("content/en/blog/_posts/",),
+        datetime(2020, 12, 8, tzinfo=UTC),
+        "/:section/:year/:month/:day/:slug/",
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("blog_post: all", "blog_post: {from_release: '1.20'}", "blog_post must be `all`"),
+        # Hugo never renders a draft, so the publication rules assume drafts are left out.
+        ("exclude_drafts: true", "exclude_drafts: false", "exclude_drafts must be true"),
+    ],
+)
+def test_the_blog_scope_is_all_posts_without_drafts(
+    tmp_path: Path, old: str, new: str, message: str
+) -> None:
+    text = REAL_MANIFEST.read_text(encoding="utf-8")
+    assert old in text
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(text.replace(old, new), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_scope(manifest, REAL_LOCK, "full")
 
 
 def test_an_unknown_scope_is_refused() -> None:

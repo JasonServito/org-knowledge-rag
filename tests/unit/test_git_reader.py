@@ -3,6 +3,7 @@
 Every repo here is a tiny local one built by the test (no network).
 """
 
+import hashlib
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -13,8 +14,10 @@ import pytest
 
 from orgknow.ingestion.git_reader import (
     GitError,
+    PostCommit,
     merge_time,
     parse_commit_time,
+    post_histories,
     read_files,
     similar_renames,
 )
@@ -196,3 +199,88 @@ def test_similar_renames_pairs_the_real_go_handbook_move(
     )
 
     assert similar_renames(repo.path, before, after, [old, new]) == [(old, new)]
+
+
+# --- Blog post histories: one first-parent log of the posts' folder (S05-R2 decision 5) --------
+
+
+def _blob_id(content: bytes) -> str:
+    """git's blob id, by its definition: SHA-1 of `blob <size>\\0` + the content."""
+    return hashlib.sha1(b"blob %d\0" % len(content) + content).hexdigest()
+
+
+def test_post_histories_follow_moves_along_main_and_end_in_a_deletion(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    repo = make_git_repo("website")
+    posts = "content/en/blog/_posts/"
+    a_old, a_new = posts + "2025-01-10-a.md", posts + "2025/a.md"
+    b_md, b_bare = posts + "2025-01-12-b/index.md", posts + "2025/b"
+    text_a1, text_a2 = PAGE + b"First.\n", PAGE + b"First, edited.\n"
+    added = repo.commit(
+        {a_old: text_a1, b_md: PAGE, posts + "2025-01-12-b/pic.png": b"\x89PNG"},
+        when="2025-01-09T10:00:00-08:00",
+    )
+    # A pull request: its branch commits aren't on main's first-parent line; its merge is.
+    repo.switch("edit-a", create=True)
+    repo.commit({a_old: PAGE + b"Draft.\n"}, when="2025-01-09T12:00:00+00:00")
+    repo.commit({a_old: text_a2}, when="2025-01-09T13:00:00+00:00")
+    repo.switch("main")
+    merged = repo.merge("edit-a", when="2025-01-10T09:00:00+00:00")
+    # The year-folder move (website PR #53902): a.md moves unchanged, b's index.md loses its
+    # `.md`, which Hugo doesn't render, and other files move too.
+    moved = repo.commit(
+        {
+            a_old: None,
+            a_new: text_a2,
+            b_md: None,
+            b_bare: PAGE,
+            posts + "2025-01-12-b/pic.png": None,
+            posts + "2025/pic.png": b"\x89PNG",
+        },
+        when="2026-02-21T17:01:37+05:30",
+    )
+    other = repo.commit({"content/en/docs/x.md": PAGE}, when="2026-03-01T00:00:00+00:00")
+
+    histories = post_histories(repo.path, other, [posts])
+
+    t_added = datetime(2025, 1, 9, 18, tzinfo=UTC)
+    t_merged = datetime(2025, 1, 10, 9, tzinfo=UTC)
+    t_moved = datetime(2026, 2, 21, 11, 31, 37, tzinfo=UTC)
+    assert histories == [
+        [
+            PostCommit(t_added, added, a_old, _blob_id(text_a1)),
+            PostCommit(t_merged, merged, a_old, _blob_id(text_a2)),
+            PostCommit(t_moved, moved, a_new, _blob_id(text_a2)),
+        ],
+        [
+            PostCommit(t_added, added, b_md, _blob_id(PAGE)),
+            PostCommit(t_moved, moved, b_md, None),
+        ],
+    ]
+
+
+def test_post_histories_keep_a_post_moved_onto_a_freed_path_apart(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # A post deleted, then another post moved onto its path: two histories, none lost.
+    repo = make_git_repo("website")
+    posts = "content/en/blog/_posts/"
+    first, second = PAGE + b"First post.\n", PAGE + b"Second post, a different text.\n"
+    c1 = repo.commit({posts + "x.md": first, posts + "y.md": second})
+    c2 = repo.commit({posts + "x.md": None})
+    c3 = repo.commit({posts + "y.md": None, posts + "x.md": second})
+
+    histories = post_histories(repo.path, c3, [posts])
+
+    t = datetime(2022, 1, 1, tzinfo=UTC)  # GitRepo's default commit time
+    assert histories == [
+        [
+            PostCommit(t, c1, posts + "x.md", _blob_id(first)),
+            PostCommit(t, c2, posts + "x.md", None),
+        ],
+        [
+            PostCommit(t, c1, posts + "y.md", _blob_id(second)),
+            PostCommit(t, c3, posts + "x.md", _blob_id(second)),
+        ],
+    ]

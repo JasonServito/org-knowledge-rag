@@ -1,6 +1,7 @@
 """Read the corpus manifest (config/corpus_manifest.yaml) and its lock file."""
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, time
 from itertools import combinations, pairwise
 from pathlib import Path
 from typing import Any
@@ -118,6 +119,21 @@ class DateGroup:
     snapshots: tuple[Snapshot, ...]  # the default branch at every release date, then head
 
 
+@dataclass(frozen=True)
+class BlogGroup:
+    """Blog posts: one first-parent log of the default branch up to `head`, following renames
+    (ADR-002 D1, D3; S05-R2 decision 5). A post's versions are dated by commit and publication.
+    """
+
+    source_type: str  # blog_post
+    repo: str
+    ref: str  # the default branch, e.g. main
+    head: str  # the lock's head SHA of `repo`
+    paths: tuple[str, ...]  # folders holding the posts
+    since: datetime  # 00:00 UTC of `from_release`'s release date: posts published from then
+    permalink: str  # Hugo's blog permalink, e.g. /:section/:year/:month/:day/:slug/
+
+
 def _same_files(a: str, b: str) -> bool:
     """Whether some file is matched by both manifest paths (one ending in "/" is a folder)."""
     return a == b or (a.endswith("/") and b.startswith(a)) or (b.endswith("/") and a.startswith(b))
@@ -130,6 +146,7 @@ class Scope:
     name: str
     release_groups: tuple[ReleaseGroup, ...]
     date_groups: tuple[DateGroup, ...]  # the KEPs, then the governance docs
+    blog: BlogGroup | None = None
 
     def __post_init__(self) -> None:
         """Refuse a scope where one file would be read by two groups, so stored twice."""
@@ -150,7 +167,8 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
     each release's branch, from the group's `from_release` to the latest. Date-scoped groups
     (KEPs, governance docs) are read from their repo's default branch at every release date,
     plus `head` (ADR-002 D1). `kep: all` reads every KEP in `sources.kep.sig_dirs`; otherwise
-    `kep: {traced: [...]}` reads only those KEPs' directories.
+    `kep: {traced: [...]}` reads only those KEPs' directories. `blog_post: all` reads the blog's
+    history up to the lock's head, keeping posts published from `sources.blog_post.from_release`.
     """
     manifest = _read_yaml(manifest_path)
     lock = _read_yaml(lock_path)
@@ -234,4 +252,26 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
             )
             for entry in sources["governance_doc"]
         ]
-    return Scope(name, tuple(groups), tuple(date_groups))
+    blog = None
+    if "blog_post" in scope:
+        if scope["blog_post"] != "all":
+            raise ValueError(f"scope {name!r}: blog_post must be `all`")
+        posts = sources["blog_post"]
+        if posts["exclude_drafts"] is not True:
+            # The publication rules assume it: Hugo never renders a draft (ADR-002 D3).
+            raise ValueError("sources.blog_post.exclude_drafts must be true")
+        dates = {
+            str(entry["version"]): entry["release_date"] for entry in manifest["releases"]["list"]
+        }
+        if str(posts["from_release"]) not in dates:
+            raise ValueError(f"blog_post from_release {posts['from_release']} is not a release")
+        blog = BlogGroup(
+            "blog_post",
+            str(posts["repo"]),
+            str(posts["branch"]),
+            lock["repos"][posts["repo"]]["head"],
+            tuple(str(path) for path in posts["paths"]),
+            datetime.combine(dates[str(posts["from_release"])], time(), UTC),
+            str(posts["permalink"]),
+        )
+    return Scope(name, tuple(groups), tuple(date_groups), blog)

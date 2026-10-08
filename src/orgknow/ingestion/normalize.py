@@ -13,12 +13,14 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-# Front matter: a `---` line (after any blank lines), the YAML, then a closing `---` line.
-FRONT_MATTER = re.compile(r"\A(?:[ \t]*\n)*---[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
+# Front matter: a line of 3 or more dashes (after any blank lines), the YAML, then a closing
+# `---` line. Hugo renders a post that opens with `------` (the VAP GA post; S05-R2 sitting).
+FRONT_MATTER = re.compile(r"\A(?:[ \t]*\n)*-{3,}[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
 LINK_TARGET = re.compile(r"\]\([^)]*\)")  # [text](url) -> [text]
 LINK_DEFINITION = re.compile(r"^(\s*\[[^\]]+\]:)[ \t]*\S.*$", re.M)  # [id]: url -> [id]:
 
@@ -63,6 +65,28 @@ def split_front_matter(text: str) -> tuple[dict[str, Any], str]:
     if match is None:
         raise ValueError("no front matter (a `---` block at the top)")
     return _yaml_mapping(match.group(1), "front matter"), text[match.end() :]
+
+
+def front_matter_time(value: object) -> datetime | None:
+    """A front-matter date or time, as Hugo reads it; None if the value isn't one.
+
+    PyYAML gives a `date`, a `datetime`, or text: YAML 1.1 needs a colon in an offset, so
+    `2023-08-15T12:00:00+0000` stays a string (8 blog posts, spike §7 S). The `metadata` column
+    holds them as text too. A time with an offset keeps it, so a URL can use the day as written;
+    one without is in the site's time zone, UTC; a bare date is midnight UTC.
+    """
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, time())
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.strip())
+        except ValueError:
+            return None  # e.g. a draft's `XXXX-XX-XX`, or `date: draft`
+    else:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def clean_text(body: str) -> str:

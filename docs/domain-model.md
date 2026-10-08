@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs.
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -114,7 +114,7 @@ Section: <heading path joined with " > ">
 ```
 
 - **Title:** the version's metadata `title`:
-  - a docs page, release record or gate: the front-matter `title`
+  - a docs page, release record, gate or blog post: the front-matter `title`
   - a KEP folder: `KEP-<number>: <kep.yaml title>`
   - an old single-file KEP: its front-matter `title`, with no `KEP-<n>:` prefix (it has no number)
   - a governance doc (S05-R2 decision 4): the version's first `# ` heading with HTML comments removed (`# Google Cloud Platform <!-- omit in toc -->` → `Google Cloud Platform`), else its repo path. Ingestion stores it as the version's metadata `title`, so the chunk header and citations read it like any other title.
@@ -235,6 +235,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
   - **Old single-file KEPs** (25 files at the 1.20 snapshot, `keps/<sig>/<name>.md`) are separate documents, `kep:<sig>/<name>` (S05-R2 decision 3), not linked to their later folders (ADR-002 known limit). Their metadata is their front matter: hashed with the `kep_yaml` strip list, `claimed_status` from `status`, `claimed_stage` from `stage` (none has one). Their body is chunked without the front matter.
   - Skipped with a reason: the 7 symlinks (mode `120000`) and `keps/sig-network/README.md` (an index of the SIG's KEPs).
 - **Governance docs (S05-T4):** the manifest's `community` and `sig-release` paths, `.md` files only. A doc has no front matter: its whole text is hashed (no strip list), and its title comes from its first `# ` heading (see "Chunk header").
+- **Blog posts (S05-T5):** not read at snapshots: one first-parent log of website `main` up to the lock head, and a version starts at its publication or its merge (see "Blog posts" below).
 - **Re-ingest (compare and extend):** ingestion computes each document's full history from the snapshots, then compares it with the stored versions.
   - None stored → insert them all.
   - Equal → change nothing.
@@ -286,6 +287,26 @@ A page or a feature gate that moves stays one document. Ingestion links the file
   - On real data this links the 8 moves of sig-release PR #2984 (1.36 → 1.37, 66–100% similar). The R100 move of `baseimage-exception-list.md` adds no version: its open version keeps the old path and snapshot. A chain continues from 1.37 to `head` (`branch-creation.md`, `release-cuts.md`).
   - An old path that comes back after its move starts a new chain with the same first path: both chains are refused as one id held twice, never merged (0 on real data).
 - The 50% threshold is a named constant citing ADR-002 D4, not a setting: changing it changes `canonical_id`s (S05-R2 decision 9).
+
+## Blog posts: windows from publication, identity at publication (ADR-002 D2–D4, S05-T5)
+
+The rules are `ingestion/blog.py`; the blog's history is read by `git_reader.post_histories`.
+
+- **History** (S05-R2 decision 5): one first-parent log of website `main` up to the lock head, over the `.md` files under the manifest's `blog_post` paths (`git log --first-parent --find-renames=50% --raw -z`). Per post, one entry per commit touching its file: the file's content then, or none once deleted. git's rename detection follows a moved post, so website PR #53902's year-folder move continues each history. A post that loses its `.md` there (the 1.23 and 1.24 release interviews) is deleted: Hugo doesn't render it, so its open version closes at that merge (2026-02-21).
+- **A version** is an entry whose normalized hash (the `blog_post` strip list) differs from the previous entry's, as for every source (ADR-002 D2).
+- **Due time** of an entry: none if it's deleted or `draft: true`; else `publishDate`, else the page date, else the commit time.
+  - The **page date** is Hugo's, in the site's order: front-matter `date`, else the filename's `YYYY-MM-DD-` (a page bundle's folder name), else `publishDate`, else `lastmod`.
+  - A date is a YAML `date` (midnight UTC), a `datetime`, or text: `2023-08-15T12:00:00+0000` (no colon in the offset, 8 posts) and milliseconds are text to YAML. A time without an offset is UTC (the site's `timeZone`); one with an offset keeps it. A value that isn't a date (`XXXX-XX-XX`, `date: draft`) is ignored, so the next source of the date is used.
+- **Publication** is the first moment Hugo renders the post (`buildFuture` is off): for each entry in order, max(commit time, due time), if that is before the next entry's commit (or it's the last entry). A post never published isn't stored.
+- **Stored versions:** the version live at publication, from the publication moment, then every later version from its commit time. A version superseded before publication was never public, so it isn't stored. After publication, a deletion or `draft: true` closes the open version at that commit, and a later rendered version opens a new one. Windows then follow the date-scoped rules above (release window from the latest release on or before the start).
+  - Known approximations: publication assumes the site builds on every merge; a version re-dated into the future after publication still starts at its commit.
+- **Snapshot of a version:** repo `website`, ref `main`, the entry's commit SHA, and the post's path at that commit. A move that changes no normalized content adds no version, so the open version keeps its old path and snapshot.
+- **Scope:** the page date of the version live at publication is on or after 1.20's release date (2020-12-08, 00:00 UTC), and the post was ever published. Posts out of scope are counted in the ingest log, not listed one by one.
+- **Front matter** may open with 3 or more dashes, as Hugo renders it (the VAP GA post opens with `------`). This applies to every source. A post whose front matter can't be parsed is reported with the commit and the reason, and isn't stored.
+- **Identity** (ADR-002 D4): `web:` + the URL at publication, lowercase, with a trailing slash: `web:/blog/2025/11/12/ingress-nginx-retirement/`.
+  - The URL is the front-matter `url:` (tokens allowed), else the manifest's `permalink` (`/:section/:year/:month/:day/:slug/`). `:year`/`:month`/`:day` come from the page date as written; `:slug` is the front-matter `slug`, else the filename's (only when the date came from the filename), else the title through an approximation of Hugo's urlize (lowercase, punctuation dropped, spaces to hyphens); `:section` is `blog`.
+  - **Aliases:** the URL of every later stored version that differs from the id, and every front-matter `aliases` entry of the stored versions, never the id itself. On real data: 3 URLs changed after publication (`introducing-headlamp-plugin-for-karpenter` 09/23 → 10/06, `ingress-nginx-retirement` 11/12 → 11/11, `ccm-new-metric-route-sync-total` 02/26 → 05/15, whose front-matter alias is its id), plus `web:/dockershim/` (the 2022 dockershim FAQ's `aliases`).
+  - Two posts with one id are an error, never a merge (0 on real data).
 
 ## Handed to S04
 

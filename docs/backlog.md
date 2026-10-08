@@ -193,7 +193,7 @@ Tasks:
 - [x] **S05-T4 `[core]` KEPs and governance docs (date-scoped, merge-time dating).**
   - Done when: a re-run adds 0 versions; KEP-2579's versions start at their merge times.
   - Deps: T1.
-- [ ] **S05-T5 `[core]` Blog posts.**
+- [x] **S05-T5 `[core]` Blog posts.**
   - Done when: a re-run adds 0 versions; the counts are explained against the spike.
   - Deps: T1.
 - [ ] **S05-T6 `[core]` CHANGELOG.**
