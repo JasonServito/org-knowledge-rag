@@ -1,0 +1,18 @@
+{
+  "name": "dense",
+  "started_at": "2026-10-08T23:07:46Z",
+  "finished_at": "2026-10-08T23:12:36Z",
+  "git_sha": "90255976c13247bdc1804b192f364d9c3f2c8bbc",
+  "git_dirty": false,
+  "golden_path": "eval/golden_set/v0.yaml",
+  "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
+  "smoke": false,
+  "questions": 43,
+  "settings": {
+    "embedding_model": "voyage-4-large",
+    "retrieval_top_k": 10,
+    "generation_model": "claude-opus-5-5",
+    "generation_effort": "medium",
+    "generation_max_tokens": 16000
+  }
+}
