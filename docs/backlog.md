@@ -187,7 +187,7 @@ Tasks:
 - [x] **S05-T2 `[core]` Renames and aliases (ADR-002 D4).**
   - Done when: the 6 known moves are one document each.
   - Deps: T1.
-- [ ] **S05-T3 `[core]` Feature gates.**
+- [x] **S05-T3 `[core]` Feature gates.**
   - Done when: the 1.32 file renames create no new documents.
   - Deps: T1, T2.
 - [ ] **S05-T4 `[core]` KEPs and governance docs (date-scoped, merge-time dating).**

@@ -99,7 +99,7 @@ class ReleaseGroup:
     Its files are hashed with the manifest's strip list for `source_type`.
     """
 
-    source_type: str  # ADR-003 D1: docs_page or release_record
+    source_type: str  # ADR-003 D1: docs_page, release_record or feature_gate_reference
     repo: str
     paths: tuple[str, ...]  # a path ending in "/" is a directory prefix
     snapshots: tuple[Snapshot, ...]  # one per release, from the scope's first release
@@ -135,9 +135,9 @@ class Scope:
 def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
     """Resolve the manifest's `scopes.<name>` against its sources and the lock's SHAs.
 
-    Release-scoped groups (docs pages, website release records) are read from each release's
-    branch, from the group's `from_release` to the latest. KEPs are read from the default branch
-    at every release date, plus `head` (ADR-002 D1).
+    Release-scoped groups (docs pages, website release records, feature gates) are read from
+    each release's branch, from the group's `from_release` to the latest. KEPs are read from the
+    default branch at every release date, plus `head` (ADR-002 D1).
     """
     manifest = _read_yaml(manifest_path)
     lock = _read_yaml(lock_path)
@@ -184,6 +184,16 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
             )
             for repo in records["repos"]
         ]
+    if "feature_gate_reference" in scope:
+        gates = sources["feature_gate_reference"]
+        groups.append(
+            ReleaseGroup(
+                "feature_gate_reference",
+                str(gates["repo"]),
+                tuple(gates["paths"]),
+                release_snapshots(scope["feature_gate_reference"]["from_release"]),
+            )
+        )
 
     kep = sources["kep"]
     kep_repo = str(kep["repo"])

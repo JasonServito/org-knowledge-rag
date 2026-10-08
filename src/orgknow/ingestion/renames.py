@@ -5,11 +5,17 @@ this module decides. A **chain** is one document's file at each snapshot (None w
 
 Release pair by release pair (R -> R+1), a **link** joins a file present at R and gone at R+1 to
 a file absent at R and present at R+1. The rules run in order, and the first rule that links a
-file wins. Web pages (docs pages, release records):
+file wins. Web pages (docs pages, release records, the feature-gates pages):
 1. Same URL. This covers page bundles: `x.md` -> `x/index.md`.
 2. The redirect file at R+1 maps the gone URL to the new page's URL.
 3. The new page's front-matter `aliases` holds the gone URL.
 4. git similarity >= 50%, read only for the files no earlier rule linked.
+
+Gate files (one file per feature gate, from 1.29):
+1. Same path: the chain builder's own rule. A file at R and R+1 is neither gone nor new.
+2. Same front-matter `title`. This covers the 1.32 renames from kebab case to the gate name.
+3. The new file's front-matter `former_titles` holds the gone file's title.
+4. git similarity >= 50%, as for web pages (`APIServingWithRoute` -> `APIServingWithRoutine`).
 
 Refused links (their files are left out of the later rules, so they stay unlinked):
 - A file that one rule links twice (a gone file claimed by two new files, or the reverse) is a
@@ -23,9 +29,10 @@ import re
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from orgknow.ingestion.identity import alias_id, docs_canonical_id
-from orgknow.ingestion.normalize import docs_state
+from orgknow.ingestion.normalize import decode, docs_state, split_front_matter
 
 # From 1.34 the site builds _redirects at build time and keeps the rules in _redirects.base.
 REDIRECT_FILES = ("static/_redirects", "static/_redirects.base")
@@ -133,6 +140,46 @@ def web_link_rules(redirects: Sequence[Mapping[str, str]]) -> dict[str, LinkRule
     """The declared link rules for web pages, in order. `redirects[i]` is the parsed redirect
     file at the i-th snapshot."""
     return {"same URL": same_url, "redirect": redirect_rule(redirects), "alias": alias_rule}
+
+
+def _front_matter(raw: bytes) -> dict[str, Any]:
+    """A file's front matter, or {} if it can't be read: the file's document then fails with the
+    reason, when its versions are derived."""
+    try:
+        front_matter, _ = split_front_matter(decode(raw))
+    except ValueError:
+        return {}
+    return front_matter
+
+
+def _titles(files: Mapping[str, bytes]) -> dict[str, object]:
+    """Each file's front-matter `title`, for the files that have one."""
+    titles = {path: _front_matter(raw).get("title") for path, raw in files.items()}
+    return {path: title for path, title in titles.items() if title is not None}
+
+
+def same_title(pair: Pair) -> list[tuple[str, str]]:
+    """Gate rule 2: the gone file and the new file have the same front-matter `title`."""
+    gone, new = _titles(pair.gone), _titles(pair.new)
+    return [(g, n) for g, title in gone.items() for n, other in new.items() if title == other]
+
+
+def former_title(pair: Pair) -> list[tuple[str, str]]:
+    """Gate rule 3: the new file's front-matter `former_titles` holds the gone file's title."""
+    gone = _titles(pair.gone)
+    links = []
+    for n, raw in pair.new.items():
+        former = _front_matter(raw).get("former_titles")
+        names = former if isinstance(former, list) else []
+        links += [(g, n) for g, title in gone.items() if title in names]
+    return links
+
+
+def gate_link_rules() -> dict[str, LinkRule]:
+    """The declared link rules for gate files, in order (rule 1, same path, is the chain
+    builder's own). `former_titles` link only a gate whose file is gone: a name in it that keeps
+    its own file (`PodHasNetworkCondition`) is never gone, so it links nothing."""
+    return {"same title": same_title, "former title": former_title}
 
 
 def _link_pair(

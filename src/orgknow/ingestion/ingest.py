@@ -8,12 +8,13 @@ with no chunks are chunked, so a re-run writes nothing.
    dates, since windows are derived from them. Otherwise stop, before any git read or write,
    and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
 2. Read (git): every snapshot of the scope, the release-scoped groups first (docs pages,
-   website release records, with each release's redirect file), then the KEPs. A git failure
-   stops here, before any write.
-3. Derive (pure): link the files of a page that moved into one chain (`renames.py`; the
+   website release records, feature gates, with each release's redirect file), then the KEPs.
+   A git failure stops here, before any write.
+3. Derive (pure): link the files of a page or gate that moved into one chain (`renames.py`; the
    unmatched adds and deletes are logged per release pair), then per document normalize and
    hash each snapshot with its group's strip list and build its versions. A document that
-   can't be parsed, or a link between two source types, is reported; the others continue.
+   can't be parsed, a link between two source types, or two chains with one id is reported;
+   the others continue.
 4. Store (DB): one transaction per document. A history mismatch or an R3 conflict (an id that
    is another document's alias) is reported, leaves that document untouched, and makes the
    exit code non-zero.
@@ -23,10 +24,11 @@ with no chunks are chunked, so a re-run writes nothing.
 
 import logging
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import psycopg
 from psycopg.rows import TupleRow
@@ -51,7 +53,12 @@ from orgknow.ingestion.history import (
     plan_changes,
     release_history,
 )
-from orgknow.ingestion.identity import alias_id, docs_canonical_id, kep_canonical_id
+from orgknow.ingestion.identity import (
+    alias_id,
+    docs_canonical_id,
+    gate_canonical_id,
+    kep_canonical_id,
+)
 from orgknow.ingestion.manifest import (
     ReleaseGroup,
     Scope,
@@ -66,6 +73,7 @@ from orgknow.ingestion.renames import (
     Chains,
     SimilarRenames,
     build_chains,
+    gate_link_rules,
     page_url,
     parse_redirects,
     web_link_rules,
@@ -157,6 +165,58 @@ def document_from_chain(
     )
 
 
+def gate_document_from_chain(
+    group: ReleaseGroup,
+    chain: Sequence[tuple[str, bytes] | None],
+    strip: Mapping[str, frozenset[str]],
+    releases: Sequence[Release],
+) -> Document:
+    """One feature gate from its chain of files, as `document_from_chain` for a page.
+
+    The canonical id is `gate:` + the first file's front-matter `title`, as written (ADR-002
+    D4); each later title is an alias. `former_titles` never become aliases: the gate a former
+    title names can keep its own file (`PodHasNetworkCondition`). Raises ValueError if a file
+    can't be parsed or has no title.
+    """
+    keys = strip[group.source_type]
+    states = [None if link is None else docs_state(link[0], link[1], keys) for link in chain]
+    observed = [Observed(s, state) for s, state in zip(group.snapshots, states, strict=True)]
+    ids = [gate_canonical_id(state.metadata.get("title")) for state in states if state is not None]
+    return Document(
+        ids[0],
+        group.source_type,
+        release_history(group.repo, observed, releases),
+        sorted(set(ids) - {ids[0]}),
+    )
+
+
+def is_gate_file(group: ReleaseGroup, path: str) -> bool:
+    """Whether a file is one feature gate, not a page. The feature-gates pages are the files the
+    manifest names one by one (up to 1.28) and each folder's index.md (a page bundle, from 1.29).
+    Every other file in the manifest's folders is one gate, which Hugo doesn't render."""
+    return (
+        group.source_type == "feature_gate_reference"
+        and path not in group.paths
+        and PurePosixPath(path).name not in ("index.md", "_index.md")
+    )
+
+
+def without_duplicate_ids(documents: Sequence[Document], summary: Summary) -> list[Document]:
+    """The documents whose canonical id no other chain has. Two chains with one id (say, two gate
+    files with one title) are an error, never a silent merge: each is reported, none stored."""
+    count = Counter(document.canonical_id for document in documents)
+    for canonical_id, n in sorted(count.items()):
+        if n > 1:
+            first_files = ", ".join(
+                d.versions[0].source_path for d in documents if d.canonical_id == canonical_id
+            )
+            summary.failures.append(
+                f"{canonical_id}: {n} chains have this id, so none is stored "
+                f"(first files: {first_files})"
+            )
+    return [document for document in documents if count[document.canonical_id] == 1]
+
+
 def collect_release_scoped(
     scope: Scope,
     cache_dir: Path,
@@ -164,8 +224,8 @@ def collect_release_scoped(
     releases: Sequence[Release],
     summary: Summary,
 ) -> list[Document]:
-    """Read the release-scoped groups' files at every release, link the files of a moved page
-    into one chain (`renames.py`), and derive one document per chain.
+    """Read the release-scoped groups' files at every release, link the files of a moved page or
+    gate into one chain (`renames.py`), and derive one document per chain.
 
     Groups read from one repo at the same snapshots are linked together, so a link between two
     source types is seen, and refused.
@@ -187,14 +247,22 @@ def _collect_pool(
     releases: Sequence[Release],
     summary: Summary,
 ) -> list[Document]:
-    """The documents of release groups read from one repo at the same snapshots."""
-    listings: list[dict[str, bytes]] = [{} for _ in snapshots]  # path -> raw content
+    """The documents of release groups read from one repo at the same snapshots.
+
+    Pages and gate files are chained apart, each kind with its own link rules and ids: a gate
+    file has no URL, and no rule links a gate to a page (the 316 gate files split out of the
+    feature-gates tables at 1.29 are new documents). The pages of every group are chained
+    together, so a link between two of their source types is seen, and refused.
+    """
+    pages: list[dict[str, bytes]] = [{} for _ in snapshots]  # path -> raw content
+    gates: list[dict[str, bytes]] = [{} for _ in snapshots]
     group_of: dict[str, ReleaseGroup] = {}
     for group in groups:
         files, skipped = read_files(repo, group.paths, snapshots, (".md",))
         summary.skipped += skipped
         for path, contents in files.items():
             group_of[path] = group
+            listings = gates if is_gate_file(group, path) else pages
             for listing, raw in zip(listings, contents, strict=True):
                 if raw is not None:
                     listing[path] = raw
@@ -202,27 +270,31 @@ def _collect_pool(
     redirects: list[dict[str, str]] = [{}]
     redirects += [read_redirects(repo, snapshot) for snapshot in snapshots[1:]]
     source_types = {path: group.source_type for path, group in group_of.items()}
-    chains = build_chains(
-        listings, web_link_rules(redirects), _git_similarity(repo, snapshots), source_types
-    )
-    _log_renames(chains, snapshots, redirects)
-    for link in chains.crossings:
-        summary.failures.append(
-            f"{_pair(snapshots, link.after)}: the {link.rule} link {link.gone} -> {link.new} "
-            f"crosses source types ({source_types[link.gone]} -> {source_types[link.new]})"
-        )
+    similar = _git_similarity(repo, snapshots)
     documents = []
-    for paths in chains.paths:
-        chain = [
-            None if path is None else (path, listing[path])
-            for path, listing in zip(paths, listings, strict=True)
-        ]
-        first = next(path for path in paths if path is not None)
-        try:
-            documents.append(document_from_chain(group_of[first], chain, strip, releases))
-        except ValueError as exc:
-            summary.failures.append(f"{first}: {exc}")
-    return documents
+    for listings, rules, derive in (
+        (pages, web_link_rules(redirects), document_from_chain),
+        (gates, gate_link_rules(), gate_document_from_chain),
+    ):
+        chains = build_chains(listings, rules, similar, source_types)
+        _log_renames(chains, snapshots, redirects)
+        for link in chains.crossings:
+            summary.failures.append(
+                f"{_pair(snapshots, link.after)}: the {link.rule} link {link.gone} -> "
+                f"{link.new} crosses source types ({source_types[link.gone]} -> "
+                f"{source_types[link.new]})"
+            )
+        for paths in chains.paths:
+            chain = [
+                None if path is None else (path, listing[path])
+                for path, listing in zip(paths, listings, strict=True)
+            ]
+            first = next(path for path in paths if path is not None)
+            try:
+                documents.append(derive(group_of[first], chain, strip, releases))
+            except ValueError as exc:
+                summary.failures.append(f"{first}: {exc}")
+    return without_duplicate_ids(documents, summary)
 
 
 def _git_similarity(repo: Path, snapshots: Sequence[Snapshot]) -> SimilarRenames:

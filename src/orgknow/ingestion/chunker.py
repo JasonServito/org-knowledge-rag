@@ -9,6 +9,8 @@
 - A chunk's text is the header, a blank line, then the body (docs/domain-model.md, "Chunk
   header"). The body is the raw Markdown as written, shortcodes included, not the normalized
   text.
+- A feature gate's body starts with its `stages` (and `removed`) front matter as YAML, then a
+  blank line (S05-R1 decision 1): the gate's stages live only in its front matter.
 
 Headings and code blocks come from a hand-written line scanner with exactly 4 rules (decision 6):
 1. A line starting at column 0 with 1-6 `#` and then a space is a heading, unless inside a
@@ -27,6 +29,9 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+
+# PyYAML ships no type hints; safe_dump only writes plain values.
+import yaml  # type: ignore[import-untyped]
 
 from orgknow.db.models import NewChunk
 from orgknow.ingestion.normalize import decode, split_front_matter
@@ -197,13 +202,25 @@ def document_title(canonical_id: str, source_type: str, metadata: Mapping[str, A
     return title
 
 
+def stages_yaml(front_matter: Mapping[str, Any]) -> str:
+    """A gate's `stages`, then `removed` if it has one, as YAML: nothing else, keys in the file's
+    own order, values as YAML read them (S05-R1 decision 1)."""
+    kept = {"stages": front_matter["stages"]}
+    if "removed" in front_matter:
+        kept["removed"] = front_matter["removed"]
+    text: str = yaml.safe_dump(kept, sort_keys=False)
+    return text
+
+
 def chunk_version(
     canonical_id: str, source_type: str, metadata: Mapping[str, Any], raw: bytes, max_tokens: int
 ) -> list[NewChunk]:
     """The chunks of one version, from its raw file.
 
     A docs page is chunked without its front matter. A KEP version is chunked from its README;
-    its kep.yaml is the version's `metadata`, which gives the title (`document_title`).
+    its kep.yaml is the version's `metadata`, which gives the title (`document_title`). A gate
+    (`gate:` id) with `stages` gets them as YAML before its body, read from the file's front
+    matter: the same values as `metadata`, in the file's order (Postgres jsonb reorders keys).
     Raises ValueError for a file that can't be decoded or has no title.
     """
     title = document_title(canonical_id, source_type, metadata)
@@ -211,7 +228,10 @@ def chunk_version(
     if source_type == "kep":
         body = text
     else:
-        _, body = split_front_matter(text)
+        front_matter, body = split_front_matter(text)
+        if canonical_id.startswith("gate:") and "stages" in front_matter:
+            # One blank line between the YAML and the body, also when the body starts with one.
+            body = stages_yaml(front_matter) + "\n" + body.lstrip("\n")
     return [
         NewChunk(
             ordinal=ordinal,

@@ -475,3 +475,167 @@ def test_a_moved_release_record_stays_one_document(
     # The later URL is an alias of the document, not a document of its own.
     assert find_document(conn, "web:/releases/notes/") is None
     assert resolve_document(conn, "web:/releases/notes/") == document_id
+
+
+# --- Feature gates (S05-T3) --------------------------------------------------------------------
+
+REFERENCE = "content/en/docs/reference/command-line-tools-reference/"
+GATES = REFERENCE + "feature-gates/"
+GATE_FIXTURES = FIXTURES / "website_s05" / "feature-gates"
+FEATURE_GATES_PAGE = "web:/docs/reference/command-line-tools-reference/feature-gates/"
+TYPO = "gate:ServiceAcccountNodeAudienceRestriction"
+
+
+def _gate(title: str, stage: str = "alpha", former_titles: str = "") -> bytes:
+    """A hand-written gate file shaped as the real ones; `former_titles` is its YAML lines."""
+    return (
+        f"---\ntitle: {title}\n{former_titles}content_type: feature_gate\n_build:\n"
+        f"  list: never\n  render: false\n\nstages:\n  - stage: {stage}\n"
+        f'    defaultValue: false\n    fromVersion: "1.25"\n---\nThe {title} gate.\n'
+    ).encode()
+
+
+def _real_gate(name: str, minor: int) -> bytes:
+    return (GATE_FIXTURES / name / f"1.{minor}.md").read_bytes()
+
+
+def _feature_gates(make_git_repo: Callable[[str], Any]) -> Scope:
+    """A website repo with one commit per release 1.28 -> 1.37 holding the contract's gate cases.
+    The files git compares (APIServingWithRoute, PodInfoAPI and their partners) are the real
+    ones; the others are hand-written with the real paths and titles."""
+    repo = make_git_repo("website")
+    page = b"---\ntitle: Feature Gates\nweight: 10\n---\n"
+    net, ready = "PodHasNetworkCondition", "PodReadyToStartContainersCondition"
+    former = "former_titles:\n  - PodHasNetworkCondition\n"
+    typo = GATES + "ServiceAccountNodeAudienceRestriction.md"
+    commits: dict[int, dict[str, bytes | None]] = {
+        28: {REFERENCE + "feature-gates.md": page + b"| `PodSecurity` | `true` | GA |\n"},
+        # The tables become one file per gate; the page becomes a bundle at the same URL.
+        29: {
+            REFERENCE + "feature-gates.md": None,
+            GATES + "index.md": page + b"{{< feature-gate-list >}}\n",
+            GATES + "pod-has-network-condition.md": _gate(net),
+            GATES + "pod-ready-to-start-containers.md": _gate(ready, former_titles=former),
+        },
+        30: {},
+        31: {},
+        # Kebab case -> gate name; PodReadyToStartContainersCondition's stage changes too.
+        32: {
+            GATES + "pod-has-network-condition.md": None,
+            GATES + "pod-ready-to-start-containers.md": None,
+            GATES + f"{net}.md": _gate(net),
+            GATES + f"{ready}.md": _gate(ready, "beta", former),
+            GATES + "APIServingWithRoute.md": _real_gate("APIServingWithRoute", 32),
+        },
+        33: {
+            GATES + "APIServingWithRoute.md": None,
+            GATES + "APIServingWithRoutine.md": _real_gate("APIServingWithRoutine", 33),
+            typo: _gate("ServiceAcccountNodeAudienceRestriction", "beta"),
+        },
+        34: {},
+        35: {typo: _gate("ServiceAccountNodeAudienceRestriction", "beta")},  # fixed in place
+        36: {GATES + "PodInfoAPI.md": _real_gate("PodInfoAPI", 36)},
+        37: {
+            GATES + "PodInfoAPI.md": None,
+            GATES + "InPlacePodVerticalScalingMemoryBackedVolumes.md": _real_gate(
+                "InPlacePodVerticalScalingMemoryBackedVolumes", 37
+            ),
+            GATES + "StrictIPCIDRValidation.md": _real_gate("StrictIPCIDRValidation", 37),
+        },
+    }
+    snapshots = tuple(
+        Snapshot(minor, f"release-1.{minor}", repo.commit(files))
+        for minor, files in commits.items()
+    )
+    paths = (
+        REFERENCE + "feature-gates.md",
+        GATES,
+        REFERENCE + "feature-gates-removed.md",
+        REFERENCE + "feature-gates-removed/",
+    )
+    group = ReleaseGroup("feature_gate_reference", "website", paths, snapshots)
+    return Scope("test", (group,), "enhancements", (), ())
+
+
+def _release_windows(conn: Conn, canonical_id: str) -> list[tuple[int, int | None]]:
+    document_id = find_document(conn, canonical_id)
+    assert document_id is not None, canonical_id
+    return [(v.valid_from_release, v.valid_until_release) for v in list_versions(conn, document_id)]
+
+
+def _aliases(conn: Conn) -> list[tuple[str, str]]:
+    return conn.execute(
+        "SELECT a.alias, d.canonical_id FROM document_aliases a "
+        "JOIN documents d ON d.id = a.document_id ORDER BY a.alias"
+    ).fetchall()
+
+
+def test_feature_gates_keep_one_document_per_gate(
+    conn: Conn, tmp_path: Path, make_git_repo: Callable[[str], Any]
+) -> None:
+    scope = _feature_gates(make_git_repo)
+
+    summary = _ingest(conn, tmp_path, scope)
+
+    assert summary.failures == []
+    # 1 page + 7 gates, counted by hand from the commits above.
+    assert summary.documents == {"feature_gate_reference": 8}
+    # The page and its bundle share a URL: one web document. No gate links to it.
+    assert _release_windows(conn, FEATURE_GATES_PAGE) == [(28, 28), (29, None)]
+    # The 1.32 renames are linked by title: no new document. The unchanged file keeps its first
+    # path (a version is a change in content, not a move).
+    assert _release_windows(conn, "gate:PodHasNetworkCondition") == [(29, None)]
+    assert _release_windows(conn, "gate:PodReadyToStartContainersCondition") == [
+        (29, 31),
+        (32, None),
+    ]
+    # git pairs the real files at 93%: one gate, identified by its first title.
+    assert _release_windows(conn, "gate:APIServingWithRoute") == [(32, 32), (33, None)]
+    # The title fixed in place: same path, one document whose id keeps the typo.
+    assert _release_windows(conn, TYPO) == [(33, 34), (35, None)]
+    # git scores the real pair 40%, under 50%: two documents.
+    assert _release_windows(conn, "gate:PodInfoAPI") == [(36, 36)]
+    assert _release_windows(conn, "gate:InPlacePodVerticalScalingMemoryBackedVolumes") == [
+        (37, None)
+    ]
+    # Later titles are aliases; former_titles are not (PodHasNetworkCondition is its own gate).
+    assert _aliases(conn) == [
+        ("gate:APIServingWithRoutine", "gate:APIServingWithRoute"),
+        ("gate:ServiceAccountNodeAudienceRestriction", TYPO),
+    ]
+
+
+def test_a_gate_chunk_stored_from_jsonb_metadata_keeps_the_files_yaml_order(
+    conn: Conn, tmp_path: Path, make_git_repo: Callable[[str], Any]
+) -> None:
+    scope = _feature_gates(make_git_repo)
+
+    first = _ingest(conn, tmp_path, scope)
+    second = _ingest(conn, tmp_path, scope)
+
+    texts = conn.execute(
+        "SELECT c.text FROM chunks c JOIN document_versions v ON v.id = c.document_version_id "
+        "JOIN documents d ON d.id = v.document_id "
+        "WHERE d.canonical_id = 'gate:StrictIPCIDRValidation'"
+    ).fetchall()
+    # The pinned format, typed by hand: the stored metadata is jsonb, which reorders keys
+    # (stage, toVersion, fromVersion, defaultValue); the YAML keeps the file's order.
+    assert len(texts) == 1
+    assert texts[0][0].startswith(
+        "Source: feature_gate_reference\n"
+        "Title: StrictIPCIDRValidation\n"
+        "Document: gate:StrictIPCIDRValidation\n"
+        "\n"
+        "stages:\n"
+        "- stage: alpha\n"
+        "  defaultValue: false\n"
+        "  fromVersion: '1.33'\n"
+        "  toVersion: '1.35'\n"
+        "- stage: beta\n"
+        "  defaultValue: true\n"
+        "  fromVersion: '1.36'\n"
+        "\n"
+        "Use stricter validation for fields containing IP addresses and CIDR values.\n"
+    )
+    assert first.failures == second.failures == []
+    assert (second.new_documents, second.new_versions, second.new_chunks) == (0, 0, 0)

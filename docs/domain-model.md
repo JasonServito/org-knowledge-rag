@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames.
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -115,6 +115,31 @@ Section: <heading path joined with " > ">
 
 - **Title:** the front-matter `title`; for a KEP, `KEP-<number>: <kep.yaml title>`.
 - **Section:** omitted when the heading path is empty (text before the first heading).
+
+**A gate's chunk text** (S05-R1 decision 1). A gate's stages live only in its front matter, so a `gate:` document whose file has `stages` gets them at the start of its body: the header, a blank line, the YAML, a blank line, then the body.
+
+```
+Source: feature_gate_reference
+Title: StrictIPCIDRValidation
+Document: gate:StrictIPCIDRValidation
+
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.33'
+  toVersion: '1.35'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.36'
+
+Use stricter validation for fields containing IP addresses and CIDR values.
+…
+```
+
+- The YAML is `yaml.safe_dump(..., sort_keys=False)` of `stages`, then `removed` if present, and nothing else. Values are what YAML reads: the trailing space in a real `- stage: alpha ` line isn't part of the value.
+- It is read from the version's file at chunk time: the same values as the version's `metadata`, but in the file's key order. Postgres `jsonb` reorders keys (`stage`, `toVersion`, `fromVersion`, `defaultValue`).
+- The YAML is part of the body, so the chunker packs it like any paragraph. Every real gate is one chunk (at most 451 tokens with its YAML).
+- The feature-gates pages are `web:` documents and get no YAML.
 - **Not in the header:** release window, `version_status`, tier. They change when a newer version arrives, or depend on the question (ADR-003 D3), so they're attached to each retrieved chunk from these tables at answer time (product spec must-have 2, amended).
 
 ## Rules
@@ -185,11 +210,11 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 ## How windows are derived (S04-R1 sitting)
 
 - **A release date means 00:00 UTC** of the `releases.release_date`.
-- **Release-scoped sources (docs pages, website release records):** ingestion reads every release in scope, oldest first, from each release's website branch (1.37 = `main` at the lock head).
+- **Release-scoped sources (docs pages, website release records, feature gates):** ingestion reads every release in scope, oldest first, from each release's website branch (1.37 = `main` at the lock head).
   - A version starts at the first release whose snapshot has its content: `valid_from_release` = R, `valid_from_date` = R's release date.
   - It closes at the first later release R2 whose snapshot differs or lacks the document's file (wherever it moved, see "Renames"): `valid_until_release` = R2 − 1, `valid_until_date` = R2's release date.
   - The first version of a page starts at the scope's first release, even if the page is older: 20 from S05 (the `full` scope), 24 in S04.
-  - Each source type is hashed with its own strip list: release records with `release_record`'s (which strips `card`), docs pages with `docs_page`'s.
+  - Each source type is hashed with its own strip list: release records with `release_record`'s (which strips `card`), docs pages with `docs_page`'s, feature gates and their pages with `feature_gate_reference`'s (`_build`, `weight`, `card`). `stages` and `removed` are never stripped, so a stage change is a new version.
   - A file matched by the paths of two release-scoped groups is an error when the scope is loaded, before any read or write.
 - **Rebuilding from empty (S05-R1 decision 2):** moving the first release from 24 to 20 changes every stored first version, which a re-ingest reports as a history mismatch. `make reset-corpus` empties `documents`, `document_aliases`, `document_versions` and `chunks` (ids restart at 1), then `make ingest` rebuilds them. `releases` and `embeddings` are kept: vectors are a cache keyed by content hash, so an unchanged chunk text keeps its vector. Dev database only.
 - **Date-scoped sources (KEPs):** snapshots are `main` at each release date, plus `head`.
@@ -203,19 +228,33 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
   - Stored is a prefix (a new release arrived) → close the open version, insert the new ones.
   - Anything else → report a history mismatch for that document, leave it untouched, and exit non-zero.
 
-## Renames: one document across moves (ADR-002 D4, S05-T2)
+## Renames: one document across moves (ADR-002 D4, S05-T2, S05-T3)
 
-A page that moves stays one document. Ingestion links the files of the release-scoped sources into **chains**, one per document: a chain is the document's file at each release (`ingestion/renames.py`).
+A page or a feature gate that moves stays one document. Ingestion links the files of the release-scoped sources into **chains**, one per document: a chain is the document's file at each release (`ingestion/renames.py`).
+
+- **Two kinds of file, chained apart:**
+  - **Web pages:** docs pages, release records, and the 2 feature-gates pages. A page is a file the manifest names one by one (`feature-gates.md`, `feature-gates-removed.md`, up to 1.28) or a folder's `index.md` (a page bundle, from 1.29).
+  - **Gate files:** every other file in the manifest's feature-gate folders, one per gate (from 1.29). Hugo doesn't render them (`_build: render: false`), so they have no URL.
+  - Each kind has its own link rules and ids, and no rule links a gate to a page. The 316 gate files split out of the feature-gates tables at 1.29 are new documents.
+  - The pages of every source type are chained together, so a link between two of their source types is seen, and refused.
 
 - **Ids and aliases:**
-  - `canonical_id` is the chain's first URL (`web:`). The PSP page is `web:/docs/concepts/policy/pod-security-policy/`.
+  - A page's `canonical_id` is the chain's first URL (`web:`). The PSP page is `web:/docs/concepts/policy/pod-security-policy/`.
   - Every later URL of the chain is an alias (`web:/docs/concepts/security/pod-security-policy/`), and so is every front-matter `aliases` entry, as in S04.
+  - A gate's `canonical_id` is `gate:` + the chain's first front-matter `title`, as written (case and typos kept): `gate:ServiceAcccountNodeAudienceRestriction`. Every later title is an alias (`gate:ServiceAccountNodeAudienceRestriction`).
+  - `former_titles` never become aliases: the gate a former title names can keep its own file (`PodHasNetworkCondition`, a gate of its own in every release).
   - An alias equal to the document's own id is skipped.
+  - Two chains with one id (say, two gate files with one title) are an error, never a silent merge: each is reported, and neither is stored (0 on real data).
 - **Links,** one release pair R → R+1 at a time. A link joins a file present at R and gone at R+1 to a file absent at R and present at R+1. The rules run in order, and the first rule that links a file wins. Web pages (docs pages, release records):
   1. Same URL. This covers page bundles: `x.md` → `x/index.md`.
   2. The redirect file at R+1 maps the gone URL to the new page's URL.
   3. The new page's front-matter `aliases` holds the gone URL.
   4. git similarity ≥ 50% (`git diff -M50%` between the two release snapshots), read only for the files no earlier rule linked.
+- **Links of gate files,** the same way:
+  1. Same path: a file at R and R+1 stays in its chain. A title fixed in place keeps its document.
+  2. Same front-matter `title`. This links the 345 renames from kebab case to the gate name at 1.32.
+  3. The new file's `former_titles` holds the gone file's title (0 links on real data: the one gate that has it, `PodReadyToStartContainersCondition`, is linked by its title first).
+  4. git similarity ≥ 50%: `APIServingWithRoute` → `APIServingWithRoutine` at 1.33 (93%). `PodInfoAPI` → `InPlacePodVerticalScalingMemoryBackedVolumes` at 1.37 scores 40%: two documents.
 - **Refused links:**
   - A file one rule links twice (a gone file claimed by two new files, or the reverse) is a conflict. It's logged and never linked, by that rule or a later one.
   - A link between two source types is an error: it's reported, not made, and the exit code is non-zero. Groups read from one repo at the same releases are linked together, so such a link can be seen.

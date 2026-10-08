@@ -1,14 +1,23 @@
-"""Renames (ADR-002 D4): redirect parsing, the web-page link rules and the chain builder.
+"""Renames (ADR-002 D4): redirect parsing, the link rules of web pages and gate files, and the
+chain builder.
 
-Paths and redirect lines are the real ones of the moves in spike §4 E and G. Page contents are
-hand-written: the link rules read only paths, URLs and front-matter `aliases`. Expected chains
-and links are written by hand from the contract's link rules.
+Paths, titles and redirect lines are the real ones of the moves in spike §4 E and G and of the
+gate cases in the S05-R1 contract. Page and gate contents are hand-written: the link rules read
+only paths, URLs, front-matter `aliases`, `title` and `former_titles`. Expected chains and links
+are written by hand from the contract's link rules.
 """
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from orgknow.ingestion.renames import Chains, Link, build_chains, parse_redirects, web_link_rules
+from orgknow.ingestion.renames import (
+    Chains,
+    Link,
+    build_chains,
+    gate_link_rules,
+    parse_redirects,
+    web_link_rules,
+)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 
@@ -354,3 +363,131 @@ def test_a_path_back_after_a_gap_continues_its_chain() -> None:
 
     assert chains.paths == [[path, None, path]]
     assert (chains.deleted, chains.added) == ([(1, path)], [(2, path)])
+
+
+# --- Gate files (S05-T3) ---------------------------------------------------------------------
+
+GATES = "content/en/docs/reference/command-line-tools-reference/feature-gates/"
+
+
+def gate(title: str, former_titles: Sequence[str] = (), stage: str = "alpha") -> bytes:
+    """A gate file: front matter as the real ones (title, former_titles, stages), one body line."""
+    lines = ["---", f"title: {title}"]
+    if former_titles:
+        lines += ["former_titles:", *(f"  - {name}" for name in former_titles)]
+    lines += ["content_type: feature_gate", "stages:", f"  - stage: {stage}"]
+    return ("\n".join([*lines, "---", f"The {title} gate.", ""])).encode()
+
+
+def gate_chains_of(
+    listings: Sequence[Mapping[str, bytes]], similar: FakeSimilarity | None = None
+) -> Chains:
+    """Build chains with the gate rules; every file is a feature gate."""
+    every_path = {path for listing in listings for path in listing}
+    types = {path: "feature_gate_reference" for path in every_path}
+    return build_chains(listings, gate_link_rules(), similar or FakeSimilarity(), types)
+
+
+def test_the_1_32_file_renames_link_by_title() -> None:
+    # 1.31 -> 1.32: the gate files were renamed from kebab case to the gate name (spike §4 E).
+    # PodReadyToStartContainersCondition also names PodHasNetworkCondition in former_titles;
+    # same title is the earlier rule, so each gate links to its own new file.
+    ready, net = "PodReadyToStartContainersCondition", "PodHasNetworkCondition"
+    old_ready, new_ready = GATES + "pod-ready-to-start-containers.md", GATES + f"{ready}.md"
+    old_net, new_net = GATES + "pod-has-network-condition.md", GATES + f"{net}.md"
+    similar = FakeSimilarity()
+    listings = [
+        {old_ready: gate(ready, [net]), old_net: gate(net)},
+        # The file changed in the same release, as 51 of the 345 renamed gate files did at 1.32.
+        {new_ready: gate(ready, [net], stage="beta"), new_net: gate(net)},
+    ]
+
+    chains = gate_chains_of(listings, similar)
+
+    assert chains.links == [
+        Link(1, old_net, new_net, "same title"),
+        Link(1, old_ready, new_ready, "same title"),
+    ]
+    assert chains.paths == [[old_net, new_net], [old_ready, new_ready]]
+    assert (chains.deleted, chains.added, chains.conflicts) == ([], [], [])
+    assert similar.calls == []  # every gone file linked: git is never asked
+
+
+def test_former_titles_link_a_gate_whose_old_file_is_gone() -> None:
+    old, new = GATES + "OldName.md", GATES + "NewName.md"
+    similar = FakeSimilarity()
+
+    chains = gate_chains_of([{old: gate("OldName")}, {new: gate("NewName", ["OldName"])}], similar)
+
+    assert chains.links == [Link(1, old, new, "former title")]
+    assert chains.paths == [[old, new]]
+    assert similar.calls == []
+
+
+def test_former_titles_naming_a_gate_that_keeps_its_file_links_nothing() -> None:
+    # 1.37's PodReadyToStartContainersCondition names PodHasNetworkCondition, which keeps its own
+    # file (and its own stages) in every release: it is never gone, so nothing links.
+    net = GATES + "PodHasNetworkCondition.md"
+    ready = GATES + "PodReadyToStartContainersCondition.md"
+    listings = [
+        {net: gate("PodHasNetworkCondition")},
+        {
+            net: gate("PodHasNetworkCondition"),
+            ready: gate("PodReadyToStartContainersCondition", ["PodHasNetworkCondition"]),
+        },
+    ]
+
+    chains = gate_chains_of(listings)
+
+    assert (chains.links, chains.conflicts) == ([], [])
+    assert chains.paths == [[net, net], [None, ready]]
+    assert chains.added == [(1, ready)]
+
+
+def test_a_renamed_title_is_found_by_similarity() -> None:
+    # 1.32 -> 1.33: APIServingWithRoute -> APIServingWithRoutine; git scores the pair 93% (spike
+    # §4 E). Neither the title nor former_titles names the old gate.
+    old, new = GATES + "APIServingWithRoute.md", GATES + "APIServingWithRoutine.md"
+    other = GATES + "ServiceAccountNodeAudienceRestriction.md"
+    similar = FakeSimilarity({1: [(old, new)]})
+    listings = [
+        {old: gate("APIServingWithRoute")},
+        {new: gate("APIServingWithRoutine"), other: gate("ServiceAcccountNodeAudienceRestriction")},
+    ]
+
+    chains = gate_chains_of(listings, similar)
+
+    assert chains.links == [Link(1, old, new, "similarity")]
+    assert chains.paths == [[old, new], [None, other]]
+    assert similar.calls == [(1, [old, new, other])]
+
+
+def test_a_title_fixed_in_place_keeps_its_chain() -> None:
+    # 1.34 -> 1.35: the typo in the title was fixed in the same file. Same path is the first
+    # rule: the file is neither gone nor new, so no other rule is asked.
+    path = GATES + "ServiceAccountNodeAudienceRestriction.md"
+    similar = FakeSimilarity()
+    listings = [
+        {path: gate("ServiceAcccountNodeAudienceRestriction")},
+        {path: gate("ServiceAcccountNodeAudienceRestriction")},
+        {path: gate("ServiceAccountNodeAudienceRestriction")},
+    ]
+
+    chains = gate_chains_of(listings, similar)
+
+    assert chains.paths == [[path, path, path]]
+    assert (chains.links, chains.deleted, chains.added) == ([], [], [])
+    assert similar.calls == []
+
+
+def test_two_new_gates_with_the_gone_gates_title_are_a_conflict() -> None:
+    gone, first, second = GATES + "a.md", GATES + "B.md", GATES + "C.md"
+
+    chains = gate_chains_of([{gone: gate("A")}, {first: gate("A"), second: gate("A")}])
+
+    assert chains.links == []
+    assert chains.conflicts == [
+        Link(1, gone, first, "same title"),
+        Link(1, gone, second, "same title"),
+    ]
+    assert chains.paths == [[gone, None], [None, first], [None, second]]
