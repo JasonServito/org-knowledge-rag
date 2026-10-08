@@ -210,7 +210,7 @@ Tasks:
   - Done when: a second run makes 0 requests.
   - Deps: T7, T8.
 
-### 🟨 S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
+### ✅ S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
 
 - **Outcome:** a frozen golden set v0 (30–50 questions, verified by Claude and spot-checked by the developer) and a committed dense-baseline row in the ablation table.
 - **Exit:** `make eval-smoke` and `make eval` work; `docs/evaluation.md` is written; thresholds are recorded in the product spec.
@@ -230,11 +230,11 @@ Tasks:
 - [x] **S06-T5 `[human]` Write and verify golden set v0.**
   - Done when: the label check passes, Claude has verified every question, and the developer has spot-checked a sample (reworded 2026-10-08; see the slice doc).
   - Deps: T1.
-- [ ] **S06-T6 `[commodity]` Dense baseline.**
+- [x] **S06-T6 `[commodity]` Dense baseline.**
   - Done when: 3 runs of `make eval` on the frozen v0 are committed with their spread; `docs/evaluation.md` is written; thresholds are in the product spec.
   - Deps: T4, T5.
 
-### ⬜ S07 Hybrid retrieval *(Stage 4)*
+### 🟨 S07 Hybrid retrieval *(Stage 4)*
 
 - **Outcome:** lexical + dense retrieval fused with RRF, and an ablation row showing the delta.
 - **Candidate tasks:**
@@ -346,3 +346,6 @@ ADRs are decided when their slice starts, not earlier.
 - **Chunker: a test for the HTML-table half of the "never cut" guard.** Reason: removing it fails no test today. (S05-R3, PR #30 parked 4; kept in the S06-R1 sitting.)
 - **Report: remove `counts_by_release`'s unprinted per-type values and 1 duplicate fingerprint test case.** Reason: dead code. (S05-R3, PR #30 parked 9; kept in the S06-R1 sitting.)
 - **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)
+- **Eval: ignore `eval/results/` in the run's `git_dirty` check.** Reason: every run rewrites the tracked `ablation.md`, so the next run is marked dirty on the same code; S06-T6 run 3 was. `git status` with `-- . ':!eval/results'` would fix it. (S06-T6, 2026-10-08.)
+- **Eval: keep smoke runs out of the full run's table row.** Reason: the table groups by (name, golden file hash), so `make eval-smoke` into `eval/results/` with the default name `dense` merges 13-question runs into the 43-question row. Options: default the name to `<name>-smoke`, or add `smoke` to the row key. S06-T6 ran its smoke run in a scratch folder. (S06-T6, 2026-10-08.)
+- **Eval: p95 latency and cost per question in `summary.json` and the ablation table.** Reason: both have Phase 1 thresholds (product spec), and S08 must record p95; S06-T6 computed them from `questions.jsonl` by hand. Changes the pinned results format. (S06-T6, 2026-10-08.)

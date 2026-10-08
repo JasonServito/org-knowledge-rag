@@ -46,14 +46,30 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 | AC7 | The ablation table covers the full sequence: dense → +lexical/RRF → +rerank → +temporal/authority → +conflict → +corrective. Every stage kept either improves its target metric or has its retention justified in writing. | README / eval report |
 | AC8 | Reproducibility: re-ingesting the same manifest yields identical version counts and hashes. `make eval` (or equivalent) runs end to end locally. | CI or manual run |
 
-**Measured, with thresholds set after the baseline.** Setting numbers before a baseline exists would be guesswork:
+**Measured, with thresholds set after the baseline.** Setting numbers before a baseline exists would be guesswork. The dense baseline set the first ones (below):
 - Recall@10, MRR, nDCG
 - Citation correctness, faithfulness
 - Stale-result rate, temporal accuracy, authority-selection accuracy
 - Conflict precision/recall, router accuracy
 - p95 latency, cost per query
 
-After the first baseline run, record the thresholds here.
+**Thresholds (S06-T6 decisions 1–3, 2026-10-08).** They come from the dense baseline on golden set v0: 3 runs, 36 answerable questions (`docs/evaluation.md`). One answerable question is 1/36 = 0.028 of any mean, so the rules below count in steps of about one question.
+
+| Metric | Dense baseline | Phase 1 threshold |
+|---|---|---|
+| Recall@10 | 0.384 | ≥ 0.46 (baseline + 0.08) |
+| MRR | 0.614 | ≥ 0.69 (baseline + 0.08) |
+| nDCG@10 | 0.369 | ≥ 0.45 (baseline + 0.08) |
+| Hit@10 | 0.944 (34 of 36) | ≥ 0.944 (a floor: + 0.08 would pass 1.0) |
+| Citation correctness: AC1, AC2 | 100%, 100% | 100% (the hard gates above) |
+| AC3 | 7 of 7 | 100% (the hard gate above) |
+| False refusals | 2–3 of 36 | No more than the baseline's range |
+| p95 latency, as the eval measures it (retrieve + answer; the question vector is stored) | 9.4–11.3 s | ≤ 23 s (2× the baseline) |
+| Cost per question (mean) | $0.029 | ≤ $0.06 (2× the baseline) |
+
+- **A stage improves its target metric (AC7)** when that metric rises by at least 0.03 (about one question's worth), no other retrieval metric drops by more than 0.03, and AC1–AC3 stay at or above, and false refusals at or below, the baseline's 3-run range. A paired statistical test is the upgrade once a golden set passes ~100 questions.
+- **The +0.08 targets are about 3 questions' worth**, one rule for every metric. Hybrid search and reranking gains on this corpus are unknown, so a target that proves too easy or out of reach is revised in writing.
+- **Metrics not measured yet get their threshold in the slice that first measures them:** stale-result rate, temporal accuracy, authority-selection accuracy and router accuracy (S09); conflict precision/recall (S10); faithfulness once a grader exists.
 
 ## Golden set v0
 
