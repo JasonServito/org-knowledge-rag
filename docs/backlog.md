@@ -175,15 +175,39 @@ Tasks:
 
 ### 🟨 S05 Stage 1 subset ingestion *(Stage 2)*
 
-- **Outcome:** the full manifest is ingested: 3 SIGs × v1.20 → latest, the 4 KEPs, CHANGELOG, blog, and governance docs.
+- **Outcome:** the full manifest is ingested and embedded: 3 SIGs × v1.20 → latest, the website release records, the feature gates, every KEP in the 3 SIG folders, CHANGELOG, blog, and governance docs. (Wording fixed in the S05 sitting, 2026-10-07: all KEPs, not 4; feature gates in; the embed is S05's last task.)
 - **Exit:** re-ingesting yields identical counts and hashes (AC8, first part); counts match the spike within an explained tolerance.
-- **Candidate tasks:**
-  - release-range snapshot loop
-  - date-scoped sources (true commit dates)
-  - blog in-place versions
-  - CHANGELOG patch-section chunks
-  - alias/rename handling
-  - ingestion report command
+- **Slice doc:** `docs/slices/S05-stage1-subset-ingestion.md`
+
+Tasks:
+
+- [x] **S05-T1 `[core]` Release-scoped website sources from 1.20.**
+  - Docs pages of the 3 SIGs and the website release records, every release 1.20 → 1.37; `make reset-corpus`.
+  - Done when: a re-run adds 0 versions, and the counts are explained against the spike.
+- [x] **S05-T2 `[core]` Renames and aliases (ADR-002 D4).**
+  - Done when: the 6 known moves are one document each.
+  - Deps: T1.
+- [ ] **S05-T3 `[core]` Feature gates.**
+  - Done when: the 1.32 file renames create no new documents.
+  - Deps: T1, T2.
+- [ ] **S05-T4 `[core]` KEPs and governance docs (date-scoped, merge-time dating).**
+  - Done when: a re-run adds 0 versions; KEP-2579's versions start at their merge times.
+  - Deps: T1.
+- [ ] **S05-T5 `[core]` Blog posts.**
+  - Done when: a re-run adds 0 versions; the counts are explained against the spike.
+  - Deps: T1.
+- [ ] **S05-T6 `[core]` CHANGELOG.**
+  - Done when: 18 documents, 371 patch sections; no sha512 rows in chunks; a set release `until` can't change.
+  - Deps: T1.
+- [ ] **S05-T7 `[core]` Chunker fixes.**
+  - Covers `{#id}` anchors, HTML tables with a blank line in a cell, the scanner re-check, and the oversize-block decision.
+  - Deps: T1–T6.
+- [ ] **S05-T8 `[commodity]` Ingestion report with a fingerprint.**
+  - Done when: two from-empty ingests print identical reports.
+  - Deps: T1–T6.
+- [ ] **S05-T9 `[commodity]` Embed the full corpus.**
+  - Done when: a second run makes 0 requests.
+  - Deps: T7, T8.
 
 ### ⬜ S06 Eval harness + golden set v0 + dense baseline *(Stage 3)*
 
@@ -297,23 +321,12 @@ ADRs are decided when their slice starts, not earlier.
   - **If adopted:** new ADR (dependency); small interface + test fake; pinned version (never `jev-latest`); threshold in config.
   - **Out of bounds:** citation validation (AC2 stays deterministic), date/release resolution, "needs retrieval?" routing.
 - **Community SIG annual reports as WHY-evidence source (deferred).** Reason: `community/sig-{release,auth,network}/annual-report-*.md` (2020–2025) explain SIG priorities and rationale; left out of manifest v0 to keep governance scope to README/charter. (Found in S02-T1.)
-- **S05: blog front matter that fails to parse is recorded with a reason, never dropped.** Example: blog `2024/validating-admission-policy-ga` (front matter opens with `------`). S04-T2 covers docs and KEPs (BOM, CRLF, leading blank line, every skip logged with a reason). (Found in S02-T3a; narrowed in the S04-R1 sitting.)
-- **S05: leave the CHANGELOG sha512 download tables out of chunks.** Reason: they're 25% of CHANGELOG characters, they're hex strings with no retrieval value, and they add noise to lexical search. (Found in S02-T3b.)
 - **S06 experiment: merge a section under 64 tokens into its first subsection.** Reason: 14% of sections on the S04 scope (30–32% on the full corpus) are under 64 tokens. Measure the effect on Recall@K with the S06 harness before adopting it. Related: greedy packing can end a chunk on an intro and start the next with its list (Pod Security Admission "Exemptions": "…current policy level:"). (Found in S02-T3b; S04-R1 sitting decision 5 kept chunking without merging; packing note from S04-R1, PR #22.)
-- **S05: the manifest's `*.md` filter drops the 1.23 and 1.24 release interviews.** Website PR #53902 moved them to files with no extension (`_posts/2022/kubernetes-1.23-release-interview`). Check whether Hugo still renders them; if it does, include them. (Found in S02-T4b.)
-- **S05: accept blog front-matter dates as `date`, `datetime` or `str`.** PyYAML returns a string for offsets without a colon (`+0000`), used by 8 posts. The KEP parts (skip symlinks, read the first YAML document) are in S04-T2. (Found in S02-T5b; narrowed in the S04-R1 sitting.)
 - **Playwright end-to-end tests + screenshots for the S17 Next.js UI.** Reason: verify UI behavior once a UI exists. Evaluate in the S17 sitting. (Workflow review 2026-10-04.)
 - **Cloud runs test (`claude --cloud`).** Reason: lets the laptop stay off on run nights. Check Docker Postgres, the corpus cache, and that the merge gate still holds. Trigger: keeping the laptop on becomes a burden. (Workflow review 2026-10-04.)
-- **S05 (CHANGELOG ingestion): decide whether R10 also freezes a release `until` set at insert.** Reason: `close_version` refuses to move a closed date window, but it overwrites `valid_until_release` on any open version. A CHANGELOG version inserted as `[30, 30]` becomes `[30, 31]` if the caller passes 31. S05's CHANGELOG ingestion must pass R; nothing enforces it. (Found in S03-T4 review.)
 - **Make R3 race-free before a second writer exists (S14 at the latest).** Reason: R3's cross-table part (no alias equals a `canonical_id`) is a check-then-insert in `create_document` and `add_alias`. Two concurrent writers can each miss the other's uncommitted row and both commit the same identifier. Options: a transaction-level advisory lock in both functions, or one shared identifiers table with a single UNIQUE. Safe today: one writer. Same class: two `make embed` runs at once both pay for the same texts, and the second aborts on the primary key. (Found by Greptile on PRs #19, #20 and #22.)
-- **S05: date a KEP version by its merge time on master, not its commit time.** Reason: commit `69d3fac5` (KEP-2579) was merged by `0e230b08` 6 days later, so its version starts before the text was on master. Use the first-parent merge commit's time. Refines the S05 "date-scoped sources" task. (S04-R1, PR #21 question 1; S04-R2 sitting.)
-- **S05 sitting: chunker scanner rule 5, HTML tables with a blank line inside a cell.** Reason: 12 of 78 HTML tables in the S04 scope (all on the RBAC page) are cut, giving 24 split chunks. Recheck with it: a tab-indented line would close an indented fence under rule 3 (0 cases in S04). (S04-R1, PR #22 question 1 and parked 8.)
-- **S05, before S06's labels: strip Hugo `{#id}` anchors from heading paths, then re-chunk and re-embed.** Reason: 1,754 of 4,967 chunks have an anchor in `heading_path` (e.g. `Kubernetes security mechanisms {#security-mechanisms}`), and S06 labels relevance by heading path. Keep the id for citation URL fragments. Needs a re-chunk path: changing chunk rules re-chunks nothing already stored today. Cost: ~476K Voyage tokens (free tier). (S04-R1, PR #22 question 2 and parked 5.)
-- **S05: keep past `head` SHAs in the lock.** Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.)
-- **S05: ingestion edge cases.** A KEP deleted and re-created skips the date guard and could stop the run with a database error; an id equal to another document's alias gives a misleading "history mismatch" instead of the R3 error; no test covers a re-ingest that only closes a version. (S04-R1, PR #21 parked 5, 6, 11.)
-- **S05 ingestion report: clearer failures.** Failure lines should carry the snapshot label; a skipped file is counted once per snapshot (a symlink counts 14 times); a manifest path absent from every release in range should be an error, not an INFO line (in S04's 1.24+ the old PSP path is legitimately absent). (S04-R1, PR #21 parked 8 and 9; Greptile on PR #21.)
-- **Next sitting (S04-R2 question 1): keep the stop reason when the model is cut off.** Reason: if the model is cut off or refuses partway through its JSON, `messages.parse` raises before it returns, so `GenerationError` has no stop reason and no token usage. The ask still fails cleanly (one stderr line, exit 1). Options: keep it for S04, or switch to `messages.create` with the same `output_config` and validate `ModelAnswer` ourselves on `end_turn`, which keeps both on every path but amends ADR-006 D2. Decide before the S06 baseline. (PR #24 question 1; Greptile on PR #24.)
-- **Next sitting (S04-R2 question 2): the Langfuse public key in traces.** Reason: the Langfuse SDK adds the public key to every observation's scope attributes. The secret, Anthropic and Voyage keys are absent (checked on fetched traces). Langfuse treats the public key as non-secret, and removing it would mean patching the SDK. Proposed: reword the S04-R2 rule to "secret keys never appear in stdout, stderr or the trace". (PR #24 question 2.)
+- **S14: keep past `head` SHAs in the lock.** (Moved from S05 in the S05 sitting, 2026-10-07: it matters only when the lock is refreshed; S05 keeps the 2026-09-30 lock.) Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.)
+- **S06 sitting (S04-R2 question 1; moved in the S05 sitting): keep the stop reason when the model is cut off.** Reason: if the model is cut off or refuses partway through its JSON, `messages.parse` raises before it returns, so `GenerationError` has no stop reason and no token usage. The ask still fails cleanly (one stderr line, exit 1). Options: keep it for S04, or switch to `messages.create` with the same `output_config` and validate `ModelAnswer` ourselves on `end_turn`, which keeps both on every path but amends ADR-006 D2. Decide before the S06 baseline. (PR #24 question 1; Greptile on PR #24.)
 - **S06: store the question vectors for eval runs.** Reason: Voyage's question vector varies between calls; a second retrieval for the same question moved distances by up to 0.0044 and swapped near-ties (seed #6 rank 10, seed #9 ranks 8–9). Fix the vectors, or repeat runs, before trusting small ablation deltas. (S04-T8, PR #25.)
 - **S09: near-duplicate crowding in the top 10.** Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)
 - **S10: check KEP Implementation History dates against the `releases` table.** Reason: seed #8 repeated KEP-2579's "2021-11-03: v1.23 Beta version released" as fact; 1.23 shipped 2021-12-07. The model never sees release dates. (S04-T8, PR #25; Appendix A conflict case.)

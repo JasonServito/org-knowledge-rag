@@ -41,10 +41,12 @@ make test-int               # integration tests against a separate test database
 uv run pre-commit install   # run ruff on every commit
 ```
 
-To load the corpus scope (S04: SIG Auth docs 1.24 to 1.37, plus KEP-2579), first create the partial clones of the corpus repos with `spikes/fetch.py` (set `CORPUS_CACHE_DIR`, outside this repo), then:
+To load the corpus scope (S05 so far: the docs pages of SIG Auth, Network and Release, and the website release records, 1.20 to 1.37, plus KEP-2579), first create the partial clones of the corpus repos with `spikes/fetch.py` (set `CORPUS_CACHE_DIR`, outside this repo), then:
 
 ```bash
 make seed                   # load the releases from the corpus manifest (safe to re-run)
+# reset-corpus is needed once on a database ingested before S05 (its docs pages started at 1.24); otherwise it's optional, to rebuild from empty
+make reset-corpus           # empty the dev database's documents, versions and chunks (ids restart at 1); keeps releases and vectors
 make ingest                 # read the scope at the locked SHAs, store one version per content change, chunk new versions (safe to re-run)
 make embed                  # embed each chunk text with no vector yet; paid, needs VOYAGE_API_KEY (a re-run sends 0 requests)
 ```

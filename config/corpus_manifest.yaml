@@ -192,8 +192,13 @@ normalization:
     prr_yaml: []  # only kep-number plus stage -> approver maps; the stage keys are lifecycle data
 
 # Named subsets for slices that ingest less than the whole manifest (S04-R1 sitting).
-# `make ingest` reads one (INGEST_SCOPE, default s04). S05 ingests the full manifest.
+# `make ingest` reads one (INGEST_SCOPE, default full). S05 ingests the full manifest.
 scopes:
   s04:
     docs_page: {sigs: [auth], from_release: "1.24"}
     kep: {traced: [2579]}
+  # S05: grows task by task until it is the whole manifest (S05-R1 sitting).
+  full:
+    docs_page: {sigs: [auth, network, release], from_release: "1.20"}
+    release_record: {repos: [website], from_release: "1.20"}  # T6 adds kubernetes (CHANGELOG)
+    kep: {traced: [2579]}  # as in S04 until T4

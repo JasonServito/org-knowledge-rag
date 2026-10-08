@@ -38,6 +38,16 @@ def add_alias(conn: psycopg.Connection[TupleRow], document_id: int, alias: str) 
     )
 
 
+def find_document(conn: psycopg.Connection[TupleRow], canonical_id: str) -> int | None:
+    """Return the id of the document with this canonical_id, or None. Aliases aren't searched:
+    ingestion stores a document under its own id, so an id that is another document's alias
+    reaches `create_document`'s R3 check instead of that document's history."""
+    row = conn.execute(
+        "SELECT id FROM documents WHERE canonical_id = %s", (canonical_id,)
+    ).fetchone()
+    return None if row is None else int(row[0])
+
+
 def resolve_document(conn: psycopg.Connection[TupleRow], id_or_alias: str) -> int | None:
     """Return the id of the document with this canonical_id or alias, or None."""
     # R3 means at most one of the two branches matches.

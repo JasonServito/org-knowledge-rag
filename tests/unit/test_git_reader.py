@@ -15,6 +15,7 @@ from orgknow.ingestion.git_reader import (
     commit_times,
     parse_commit_time,
     read_files,
+    similar_renames,
 )
 from orgknow.ingestion.manifest import Snapshot
 
@@ -92,3 +93,41 @@ def test_a_git_failure_raises_with_the_git_error(make_git_repo: Callable[[str], 
 
     with pytest.raises(GitError, match=r"not a tree object|Not a valid object name"):
         read_files(repo.path, ["docs/"], [missing], (".md",))
+
+
+# --- Similarity renames between two snapshots (S05-T2) -----------------------------------------
+
+TEN_LINES = b"".join(b"line %d of the page\n" % n for n in range(10))  # 19 bytes a line
+
+
+def test_similar_renames_pairs_files_at_least_half_similar_among_the_given_paths(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    repo = make_git_repo("website")
+    other = b"".join(b"other line %d\n" % n for n in range(10))  # 13 bytes a line
+    before = repo.commit({"docs/old.md": TEN_LINES, "docs/gone.md": TEN_LINES, "docs/b.md": other})
+    after = repo.commit(
+        {
+            # Keeps 6 of old.md's 10 lines (then a "line 6" fragment): 114 of 190 bytes, 60%.
+            "docs/old.md": None,
+            "docs/new.md": TEN_LINES[:120] + b"rewritten\n" * 4,
+            # Keeps 4 of b.md's 10 lines (then "othe"): 52 of the larger file's 164 bytes, ~31%.
+            "docs/b.md": None,
+            "docs/c.md": other[:56] + b"changed text here\n" * 6,
+            # A 100% rename, but outside the given paths.
+            "docs/gone.md": None,
+            "docs/moved.md": TEN_LINES,
+        }
+    )
+
+    paths = ["docs/old.md", "docs/new.md", "docs/b.md", "docs/c.md"]
+    assert similar_renames(repo.path, before, after, paths) == [("docs/old.md", "docs/new.md")]
+
+
+def test_similar_renames_without_paths_reads_nothing(make_git_repo: Callable[[str], Any]) -> None:
+    repo = make_git_repo("website")
+    before = repo.commit({"docs/a.md": TEN_LINES})
+    after = repo.commit({"docs/a.md": None, "docs/b.md": TEN_LINES})
+
+    # An empty pathspec would diff the whole tree; no paths means no renames.
+    assert similar_renames(repo.path, before, after, []) == []

@@ -1,17 +1,22 @@
 """Ingest a manifest scope: read files at the locked SHAs, derive versions, store them, chunk them.
 
-Run with `make ingest` (INGEST_SCOPE, default s04), after `make seed`. Safe to re-run: each
+Run with `make ingest` (INGEST_SCOPE, default full), after `make seed`. Safe to re-run: each
 document's derived history is compared with what's stored (`plan_changes`), and only versions
 with no chunks are chunked, so a re-run writes nothing.
 
 1. Check (DB, read-only): the `releases` table must hold every manifest release with the same
    dates, since windows are derived from them. Otherwise stop, before any git read or write,
    and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
-2. Read (git): every snapshot of the scope. A git failure stops here, before any write.
-3. Derive (pure): per document, normalize and hash each snapshot, then build its versions.
-   A document that can't be parsed is reported and left out; the others continue.
-4. Store (DB): one transaction per document. A history mismatch is reported, leaves that
-   document untouched, and makes the exit code non-zero.
+2. Read (git): every snapshot of the scope, the release-scoped groups first (docs pages,
+   website release records, with each release's redirect file), then the KEPs. A git failure
+   stops here, before any write.
+3. Derive (pure): link the files of a page that moved into one chain (`renames.py`; the
+   unmatched adds and deletes are logged per release pair), then per document normalize and
+   hash each snapshot with its group's strip list and build its versions. A document that
+   can't be parsed, or a link between two source types, is reported; the others continue.
+4. Store (DB): one transaction per document. A history mismatch or an R3 conflict (an id that
+   is another document's alias) is reported, leaves that document untouched, and makes the
+   exit code non-zero.
 5. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
    (`chunker.py`), one transaction per version.
 """
@@ -27,12 +32,18 @@ import psycopg
 from psycopg.rows import TupleRow
 
 from orgknow.db.chunks import add_chunks, versions_without_chunks
-from orgknow.db.documents import add_alias, create_document, resolve_document
+from orgknow.db.documents import add_alias, create_document, find_document, resolve_document
 from orgknow.db.models import NewVersion, Release, VersionData
 from orgknow.db.releases import list_releases
 from orgknow.db.versions import close_version, insert_version, list_versions
 from orgknow.ingestion.chunker import chunk_version
-from orgknow.ingestion.git_reader import commit_times, read_file, read_files
+from orgknow.ingestion.git_reader import (
+    commit_times,
+    first_present,
+    read_file,
+    read_files,
+    similar_renames,
+)
 from orgknow.ingestion.history import (
     HistoryMismatch,
     Observed,
@@ -41,8 +52,24 @@ from orgknow.ingestion.history import (
     release_history,
 )
 from orgknow.ingestion.identity import alias_id, docs_canonical_id, kep_canonical_id
-from orgknow.ingestion.manifest import Scope, load_normalization, load_releases, load_scope
-from orgknow.ingestion.normalize import docs_state, kep_state
+from orgknow.ingestion.manifest import (
+    ReleaseGroup,
+    Scope,
+    Snapshot,
+    load_normalization,
+    load_releases,
+    load_scope,
+)
+from orgknow.ingestion.normalize import decode, docs_state, kep_state
+from orgknow.ingestion.renames import (
+    REDIRECT_FILES,
+    Chains,
+    SimilarRenames,
+    build_chains,
+    page_url,
+    parse_redirects,
+    web_link_rules,
+)
 from orgknow.settings import Settings
 
 log = logging.getLogger(__name__)
@@ -92,34 +119,144 @@ def release_problems(manifest: Sequence[Release], stored: Sequence[Release]) -> 
     return problems
 
 
-def collect_docs(
+def read_redirects(repo: Path, snapshot: Snapshot) -> dict[str, str]:
+    """The website's redirect rules at `snapshot`: static/_redirects, else static/_redirects.base.
+    No redirect file means no redirect rules."""
+    path = first_present(repo, snapshot.sha, REDIRECT_FILES)
+    if path is None:
+        log.info("no redirect file at %s", snapshot.label)
+        return {}
+    return parse_redirects(decode(read_file(repo, snapshot.sha, path)))
+
+
+def document_from_chain(
+    group: ReleaseGroup,
+    chain: Sequence[tuple[str, bytes] | None],
+    strip: Mapping[str, frozenset[str]],
+    releases: Sequence[Release],
+) -> Document:
+    """One document of a release-scoped group from its chain of files: at each of the group's
+    snapshots, the (path, raw content) holding the document, or None where it's absent.
+
+    The canonical id is the first file's URL (ADR-002 D4). The chain's later URLs and the
+    front-matter `aliases` are its aliases, except its own id. Hashes use the strip list of the
+    group's source type (ADR-002 D2). Raises ValueError if a file can't be parsed.
+    """
+    keys = strip[group.source_type]
+    states = [None if link is None else docs_state(link[0], link[1], keys) for link in chain]
+    observed = [Observed(s, state) for s, state in zip(group.snapshots, states, strict=True)]
+    paths = [link[0] for link in chain if link is not None]
+    canonical_id = docs_canonical_id(paths[0])
+    urls = {docs_canonical_id(path) for path in paths}
+    declared = {alias_id(a) for state in states if state is not None for a in state.aliases}
+    return Document(
+        canonical_id,
+        group.source_type,
+        release_history(group.repo, observed, releases),
+        sorted((urls | declared) - {canonical_id}),
+    )
+
+
+def collect_release_scoped(
     scope: Scope,
     cache_dir: Path,
-    strip: frozenset[str],
+    strip: Mapping[str, frozenset[str]],
     releases: Sequence[Release],
     summary: Summary,
 ) -> list[Document]:
-    """Read the scope's docs pages at every release and derive their versions."""
-    snapshots = scope.docs_snapshots
-    files, skipped = read_files(cache_dir / scope.docs_repo, scope.docs_paths, snapshots, (".md",))
-    summary.skipped += skipped
+    """Read the release-scoped groups' files at every release, link the files of a moved page
+    into one chain (`renames.py`), and derive one document per chain.
+
+    Groups read from one repo at the same snapshots are linked together, so a link between two
+    source types is seen, and refused.
+    """
+    pools: dict[tuple[str, tuple[Snapshot, ...]], list[ReleaseGroup]] = {}
+    for group in scope.release_groups:
+        pools.setdefault((group.repo, group.snapshots), []).append(group)
     documents = []
-    for path, contents in sorted(files.items()):
-        try:
-            states = [None if raw is None else docs_state(path, raw, strip) for raw in contents]
-            observed = [Observed(s, state) for s, state in zip(snapshots, states, strict=True)]
-            aliases = {alias_id(a) for state in states if state is not None for a in state.aliases}
-            documents.append(
-                Document(
-                    docs_canonical_id(path),
-                    "docs_page",
-                    release_history(scope.docs_repo, observed, releases),
-                    sorted(aliases),
-                )
-            )
-        except ValueError as exc:
-            summary.failures.append(f"{path}: {exc}")
+    for (repo, snapshots), groups in pools.items():
+        documents += _collect_pool(cache_dir / repo, snapshots, groups, strip, releases, summary)
     return documents
+
+
+def _collect_pool(
+    repo: Path,
+    snapshots: Sequence[Snapshot],
+    groups: Sequence[ReleaseGroup],
+    strip: Mapping[str, frozenset[str]],
+    releases: Sequence[Release],
+    summary: Summary,
+) -> list[Document]:
+    """The documents of release groups read from one repo at the same snapshots."""
+    listings: list[dict[str, bytes]] = [{} for _ in snapshots]  # path -> raw content
+    group_of: dict[str, ReleaseGroup] = {}
+    for group in groups:
+        files, skipped = read_files(repo, group.paths, snapshots, (".md",))
+        summary.skipped += skipped
+        for path, contents in files.items():
+            group_of[path] = group
+            for listing, raw in zip(listings, contents, strict=True):
+                if raw is not None:
+                    listing[path] = raw
+    # A pair's redirect file is the one at R+1, so the first snapshot's is never read.
+    redirects: list[dict[str, str]] = [{}]
+    redirects += [read_redirects(repo, snapshot) for snapshot in snapshots[1:]]
+    source_types = {path: group.source_type for path, group in group_of.items()}
+    chains = build_chains(
+        listings, web_link_rules(redirects), _git_similarity(repo, snapshots), source_types
+    )
+    _log_renames(chains, snapshots, redirects)
+    for link in chains.crossings:
+        summary.failures.append(
+            f"{_pair(snapshots, link.after)}: the {link.rule} link {link.gone} -> {link.new} "
+            f"crosses source types ({source_types[link.gone]} -> {source_types[link.new]})"
+        )
+    documents = []
+    for paths in chains.paths:
+        chain = [
+            None if path is None else (path, listing[path])
+            for path, listing in zip(paths, listings, strict=True)
+        ]
+        first = next(path for path in paths if path is not None)
+        try:
+            documents.append(document_from_chain(group_of[first], chain, strip, releases))
+        except ValueError as exc:
+            summary.failures.append(f"{first}: {exc}")
+    return documents
+
+
+def _git_similarity(repo: Path, snapshots: Sequence[Snapshot]) -> SimilarRenames:
+    """git similarity between the snapshot before position `after` and the one at it."""
+
+    def similar(after: int, paths: Sequence[str]) -> list[tuple[str, str]]:
+        return similar_renames(repo, snapshots[after - 1].sha, snapshots[after].sha, paths)
+
+    return similar
+
+
+def _pair(snapshots: Sequence[Snapshot], after: int) -> str:
+    return f"{snapshots[after - 1].label} -> {snapshots[after].label}"
+
+
+def _log_renames(
+    chains: Chains, snapshots: Sequence[Snapshot], redirects: Sequence[Mapping[str, str]]
+) -> None:
+    """Log each release pair's links, conflicts, and unmatched deletes (with the redirect
+    target, if any) and adds, in release order."""
+    lines: list[tuple[int, int, str]] = []  # (position of R+1, log level, message)
+    for link in chains.links:
+        lines.append((link.after, logging.INFO, f"linked {link.gone} -> {link.new} ({link.rule})"))
+    for link in chains.conflicts:
+        message = f"conflict, not linked: {link.gone} -> {link.new} ({link.rule})"
+        lines.append((link.after, logging.WARNING, message))
+    for after, path in chains.deleted:
+        target = redirects[after].get(page_url(path))
+        redirect = f" (redirect -> {target})" if target else ""
+        lines.append((after, logging.INFO, f"deleted {path}{redirect}"))
+    for after, path in chains.added:
+        lines.append((after, logging.INFO, f"added {path}"))
+    for after, level, message in sorted(lines, key=lambda line: line[0]):
+        log.log(level, "%s: %s", _pair(snapshots, after), message)
 
 
 def collect_keps(
@@ -166,9 +303,13 @@ def store_document(
     conn: psycopg.Connection[TupleRow], document: Document, summary: Summary
 ) -> None:
     """Create the document if it's new, then close/insert versions and add aliases, in one
-    transaction. Raises HistoryMismatch or ValueError (rolled back) for the caller to report."""
+    transaction. Raises HistoryMismatch or ValueError (rolled back) for the caller to report.
+
+    The document is looked up by its canonical_id only. An id that is another document's alias
+    reaches `create_document`, which raises the R3 error naming the alias.
+    """
     with conn.transaction():
-        document_id = resolve_document(conn, document.canonical_id)
+        document_id = find_document(conn, document.canonical_id)
         is_new = document_id is None
         if document_id is None:
             document_id = create_document(conn, document.canonical_id, document.source_type)
@@ -219,7 +360,7 @@ def ingest(
         )
     summary = Summary()
     documents = [
-        *collect_docs(scope, cache_dir, strip["docs_page"], releases, summary),
+        *collect_release_scoped(scope, cache_dir, strip, releases, summary),
         *collect_keps(scope, cache_dir, strip["kep_yaml"], synonyms, releases, summary),
     ]
     for document in documents:

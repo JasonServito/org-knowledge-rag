@@ -1,5 +1,5 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate seed ingest embed
+.PHONY: fmt check test-int up down migrate seed ingest reset-corpus embed
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -43,12 +43,19 @@ migrate:
 seed:
 	uv run python -m orgknow.ingestion.seed
 
-# Read the scope's files (INGEST_SCOPE, default s04) at the locked SHAs and store their versions,
+# Read the scope's files (INGEST_SCOPE, default full) at the locked SHAs and store their versions,
 # then chunk every version that has no chunks yet. Free and local; safe to re-run (a re-run adds
 # 0 versions and 0 chunks). Needs `make up`, `make migrate`, `make seed`: it only reads `releases`,
 # and stops before reading git if a manifest release is missing there or has other dates.
 ingest:
 	uv run python -m orgknow.ingestion.ingest
+
+# Empty the DEV database's corpus: documents, aliases, versions and chunks, with ids restarting at
+# 1 (S05-R1 decision 2). `releases` and `embeddings` are kept: vectors are a cache keyed by content
+# hash. Then run `make ingest` to rebuild. `make test-int` uses its own database, untouched here.
+reset-corpus:
+	docker compose exec -T db psql -U orgknow -d orgknow -c \
+		"TRUNCATE documents, document_aliases, document_versions, chunks RESTART IDENTITY CASCADE"
 
 # Embed every chunk text that has no vector for EMBEDDING_MODEL yet (one vector per unique text),
 # after deleting vectors no chunk uses. PAID: calls the Voyage API (needs VOYAGE_API_KEY), and

@@ -1,0 +1,4 @@
+/docs/setup/release/notes/     /releases/notes/   302
+/docs/setup/release/                 /releases/   301
+/docs/setup/version-skew-policy/     /releases/version-skew-policy/   301
+/docs/setup/release/version-skew-policy/     /releases/version-skew-policy/   301
