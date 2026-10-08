@@ -218,7 +218,7 @@ Tasks:
 - [x] **S06-T1 `[core]` Golden-set format and loader.**
   - Done when: a malformed file fails with the question id and field; a label matching 0 stored chunks is reported; hand-written fixtures cover each ADR-007 rule.
   - Deps: ADR-007.
-- [ ] **S06-T2 `[core]` Retrieval metrics.**
+- [x] **S06-T2 `[core]` Retrieval metrics.**
   - Done when: Recall@K, Hit@K, MRR, nDCG@K and distinct sections match hand-calculated values, edge cases included.
   - Deps: T1.
 - [ ] **S06-T3 `[core]` Answer checks AC1–AC3.**
