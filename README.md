@@ -66,6 +66,18 @@ uv run orgknow ask "What enforces pod security standards in-tree?"
 
 It prints one line of JSON: `answered` with citations (each with its release windows and a GitHub link at the snapshot commit), or `insufficient_evidence` with a reason. With `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` set, each ask also leaves one Langfuse trace, whose id is the JSON's `trace_id`. Without them, it prints "tracing off" and still answers. Exit codes: 0 when an answer prints, 1 on an error, 2 on bad usage.
 
+To evaluate the pipeline on the golden set (`EVAL_GOLDEN_PATH`, default `eval/golden_set/v0.yaml`; format in ADR-007):
+
+```bash
+make eval-check             # validate the golden file and count the stored texts each label matches (free)
+make eval-sections DOC=gate:LegacyServiceAccountTokenCleanUp   # a document's sections, as labels write them (free)
+make eval-smoke             # the smoke questions end to end (paid: one Claude call per question)
+make eval                   # every question (paid; run only when asked)
+make eval-table             # rebuild eval/results/ablation.md from every results folder (free)
+```
+
+A run stops before any paid call if a label matches no stored text. It embeds only the questions with no stored vector (`eval/question_vectors/<model>.json`, one Voyage request; a re-run makes 0), so retrieval is exactly repeatable. Each run writes `eval/results/<name>-<UTC time>/` (`run.json`, one `questions.jsonl` row per question with its hits, answer, metrics and checks, and `summary.json`), then rebuilds the ablation table. A failed ask is a row with its error, not a crash. `uv run python -m orgknow.eval run --name NAME` names the pipeline (default `dense`).
+
 Postgres listens on host port **5433** (not the default 5432), bound to localhost, so it doesn't clash with another Postgres on your machine. `make down` stops it; the data is kept in a named Docker volume.
 
 ## Development environment

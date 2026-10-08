@@ -224,7 +224,7 @@ Tasks:
 - [x] **S06-T3 `[core]` Answer checks AC1–AC3.**
   - Done when: each check passes and fails on hand-built answers.
   - Deps: T1.
-- [ ] **S06-T4 `[commodity]` Eval runner and ablation table.**
+- [x] **S06-T4 `[commodity]` Eval runner and ablation table.**
   - Done when: `make eval-smoke` writes the pinned results format; a failed ask is a recorded row; a second run makes 0 Voyage requests.
   - Deps: T2, T3.
 - [ ] **S06-T5 `[human]` Write and verify golden set v0.**

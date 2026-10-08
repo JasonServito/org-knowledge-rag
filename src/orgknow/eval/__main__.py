@@ -6,6 +6,11 @@
 - `sections CANONICAL_ID`: list a document's sections (canonical_id or alias) as labels write
   them, one line per distinct heading path in any version, first appearance first, each with
   its number of distinct texts.
+- `run [--smoke] [--name NAME]`: run the golden set (with `--smoke`, its `smoke: true`
+  questions) through retrieval and one answer call each, write a results folder under
+  EVAL_RESULTS_DIR (`runner.py`), then rebuild the ablation table. Paid: one Anthropic call per
+  question with hits, and one Voyage request when a question has no stored vector.
+- `table`: rebuild the ablation table from every results folder (`table.py`).
 
 Errors go to stderr, one line each. Exit codes: 0 done, 1 an error, 2 bad usage (argparse).
 """
@@ -14,9 +19,12 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+import anthropic
 import psycopg
 
 from orgknow.db.eval import canonical_ids, document_texts
+from orgknow.embeddings.voyage import VoyageEmbedder
+from orgknow.eval import runner
 from orgknow.eval.golden import (
     GoldenSetError,
     check_labels,
@@ -25,6 +33,8 @@ from orgknow.eval.golden import (
     load_golden_file,
     section_line,
 )
+from orgknow.eval.table import write_table
+from orgknow.generation.generator import AnthropicGenerator
 from orgknow.settings import Settings
 
 
@@ -59,6 +69,41 @@ def sections(settings: Settings, document: str) -> int:
     return 0
 
 
+def run(settings: Settings, smoke: bool, name: str) -> int:
+    """`make eval` / `make eval-smoke`: run the golden set, then rebuild the ablation table; 1 on
+    an error that stops the run. A failed ask doesn't stop it: it is a row with its error."""
+    anthropic_key, voyage_key = settings.anthropic_api_key, settings.voyage_api_key
+    if not anthropic_key:  # unset or empty
+        print(
+            "ANTHROPIC_API_KEY is not set: add the key to .env (see .env.example).",
+            file=sys.stderr,
+        )
+        return 1
+    # Voyage is needed only for questions with no stored vector: the run says so if one has none.
+    embedder = None
+    if voyage_key:
+        embedder = VoyageEmbedder(settings.voyage_api_url, voyage_key, settings.embedding_model)
+    client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
+    generator = AnthropicGenerator(client, settings)
+    try:
+        with psycopg.connect(settings.database_url) as conn:
+            runner.run(conn, embedder, generator, settings, smoke, name)
+    except GoldenSetError as error:
+        for line in error.errors:
+            print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
+        return 1
+    except runner.EvalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    return table(settings)
+
+
+def table(settings: Settings) -> int:
+    """`make eval-table`: rebuild the ablation table from every results folder."""
+    print(f"Ablation table: {write_table(settings.eval_results_dir)}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None, settings: Settings | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m orgknow.eval", description="The eval harness's commands (S06)."
@@ -69,13 +114,27 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         "sections", help="list a document's sections as labels write them"
     )
     sections_parser.add_argument("canonical_id", help="the document's canonical_id or an alias")
+    run_parser = commands.add_parser(
+        "run", help="run the golden set and write a results folder (paid)"
+    )
+    run_parser.add_argument(
+        "--smoke", action="store_true", help="run only the questions marked smoke: true"
+    )
+    run_parser.add_argument(
+        "--name", default="dense", help="the pipeline's name in the results (default: dense)"
+    )
+    commands.add_parser("table", help="rebuild the ablation table from every results folder")
     args = parser.parse_args(argv)
 
     if settings is None:
         settings = Settings()
     if args.command == "check":
         return check(settings)
-    return sections(settings, args.canonical_id)
+    if args.command == "sections":
+        return sections(settings, args.canonical_id)
+    if args.command == "run":
+        return run(settings, args.smoke, args.name)
+    return table(settings)
 
 
 if __name__ == "__main__":

@@ -1,21 +1,27 @@
-"""The golden-set label check and the section listing (S06-T1) against the test database.
+"""The golden-set label check and the section listing (S06-T1), and the eval run (S06-T4),
+against the test database.
 
-Every test builds its own rows inside `conn`'s rolled-back transaction; expected counts are
-counted by hand from those rows.
+Every test builds its own rows inside `conn`'s rolled-back transaction; expected counts and
+values are counted or calculated by hand from those rows and the fakes' outputs.
 """
 
+import hashlib
+import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
+from tests.conftest import FakeEmbedder, FakeGenerator
 
-from orgknow.db.chunks import add_chunks
+from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import add_alias, create_document
 from orgknow.db.eval import canonical_ids, document_texts
 from orgknow.db.models import NewChunk, NewVersion
 from orgknow.db.versions import insert_version
+from orgknow.embeddings.embedder import DIMENSIONS
 from orgknow.eval.golden import (
     GoldenSetError,
     Label,
@@ -24,6 +30,11 @@ from orgknow.eval.golden import (
     list_sections,
     load_golden_file,
 )
+from orgknow.eval.runner import EvalError, load_vectors, run
+from orgknow.eval.table import write_table
+from orgknow.generation.generator import GenerationError
+from orgknow.generation.schema import Generation, ModelAnswer, TokenUsage
+from orgknow.settings import Settings
 
 Conn = psycopg.Connection[TupleRow]
 
@@ -198,3 +209,490 @@ def test_sections_are_listed_by_first_appearance_across_versions(conn: Conn) -> 
 
     # "c intro" and "u" are in both versions: 1 text each. "Install" has 2 different texts.
     assert sections == [([], 1), (["Install"], 2), (["Usage"], 1), (["Setup"], 1)]
+
+
+# The eval run (S06-T4). Two stored pages, each text with a vector under the fake embedder's
+# model. The fake embeds every question as [0.5] * 1024, so every question gets the same 3 hits,
+# by cosine distance 1 - cos: "a intro" (all ones: the same direction, 0), "a install" (e1 + e2:
+# 1 - 1 / (16√2) = 0.955806) and "b usage" (e1: 1 - 0.5 / 16 = 0.96875).
+
+MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
+SHA = "2222222222222222222222222222222222222222"
+Q1 = "How do I install A?"
+Q2 = "What is A?"
+Q3 = "What did the private design doc decide?"
+GOLDEN = f"""\
+version: test
+questions:
+  - id: q01
+    question: {Q1}
+    mode: CURRENT
+    answerable: true
+    expected_answer: See Install.
+    smoke: true
+    labels:
+      - {{document: 'web:/test/a/', section: Install}}
+      - {{document: 'web:/test/b/'}}
+  - id: q02
+    question: {Q2}
+    mode: CURRENT
+    answerable: true
+    expected_answer: See the intro.
+    smoke: true
+    labels:
+      - {{document: 'web:/test/a/', section: ''}}
+  - id: q03
+    question: {Q3}
+    answerable: false
+    expected_answer: Insufficient evidence.
+    smoke: false
+    labels: []
+"""
+USAGE = {"input_tokens": 1000, "output_tokens": 300, "thinking_tokens": 200}  # FakeGenerator's
+# A cut-off answer: the API reported its tokens, so the error row keeps them.
+CUT_OFF = GenerationError(
+    "no usable answer from the model (stop reason: max_tokens)",
+    "max_tokens",
+    TokenUsage(input_tokens=500, output_tokens=16000, thinking_tokens=15000),
+)
+
+
+def _vector(*components: float) -> list[float]:
+    """A 1024-number vector starting with `components`, zeros after."""
+    return [*components] + [0.0] * (DIMENSIONS - len(components))
+
+
+def _page(
+    conn: Conn, canonical_id: str, title: str, chunks: list[tuple[list[str], str, list[float]]]
+) -> list[int]:
+    """A docs page current since 1.24 holding `chunks`, (heading path, text, vector) each, with
+    each text's vector under the fake embedder's model. Returns the chunk ids."""
+    version_id = insert_version(
+        conn,
+        NewVersion(
+            document_id=create_document(conn, canonical_id, "docs_page"),
+            content_hash=VERSION_HASH,
+            source_path="content/en/docs/test/page.md",
+            snapshot_repo="website",
+            snapshot_ref="release-1.24",
+            snapshot_sha=SHA,
+            valid_from_release=24,
+            valid_from_date=D24,
+            metadata={"title": title},
+        ),
+    )
+    new_chunks = [
+        NewChunk(ordinal=i, heading_path=path, text=text)
+        for i, (path, text, _) in enumerate(chunks)
+    ]
+    for _, text, vector in chunks:
+        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()  # rule R13
+        add_embedding(conn, content_hash, FakeEmbedder.model, vector)
+    return add_chunks(conn, version_id, new_chunks)
+
+
+@pytest.fixture
+def chunk_ids(conn: Conn, seeded_releases: None) -> dict[str, int]:
+    a_intro, a_install = _page(
+        conn,
+        "web:/test/a/",
+        "Page A",
+        [([], "a intro", [1.0] * DIMENSIONS), (["Install"], "a install", _vector(1.0, 1.0))],
+    )
+    [b_usage] = _page(conn, "web:/test/b/", "Page B", [(["Usage"], "b usage", _vector(1.0))])
+    return {"a intro": a_intro, "a install": a_install, "b usage": b_usage}
+
+
+@pytest.fixture
+def run_settings(settings: Settings, tmp_path: Path) -> Settings:
+    """The test database, the golden file above, and results and vectors under tmp_path. No
+    .env file, and the fake embedder's model, so the stored vectors above are searched."""
+    golden_path = tmp_path / "golden.yaml"
+    golden_path.write_text(GOLDEN, encoding="utf-8")
+    return Settings(
+        _env_file=None,
+        database_url=settings.database_url,
+        corpus_manifest_path=MANIFEST,
+        embedding_model=FakeEmbedder.model,
+        eval_golden_path=golden_path,
+        eval_results_dir=tmp_path / "results",
+        eval_vectors_dir=tmp_path / "vectors",
+    )
+
+
+class ScriptedGenerator:
+    """A `Generator` that returns, or raises, the next outcome per call: one call per question
+    with hits, in file order."""
+
+    def __init__(self, outcomes: list[ModelAnswer | Exception]) -> None:
+        self.outcomes = outcomes
+        self.calls: list[str] = []  # the prompts
+
+    def generate(self, system: str, prompt: str) -> Generation:
+        self.calls.append(prompt)
+        outcome = self.outcomes[len(self.calls) - 1]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return Generation(output=outcome, stop_reason="end_turn", usage=FakeGenerator.usage)
+
+
+def _refusing() -> FakeGenerator:
+    """Every question answered `insufficient_evidence`: for tests that only count calls."""
+    return FakeGenerator(
+        ModelAnswer(
+            answer_status="insufficient_evidence",
+            answer="",
+            evidence=[],
+            insufficient_evidence_reason="Not covered.",
+        )
+    )
+
+
+def _rows(folder: Path) -> list[dict[str, object]]:
+    lines = (folder / "questions.jsonl").read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines]
+
+
+def _key(question: str) -> str:
+    """A question's key in the vector file: the sha256 hex of its UTF-8 text."""
+    return hashlib.sha256(question.encode("utf-8")).hexdigest()
+
+
+def test_a_run_writes_the_pinned_results_format(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    generator = ScriptedGenerator(
+        [
+            ModelAnswer(
+                answer_status="answered",
+                answer="Follow page B.",
+                evidence=[chunk_ids["b usage"]],
+                insufficient_evidence_reason=None,
+            ),
+            CUT_OFF,  # q02: an ask error, recorded as a row
+            ModelAnswer(
+                answer_status="insufficient_evidence",
+                answer="",
+                evidence=[],
+                insufficient_evidence_reason="The sources don't cover it.",
+            ),
+        ]
+    )
+
+    folder = run(conn, FakeEmbedder(), generator, run_settings, smoke=False, name="dense")
+
+    golden_path = run_settings.eval_golden_path
+    golden_sha256 = hashlib.sha256(golden_path.read_bytes()).hexdigest()
+    run_info = json.loads((folder / "run.json").read_text(encoding="utf-8"))
+    started_at, finished_at = run_info.pop("started_at"), run_info.pop("finished_at")
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", started_at)
+    assert started_at <= finished_at
+    # The folder is named by the run's name and its start: 2026-10-08T10:00:00Z -> 20261008T100000Z.
+    assert folder.parent == run_settings.eval_results_dir
+    assert folder.name == "dense-" + started_at.replace("-", "").replace(":", "")
+    git_sha, git_dirty = run_info.pop("git_sha"), run_info.pop("git_dirty")
+    assert re.fullmatch(r"[0-9a-f]{40}", git_sha)
+    assert isinstance(git_dirty, bool)
+    assert run_info == {
+        "name": "dense",
+        "golden_path": str(golden_path),
+        "golden_sha256": golden_sha256,
+        "smoke": False,
+        "questions": 3,
+        "settings": {
+            "embedding_model": "fake-model",
+            "retrieval_top_k": 10,
+            "generation_model": "claude-opus-5-5",
+            "generation_effort": "medium",
+            "generation_max_tokens": 16000,
+        },
+    }
+
+    rows = _rows(folder)
+    assert [list(row) for row in rows] == [
+        [
+            *("id", "mode", "answerable", "hits", "answer", "metrics", "checks", "usage"),
+            *("latency_s", "error"),
+        ]
+    ] * 3
+    latencies = [row.pop("latency_s") for row in rows]
+    assert all(isinstance(latency, float) and latency >= 0 for latency in latencies)
+    hits = [
+        {
+            "rank": 1,
+            "chunk_id": chunk_ids["a intro"],
+            "canonical_id": "web:/test/a/",
+            "heading_path": [],
+            "distance": pytest.approx(0.0, abs=1e-6),
+        },
+        {
+            "rank": 2,
+            "chunk_id": chunk_ids["a install"],
+            "canonical_id": "web:/test/a/",
+            "heading_path": ["Install"],
+            "distance": pytest.approx(0.955806, abs=1e-6),
+        },
+        {
+            "rank": 3,
+            "chunk_id": chunk_ids["b usage"],
+            "canonical_id": "web:/test/b/",
+            "heading_path": ["Usage"],
+            "distance": pytest.approx(0.96875, abs=1e-6),
+        },
+    ]
+    # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
+    # nDCG (1/log2(3) + 1/log2(4)) / (1 + 1/log2(3)) = 1.130930 / 1.630930 = 0.693426.
+    assert rows[0] == {
+        "id": "q01",
+        "mode": "CURRENT",
+        "answerable": True,
+        "hits": hits,
+        "answer": {
+            "question": Q1,
+            "answer_status": "answered",
+            "answer": "Follow page B.",
+            "evidence": [
+                {
+                    "chunk_id": chunk_ids["b usage"],
+                    "document": "web:/test/b/",
+                    "title": "Page B",
+                    "section": "Usage",
+                    "source_type": "docs_page",
+                    "release_windows": [["1.24", None]],
+                    "claimed_status": None,
+                    "claimed_stage": None,
+                    "source_url": "https://github.com/kubernetes/website/blob/"
+                    f"{SHA}/content/en/docs/test/page.md",
+                }
+            ],
+            "insufficient_evidence_reason": None,
+            "model": "claude-opus-5-5",
+            "trace_id": None,
+        },
+        "metrics": {
+            "recall": 1.0,
+            "hit": 1,
+            "mrr": 0.5,
+            "ndcg": pytest.approx(0.693426, abs=1e-6),
+            "distinct_sections": 3,
+        },
+        "checks": {"ac1": True, "ac2": True, "ac3": None, "false_refusal": False},
+        "usage": USAGE,
+        "error": None,
+    }
+    # q02: the failed ask is a row. Its retrieval is still scored (its intro label is rank 1),
+    # and the checks are n/a: an answerable error row counts under errors only.
+    assert rows[1] == {
+        "id": "q02",
+        "mode": "CURRENT",
+        "answerable": True,
+        "hits": hits,
+        "answer": None,
+        "metrics": {"recall": 1.0, "hit": 1, "mrr": 1.0, "ndcg": 1.0, "distinct_sections": 3},
+        "checks": {"ac1": None, "ac2": None, "ac3": None, "false_refusal": None},
+        "usage": {"input_tokens": 500, "output_tokens": 16000, "thinking_tokens": 15000},
+        "error": "GenerationError: no usable answer from the model (stop reason: max_tokens)",
+    }
+    # q03: unanswerable, so no metrics; `insufficient_evidence` with a reason passes AC3.
+    assert rows[2] == {
+        "id": "q03",
+        "mode": None,
+        "answerable": False,
+        "hits": hits,
+        "answer": {
+            "question": Q3,
+            "answer_status": "insufficient_evidence",
+            "answer": "",
+            "evidence": [],
+            "insufficient_evidence_reason": "The sources don't cover it.",
+            "model": "claude-opus-5-5",
+            "trace_id": None,
+        },
+        "metrics": None,
+        "checks": {"ac1": None, "ac2": True, "ac3": True, "false_refusal": None},
+        "usage": USAGE,
+        "error": None,
+    }
+
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    latency_s_mean = summary.pop("latency_s_mean")
+    assert latency_s_mean == pytest.approx(sum(latencies) / 3)
+    # Means over q01 and q02. AC2 counts q01 and q03 (the rows with an answer); false refusals
+    # count q01 only (q02 has no answer). Tokens: 1000 + 500 + 1000 in, 300 + 16000 + 300 out.
+    assert summary == {
+        "name": "dense",
+        "golden_sha256": golden_sha256,
+        "started_at": started_at,
+        "questions": 3,
+        "answerable": 2,
+        "errors": 1,
+        "recall": 1.0,
+        "hit": 1.0,
+        "mrr": 0.75,
+        "ndcg": pytest.approx((0.693426 + 1.0) / 2, abs=1e-6),
+        "distinct_sections": 3.0,
+        "ac1": {"pass": 1, "total": 1},
+        "ac2": {"pass": 2, "total": 2},
+        "ac3": {"pass": 1, "total": 1},
+        "false_refusals": {"count": 0, "total": 1},
+        "input_tokens": 2500,
+        "output_tokens": 16600,
+    }
+    assert len(generator.calls) == 3
+
+    # The table reads the folder back; a folder without summary.json (like s04/) is skipped.
+    (run_settings.eval_results_dir / "s04").mkdir()
+    (run_settings.eval_results_dir / "s04" / "README.md").write_text("notes", encoding="utf-8")
+    table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
+    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run.
+    assert table.splitlines()[4:] == [
+        f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
+        "| 1.000 | 1.000 | 1.000 | 1.000 |"
+    ]
+
+
+def test_a_second_run_makes_no_voyage_request_and_retrieves_the_same(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    first_embedder, second_embedder = FakeEmbedder(), FakeEmbedder()
+
+    first = run(conn, first_embedder, _refusing(), run_settings, smoke=False, name="first")
+    second = run(conn, second_embedder, _refusing(), run_settings, smoke=False, name="second")
+
+    # One request with all 3 questions, as queries; then none.
+    assert first_embedder.calls == [("query", [Q1, Q2, Q3])]
+    assert second_embedder.calls == []
+    vectors_path = run_settings.eval_vectors_dir / "fake-model.json"
+    text = vectors_path.read_text(encoding="utf-8")
+    assert list(json.loads(text)) == sorted([_key(Q1), _key(Q2), _key(Q3)])  # keys sorted
+    assert json.loads(text)[_key(Q1)] == [0.5] * DIMENSIONS
+    # The second run read the stored vectors: the same hits and metrics.
+    for before, after in zip(_rows(first), _rows(second), strict=True):
+        assert (before["hits"], before["metrics"]) == (after["hits"], after["metrics"])
+
+
+def test_a_deleted_vector_is_the_only_one_embedded_again(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    run(conn, FakeEmbedder(), _refusing(), run_settings, smoke=False, name="first")
+    vectors_path = run_settings.eval_vectors_dir / "fake-model.json"
+    vectors = json.loads(vectors_path.read_text(encoding="utf-8"))
+    del vectors[_key(Q2)]
+    vectors_path.write_text(json.dumps(vectors), encoding="utf-8")
+    embedder = FakeEmbedder()
+
+    run(conn, embedder, _refusing(), run_settings, smoke=False, name="second")
+
+    assert embedder.calls == [("query", [Q2])]  # exactly 1 request, for exactly that question
+    assert set(json.loads(vectors_path.read_text(encoding="utf-8"))) == {
+        _key(Q1),
+        _key(Q2),
+        _key(Q3),
+    }
+
+
+def test_a_smoke_run_runs_only_the_smoke_questions(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    embedder = FakeEmbedder()
+
+    folder = run(conn, embedder, _refusing(), run_settings, smoke=True, name="dense")
+
+    assert [row["id"] for row in _rows(folder)] == ["q01", "q02"]  # q03 has smoke: false
+    assert embedder.calls == [("query", [Q1, Q2])]
+    run_info = json.loads((folder / "run.json").read_text(encoding="utf-8"))
+    assert (run_info["smoke"], run_info["questions"]) == (True, 2)
+
+
+def test_a_label_matching_nothing_stops_the_run_before_any_call(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    golden_path = run_settings.eval_golden_path
+    golden_path.write_text(
+        GOLDEN.replace("'web:/test/b/'", "'web:/test/missing/'"), encoding="utf-8"
+    )
+    embedder, generator = FakeEmbedder(), _refusing()
+
+    with pytest.raises(EvalError) as error:
+        run(conn, embedder, generator, run_settings, smoke=False, name="dense")
+
+    assert str(error.value) == (
+        "1 label matches no stored text (see `make eval-check`): "
+        "q01  web:/test/missing/  (whole document)  0 texts"
+    )
+    assert (embedder.calls, generator.calls) == ([], [])
+    assert not run_settings.eval_results_dir.exists()
+
+
+def test_a_question_with_no_vector_and_no_embedder_stops_the_run(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    generator = _refusing()
+
+    with pytest.raises(EvalError, match="3 questions have no stored vector and VOYAGE_API_KEY"):
+        run(conn, None, generator, run_settings, smoke=False, name="dense")
+
+    assert generator.calls == []
+
+
+def test_a_missing_or_empty_vector_file_holds_no_vectors(tmp_path: Path) -> None:
+    path = tmp_path / "voyage-4-large.json"
+    assert load_vectors(path) == {}
+    path.write_text("", encoding="utf-8")
+    assert load_vectors(path) == {}
+
+
+def test_a_vector_of_the_wrong_length_is_an_error(tmp_path: Path) -> None:
+    path = tmp_path / "voyage-4-large.json"
+    path.write_text(json.dumps({"ab12": [0.5] * 1023}), encoding="utf-8")
+
+    with pytest.raises(EvalError, match=r"the vector for ab12 has 1023 numbers, expected 1024"):
+        load_vectors(path)
+
+
+def test_a_question_with_no_hits_scores_0_without_a_model_call(
+    conn: Conn, run_settings: Settings
+) -> None:
+    # The labelled texts are stored, but none has a vector: retrieval returns nothing.
+    for canonical_id, path in (("web:/test/a/", "Install"), ("web:/test/b/", "Usage")):
+        version_id = insert_version(
+            conn,
+            NewVersion(
+                document_id=create_document(conn, canonical_id, "docs_page"),
+                content_hash=VERSION_HASH,
+                source_path="content/en/docs/test/page.md",
+                snapshot_repo="website",
+                snapshot_ref="release-1.24",
+                snapshot_sha=SHA,
+                valid_from_release=24,
+                valid_from_date=D24,
+                metadata={"title": "Page"},
+            ),
+        )
+        add_chunks(
+            conn,
+            version_id,
+            [
+                NewChunk(ordinal=0, heading_path=[], text=f"{canonical_id} intro"),
+                NewChunk(ordinal=1, heading_path=[path], text=f"{canonical_id} {path}"),
+            ],
+        )
+    generator = _refusing()
+
+    folder = run(conn, FakeEmbedder(), generator, run_settings, smoke=False, name="dense")
+
+    rows = _rows(folder)
+    assert rows[0]["hits"] == []
+    assert rows[0]["metrics"] == {
+        "recall": 0.0,
+        "hit": 0,
+        "mrr": 0.0,
+        "ndcg": 0.0,
+        "distinct_sections": 0,
+    }
+    assert rows[0]["usage"] is None
+    answer = rows[0]["answer"]
+    assert isinstance(answer, dict)
+    assert answer["insufficient_evidence_reason"] == "no evidence retrieved"
+    assert generator.calls == []
+    assert [row["error"] for row in rows] == [None, None, None]
