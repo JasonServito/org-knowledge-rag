@@ -7,7 +7,7 @@
 
 ## Outcome
 
-`make eval` scores a frozen golden set v0 (30–50 human-verified questions) on today's pipeline (dense top-10 retrieval + one answer call), and the dense-baseline row is committed in the ablation table.
+`make eval` scores a frozen golden set v0 (30–50 questions, verified by Claude and spot-checked by the developer: T5 decision 1) on today's pipeline (dense top-10 retrieval + one answer call), and the dense-baseline row is committed in the ablation table.
 
 ## Why now
 
@@ -18,7 +18,7 @@
 ## Exit checks
 
 - [ ] ADR-007 (golden-set schema and labeling) is Accepted.
-- [ ] Golden set v0: 30–50 questions, written or verified by the developer; every label matches at least one stored chunk; frozen.
+- [ ] Golden set v0: 30–50 questions, verified by Claude and spot-checked by the developer (T5 decision 1); every label matches at least one stored chunk; frozen.
 - [ ] `make eval-smoke` (10–15 questions) and `make eval` (all) run end to end locally (AC8, second part).
 - [ ] The dense-baseline row is committed in the ablation table, with its run-to-run spread.
 - [ ] `docs/evaluation.md` defines each metric; the thresholds are recorded in the product spec.
@@ -75,7 +75,12 @@ These mirror `docs/backlog.md`; details live here.
 ### S06-T5: Write and verify golden set v0 `[human]`
 
 - **Goal:** 30–50 questions from the 20 Appendix A seeds, with the blueprint §19.1 mix, labeled per ADR-007.
-- **Done when:** the loader's label check passes on the file and the developer has verified every question.
+- **Done when:** the loader's label check passes on the file; Claude has verified every question against the stored text, and the developer has spot-checked a sample (1 per class plus 1 random). *(Reworded 2026-10-08, decision 1 below; was "the developer has verified every question".)*
+- **Decisions (developer, 2026-10-08):**
+  1. **Sign-off:** 3 independent Claude passes verify every question (the expected answer and each label against the stored chunk text); the developer spot-checks q40, q24, q18, q19, q48 and q21 (random, seed 20261008). Known limit: the other 37 questions have no human check.
+  2. **Label breadth (A-primary):** label each fact's sources among the docs page (website or governance doc), the KEP, the gate file, the release's CHANGELOG section (`v1.X.Y >`, never alpha/beta/rc copies) and blog posts or sections about this topic. No pre-release copies, no passing mentions. Hit@K and MRR credit any labeled source; Recall@K reads as coverage of the primary sources. Rejected: every copy (A-strict: ~5–10 labels per question, Recall dominated by duplicates); one source per fact (B: good hits score 0); "any of" label groups (D: an ADR-007 change, moved to Proposed additions for v1).
+  3. **Release range:** a source from outside `release_window` counts if it correctly describes the asked-about period (ADR-007: the window is what the question asks about); at least one source stored inside the range is labeled where one exists.
+- **Candidates:** Claude's draft is `eval/candidates/v0-draft.yaml` (43 questions, 184 labels, label check passing); the developer copies it into `eval/golden_set/v0.yaml` after the spot-check.
 - **Deps:** T1 (the format and the label check).
 
 ### S06-T6: Dense baseline `[commodity]`
