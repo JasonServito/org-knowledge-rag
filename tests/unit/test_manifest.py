@@ -1,10 +1,12 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from orgknow.ingestion.manifest import (
+    BlogGroup,
+    DateGroup,
     ReleaseGroup,
     Scope,
     Snapshot,
@@ -120,18 +122,20 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
         24, "release-1.24", "98e2db7d9cc710554b486ad56274e362af03b438"
     )
     assert docs.snapshots[-1] == Snapshot(37, "main", "256a1f49419171f6c7fbdb1857146da1c63eb533")
-    assert scope.kep_repo == "enhancements"
-    assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
-    # Master at each release date 1.20 -> 1.37, then head.
-    assert [s.release for s in scope.kep_snapshots] == [*range(20, 38), None]
-    assert scope.kep_snapshots[0] == Snapshot(
-        20, "master", "2df83383d452cf5dd029de73e1963543dbf37998"
-    )
-    assert scope.kep_snapshots[-1] == Snapshot(
+    # The traced KEP only (sources.kep.traced), from master at each release date 1.20 -> 1.37,
+    # then head.
+    (keps,) = scope.date_groups
+    assert (keps.source_type, keps.repo) == ("kep", "enhancements")
+    assert keps.paths == ("keps/sig-auth/2579-psp-replacement/",)
+    assert [s.release for s in keps.snapshots] == [*range(20, 38), None]
+    assert keps.snapshots[0] == Snapshot(20, "master", "2df83383d452cf5dd029de73e1963543dbf37998")
+    assert keps.snapshots[-1] == Snapshot(
         None, "master", "4be81e27aef5d252972fd02b5a9479a18982dfe5"
     )
-    assert scope.kep_snapshots[-1].label == "head"
+    assert keps.snapshots[-1].label == "head"
     assert docs.snapshots[0].label == "1.24"
+    assert scope.blog is None  # no blog in S04
+    assert scope.changelogs is None  # no CHANGELOG in S04
 
 
 def test_loads_the_full_scope_from_1_20() -> None:
@@ -176,7 +180,93 @@ def test_loads_the_full_scope_from_1_20() -> None:
         "content/en/docs/reference/command-line-tools-reference/feature-gates-removed/",
     )
     assert gates.snapshots == docs.snapshots
-    assert scope.keps == ((2579, "keps/sig-auth/2579-psp-replacement/"),)
+    # S05-T4: every KEP in sources.kep.sig_dirs, and both governance groups, each from its
+    # repo's default branch at every release date, then head (lock: release_date_snapshots).
+    keps, community, sig_release = scope.date_groups
+    assert keps == DateGroup(
+        "kep",
+        "enhancements",
+        ("keps/sig-release/", "keps/sig-auth/", "keps/sig-network/"),
+        keps.snapshots,
+    )
+    assert (community.source_type, community.repo) == ("governance_doc", "community")
+    assert community.paths == (
+        "sig-release/README.md",
+        "sig-release/charter.md",
+        "sig-auth/README.md",
+        "sig-auth/charter.md",
+        "sig-network/README.md",
+        "sig-network/charter.md",
+        "contributors/devel/sig-release/",
+    )
+    assert (sig_release.source_type, sig_release.repo) == ("governance_doc", "sig-release")
+    assert sig_release.paths == ("release-engineering/",)
+    assert [s.release for s in sig_release.snapshots] == [*range(20, 38), None]
+    assert community.snapshots[0] == Snapshot(
+        20, "main", "ad91093a4a38e2655e55dcb1fac8ed04eeceae82"
+    )
+    assert sig_release.snapshots[-1] == Snapshot(
+        None, "master", "49d129fa10676ef91d821c006494bfddd5d1fcd2"
+    )
+    # S05-T5: the blog, one first-parent log of sources.blog_post.paths on website main up to
+    # the lock's website head; in scope from 1.20's release date (2020-12-08, 00:00 UTC); the
+    # pinned permalink.
+    assert scope.blog == BlogGroup(
+        "blog_post",
+        "website",
+        "main",
+        "256a1f49419171f6c7fbdb1857146da1c63eb533",
+        ("content/en/blog/_posts/",),
+        datetime(2020, 12, 8, tzinfo=UTC),
+        "/:section/:year/:month/:day/:slug/",
+    )
+    # S05-T6: the CHANGELOGs (the kubernetes entry of sources.release_record), one file per
+    # release 1.20 -> 1.37, all read at the kubernetes lock head: a snapshot of their own, not a
+    # website release branch (parked P2). CHANGELOG-1.38.md exists at the head, but 1.38 isn't a
+    # manifest release, so it's never listed.
+    changelogs = scope.changelogs
+    assert changelogs is not None
+    assert (changelogs.source_type, changelogs.repo) == ("release_record", "kubernetes")
+    assert changelogs.snapshot == Snapshot(
+        None, "master", "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5"
+    )
+    assert changelogs.files[0] == (20, "CHANGELOG/CHANGELOG-1.20.md")
+    assert changelogs.files[-1] == (37, "CHANGELOG/CHANGELOG-1.37.md")
+    assert [release for release, _ in changelogs.files] == list(range(20, 38))
+    assert all(path == f"CHANGELOG/CHANGELOG-1.{r}.md" for r, path in changelogs.files)
+
+
+def test_changelogs_are_read_only_from_the_locked_default_branch(tmp_path: Path) -> None:
+    # The lock holds only the default branch's head, so a CHANGELOG entry naming another branch
+    # can't be read at the lock's SHA.
+    text = REAL_MANIFEST.read_text(encoding="utf-8")
+    old = "      branch: master\n"
+    assert text.count(old) == 1
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(text.replace(old, "      branch: release-1.37\n"), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"kubernetes branch release-1\.37 is not the locked"):
+        load_scope(manifest, REAL_LOCK, "full")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("blog_post: all", "blog_post: {from_release: '1.20'}", "blog_post must be `all`"),
+        # Hugo never renders a draft, so the publication rules assume drafts are left out.
+        ("exclude_drafts: true", "exclude_drafts: false", "exclude_drafts must be true"),
+    ],
+)
+def test_the_blog_scope_is_all_posts_without_drafts(
+    tmp_path: Path, old: str, new: str, message: str
+) -> None:
+    text = REAL_MANIFEST.read_text(encoding="utf-8")
+    assert old in text
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(text.replace(old, new), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_scope(manifest, REAL_LOCK, "full")
 
 
 def test_an_unknown_scope_is_refused() -> None:
@@ -204,7 +294,7 @@ def test_a_file_that_two_groups_would_read_is_refused(docs_path: str, record_pat
     records = ReleaseGroup("release_record", "website", (record_path,), SNAPSHOTS)
 
     with pytest.raises(ValueError, match="match the same files") as raised:
-        Scope("test", (docs, records), "enhancements", (), ())
+        Scope("test", (docs, records), ())
 
     assert f"docs_page path {docs_path}" in str(raised.value)
     assert f"release_record path {record_path}" in str(raised.value)

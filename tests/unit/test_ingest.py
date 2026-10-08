@@ -14,24 +14,36 @@ from typing import Any
 import pytest
 
 from orgknow.db.models import Release, VersionData
+from orgknow.ingestion.blog import Entry, publication
 from orgknow.ingestion.ingest import (
     Document,
     Summary,
+    blog_document,
+    changelog_document,
+    collect_changelogs,
     document_from_chain,
     gate_document_from_chain,
+    governance_document,
     is_gate_file,
+    kep_chains,
+    kep_document,
+    kep_files_state,
     read_redirects,
     release_problems,
     without_duplicate_ids,
 )
 from orgknow.ingestion.manifest import (
+    BlogGroup,
+    ChangelogGroup,
+    DateGroup,
     ReleaseGroup,
     Snapshot,
     load_normalization,
     load_releases,
     load_scope,
 )
-from orgknow.ingestion.renames import build_chains, gate_link_rules
+from orgknow.ingestion.normalize import docs_state
+from orgknow.ingestion.renames import build_chains, date_link_rules, gate_link_rules
 
 ROOT = Path(__file__).parents[2]
 MANIFEST = ROOT / "config" / "corpus_manifest.yaml"
@@ -420,3 +432,319 @@ def test_two_chains_with_one_id_are_an_error_never_a_merge() -> None:
         f"gate:A: 2 chains have this id, so none is stored (first files: {GATES}A.md, "
         f"{GATES}a-copy.md)"
     ]
+
+
+# --- KEPs and governance docs (S05-T4) --------------------------------------------------------
+
+# Enhancements `master` at the 1.20 and 1.21 release dates (config/corpus_manifest.lock.yaml).
+AT_20 = Snapshot(20, "master", "2df83383d452cf5dd029de73e1963543dbf37998")
+AT_21 = Snapshot(21, "master", "a500df8dc9597839caf8616ec4d03885274593f4")
+KEPS = DateGroup("kep", "enhancements", ("keps/sig-auth/", "keps/sig-network/"), (AT_20, AT_21))
+KEP_STRIP = load_normalization(MANIFEST)["kep_yaml"]
+OLD_KEP = "keps/sig-auth/0014-dynamic-audit-configuration.md"
+
+
+def test_kep_files_group_into_one_chain_per_kep() -> None:
+    # Real paths: KEP-1669's folder was renamed (graceful-termination-... up to the 1.23 snapshot,
+    # proxy-terminating-endpoints from 1.24); here the rename falls between two snapshots. The
+    # old single-file KEP and sig-network's index exist at 1.20 only (spike §7 R).
+    graceful = "keps/sig-network/1669-graceful-termination-local-external-traffic-policy/"
+    proxy = "keps/sig-network/1669-proxy-terminating-endpoints/"
+    files: dict[str, list[bytes | None]] = {
+        graceful + "README.md": [b"r1", None],
+        graceful + "kep.yaml": [b"k1", None],
+        proxy + "README.md": [None, b"r2"],
+        proxy + "kep.yaml": [None, b"k2"],
+        OLD_KEP: [b"old", None],
+        "keps/sig-network/README.md": [b"# SIG Network KEPs", None],
+    }
+
+    chains, skipped = kep_chains(files, KEPS.snapshots)
+
+    # One chain per KEP, whatever its folder is called: the number is the id (ADR-002 D4).
+    assert chains == {
+        "kep:sig-auth/0014-dynamic-audit-configuration": [{OLD_KEP: b"old"}, {}],
+        "kep:1669": [
+            {graceful + "README.md": b"r1", graceful + "kep.yaml": b"k1"},
+            {proxy + "README.md": b"r2", proxy + "kep.yaml": b"k2"},
+        ],
+    }
+    assert skipped == ["1.20 keps/sig-network/README.md: an index of the SIG's KEPs, not a KEP"]
+
+
+def test_a_kep_number_with_two_folders_at_one_snapshot_fails() -> None:
+    # 0 on real data: 1669, 3257 and 4444 never have both folder names at one snapshot.
+    both = {
+        "keps/sig-auth/3257-trust-anchor-sets/README.md": b"# A",
+        "keps/sig-auth/3257-trust-anchor-sets/kep.yaml": b"title: A\n",
+        "keps/sig-auth/3257-cluster-trust-bundles/README.md": b"# B",
+        "keps/sig-auth/3257-cluster-trust-bundles/kep.yaml": b"title: B\n",
+    }
+
+    with pytest.raises(ValueError, match="2 folders at one snapshot"):
+        kep_files_state(both, KEP_STRIP, {"GA": "stable"})
+
+
+def test_an_old_single_file_kep_is_a_document_of_its_own() -> None:
+    raw = (
+        ROOT / "tests/fixtures/kep_old/0014-dynamic-audit-configuration-excerpt-1.20.md"
+    ).read_bytes()
+    # Real merge times (`git log --first-parent -1 --format=%cI`): the last change before the
+    # 1.20 snapshot, and its removal before 1.21 (it became the folder 600-dynamic-audit-...).
+    written = datetime(2019, 7, 4, 15, 52, 37, tzinfo=UTC)  # 2019-07-04T08:52:37-07:00
+    removed = datetime(2020, 12, 22, 14, 2, 28, tzinfo=UTC)  # 273591aa, 2020-12-22T06:02:28-08:00
+
+    document = kep_document(
+        KEPS,
+        "kep:sig-auth/0014-dynamic-audit-configuration",
+        [{OLD_KEP: raw}, {}],
+        [written, removed],
+        KEP_STRIP,
+        {"GA": "stable"},
+        load_releases(MANIFEST),
+    )
+
+    # S05-R2 decision 3: the id pinned in the contract; claims from the front matter. Its text
+    # is from 2019: the date is kept, and the release window starts at 20 (decision 1).
+    assert (document.canonical_id, document.source_type, document.aliases) == (
+        "kep:sig-auth/0014-dynamic-audit-configuration",
+        "kep",
+        [],
+    )
+    (version,) = document.versions
+    assert (version.claimed_status, version.claimed_stage) == ("implementable", None)
+    assert (version.valid_from_date, version.valid_until_date) == (written, removed)
+    assert (version.valid_from_release, version.valid_until_release) == (20, 20)
+    assert (version.source_path, version.snapshot_sha) == (OLD_KEP, AT_20.sha)
+
+
+RELENG = "release-engineering/"
+VERSIONING, MOVED = RELENG + "versioning.md", RELENG + "reference/versioning.md"
+
+
+def test_an_old_path_back_after_its_move_is_a_duplicate_id_error() -> None:
+    # 0 on real data: versioning.md moves at 1.37 and a new versioning.md appears at head. Its
+    # chain starts at the moved chain's first path, so both have one id: neither is stored.
+    snapshots = (
+        Snapshot(36, "master", "760d54e82b76a13d1e8423d9143028c8220dfdb2"),
+        Snapshot(37, "master", "9ad626fddbec5fe4757dc9882b8b9815f37ae450"),
+        Snapshot(None, "master", "49d129fa10676ef91d821c006494bfddd5d1fcd2"),
+    )
+    group = DateGroup("governance_doc", "sig-release", (RELENG,), snapshots)
+    listings = [
+        {VERSIONING: b"# Versioning\n"},
+        {MOVED: b"# Versioning\n"},
+        {MOVED: b"# Versioning\n", VERSIONING: b"# Back\n"},
+    ]
+    types = {VERSIONING: "governance_doc", MOVED: "governance_doc"}
+    # The move is linked by git similarity in real data; here by a stand-in.
+    chains = build_chains(
+        listings,
+        date_link_rules(),
+        lambda after, paths: [(VERSIONING, MOVED)] if after == 1 else [],
+        types,
+    )
+    hand_made = [
+        [datetime(2026, 2, 13, tzinfo=UTC), None, None],
+        [None, None, datetime(2026, 9, 1, tzinfo=UTC)],
+    ]
+    documents = [
+        governance_document(
+            group,
+            [
+                None if p is None else (p, listing[p])
+                for p, listing in zip(paths, listings, strict=True)
+            ],
+            changed_at,
+            load_releases(MANIFEST),
+        )
+        for paths, changed_at in zip(chains.paths, hand_made, strict=True)
+    ]
+    summary = Summary()
+
+    assert without_duplicate_ids(documents, summary) == []
+    assert summary.failures == [
+        "sig-release:release-engineering/versioning.md: 2 chains have this id, so none is "
+        "stored (first files: release-engineering/versioning.md, release-engineering/versioning.md)"
+    ]
+
+
+# --- Blog posts: the id is the URL at publication; later URLs are aliases (S05-T5) ------------
+
+BLOG = ROOT / "tests" / "fixtures" / "blog"
+POSTS = "content/en/blog/_posts/"
+BLOG_GROUP = BlogGroup(
+    "blog_post",
+    "website",
+    "main",
+    "256a1f49419171f6c7fbdb1857146da1c63eb533",
+    (POSTS,),
+    datetime(2020, 12, 8, tzinfo=UTC),
+    "/:section/:year/:month/:day/:slug/",
+)
+
+
+def _post_entries(history: list[tuple[str, str, str | None]]) -> list[Entry]:
+    """(committer time as git prints it, path then, fixture under tests/fixtures/blog/)."""
+    strip = load_normalization(MANIFEST)["blog_post"]
+    return [
+        Entry(
+            datetime.fromisoformat(when).astimezone(UTC),
+            "c" * 40,
+            path,
+            None if name is None else docs_state(path, (BLOG / name).read_bytes(), strip),
+        )
+        for when, path, name in history
+    ]
+
+
+def _blog_document(history: list[tuple[str, str, str | None]]) -> Document:
+    entries = _post_entries(history)
+    published = publication(entries)
+    assert published is not None
+    return blog_document(BLOG_GROUP, entries, published, load_releases(MANIFEST))
+
+
+def test_a_blog_post_is_identified_by_its_url_at_publication() -> None:
+    # Spike §5 I, post 5: published at 17:00 UTC as 11-12 (the run contract's pinned id); its
+    # last version is dated 11-11, so that URL is an alias. Real commit times and excerpts.
+    path = POSTS + "2025-11-12-ingress-nginx-retirement.md"
+    document = _blog_document(
+        [
+            ("2025-11-12T07:49:40-08:00", path, "ingress-nginx-retirement/35d8dfc2-excerpt.md"),
+            ("2025-11-12T09:17:42-08:00", path, "ingress-nginx-retirement/2b1598fc-excerpt.md"),
+            ("2025-11-12T09:53:41-08:00", path, "ingress-nginx-retirement/fe122837-excerpt.md"),
+            (
+                "2026-02-21T17:01:37+05:30",
+                POSTS + "2025/ingress-nginx-retirement.md",
+                "ingress-nginx-retirement/fe122837-excerpt.md",
+            ),
+        ]
+    )
+
+    assert document.canonical_id == "web:/blog/2025/11/12/ingress-nginx-retirement/"
+    assert document.aliases == ["web:/blog/2025/11/11/ingress-nginx-retirement/"]
+    assert document.source_type == "blog_post"
+    assert len(document.versions) == 3  # the year-folder move (R100) adds none
+
+
+def test_a_blog_url_changed_by_a_rename_is_an_alias() -> None:
+    # Spike §5 I, post 4: published as 09-23 (`date: draft`, so the bundle folder's date), then
+    # renamed and dated 10-06 (website `_redirects.base` maps the old URL to the new one).
+    folder = "headlamp-karpenter-plugin"
+    document = _blog_document(
+        [
+            (
+                "2025-10-05T09:54:57-07:00",
+                POSTS + f"2025-09-23-{folder}/index.md",
+                f"{folder}/e5c44148-excerpt.md",
+            ),
+            (
+                "2025-10-06T18:23:12+01:00",
+                POSTS + f"2025-10-06-{folder}/index.md",
+                f"{folder}/5eaca101-excerpt.md",
+            ),
+        ]
+    )
+
+    assert document.canonical_id == (
+        "web:/blog/2025/09/23/introducing-headlamp-plugin-for-karpenter/"
+    )
+    assert document.aliases == ["web:/blog/2025/10/06/introducing-headlamp-plugin-for-karpenter/"]
+
+
+def test_a_front_matter_alias_equal_to_the_id_is_skipped() -> None:
+    # Spike §5 I, post 6: published as 02-26, re-dated 05-15. The new version's `aliases` list
+    # the old URL twice (with and without a slash): both are the id, so neither is an alias.
+    path = POSTS + "2026/ccm-metric-route-sync-total.md"
+    document = _blog_document(
+        [
+            ("2026-04-22T11:13:14-07:00", path, "ccm-metric-route-sync-total/02ab95c9-excerpt.md"),
+            ("2026-05-16T00:18:30+05:30", path, "ccm-metric-route-sync-total/73f7fa85-excerpt.md"),
+        ]
+    )
+
+    assert document.canonical_id == "web:/blog/2026/02/26/ccm-new-metric-route-sync-total/"
+    assert document.aliases == ["web:/blog/2026/05/15/ccm-new-metric-route-sync-total/"]
+
+
+# --- CHANGELOGs (S05-T6) ---------------------------------------------------------------------
+
+CHANGELOG_37 = ROOT / "tests" / "fixtures" / "kubernetes" / "CHANGELOG-1.37-excerpt.md"
+CHANGELOGS = ChangelogGroup(
+    "release_record",
+    "kubernetes",
+    # The kubernetes lock head (config/corpus_manifest.lock.yaml).
+    Snapshot(None, "master", "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5"),
+    ((37, "CHANGELOG/CHANGELOG-1.37.md"),),
+)
+# The head commit's committer time, as `git log -1 --format=%cI 7c596ad7` prints it in the clone.
+HEAD_TIME = datetime(2026, 9, 30, 1, 30, 57, tzinfo=UTC)
+
+
+def test_a_changelog_is_one_document_speaking_for_its_release() -> None:
+    raw = CHANGELOG_37.read_bytes()
+
+    document = changelog_document(CHANGELOGS, 37, "CHANGELOG/CHANGELOG-1.37.md", raw, HEAD_TIME)
+
+    assert (document.canonical_id, document.source_type) == ("changelog:1.37", "release_record")
+    assert document.aliases == []
+    (version,) = document.versions
+    # [R, R], set at insert; the date window from the head commit's time, open (decision 6).
+    assert (version.valid_from_release, version.valid_until_release) == (37, 37)
+    assert (version.valid_from_date, version.valid_until_date) == (HEAD_TIME, None)
+    assert (version.snapshot_repo, version.snapshot_ref, version.snapshot_sha) == (
+        "kubernetes",
+        "master",
+        "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5",
+    )
+    assert version.source_path == "CHANGELOG/CHANGELOG-1.37.md"
+    # No front matter: the metadata holds only the title (decision 4).
+    assert version.metadata == {"title": "CHANGELOG-1.37"}
+
+
+def test_a_changelog_hash_covers_the_text_left_out_of_chunks() -> None:
+    # The TOC and the download tables are not chunked (decision 8), but they are hashed: an edit
+    # to either is a new version, as for any source (ADR-002 D2).
+    text = CHANGELOG_37.read_text(encoding="utf-8")
+    sha512_row = "| 5138cca25b67c329"  # line 168, the first Source Code row
+    toc_entry = "- [v1.37.1](#v1371)"  # line 3
+    assert text.count(sha512_row) == 1 and text.count(toc_entry) == 1
+
+    def version_hash(changed: str) -> str:
+        document = changelog_document(
+            CHANGELOGS, 37, "CHANGELOG/CHANGELOG-1.37.md", changed.encode(), HEAD_TIME
+        )
+        return document.versions[0].content_hash
+
+    hashes = {
+        version_hash(text),
+        version_hash(text.replace(sha512_row, "| 0000cca25b67c329")),
+        version_hash(text.replace(toc_entry, "- [v1.37.2](#v1372)")),
+    }
+    assert len(hashes) == 3
+
+
+def test_a_listed_changelog_that_is_absent_or_not_utf8_is_reported(
+    make_git_repo: Callable[[str], Any],
+) -> None:
+    # Hand-made: 1.35 isn't valid UTF-8, 1.36 is missing at the head, 1.37 is the real excerpt.
+    repo = make_git_repo("kubernetes")
+    head = repo.commit(
+        {
+            "CHANGELOG/CHANGELOG-1.35.md": b"# v1.35.0\n\n\xff\n",
+            "CHANGELOG/CHANGELOG-1.37.md": CHANGELOG_37.read_bytes(),
+        },
+        when="2026-09-30T03:30:57+02:00",
+    )
+    files = tuple((r, f"CHANGELOG/CHANGELOG-1.{r}.md") for r in (35, 36, 37))
+    group = ChangelogGroup("release_record", "kubernetes", Snapshot(None, "master", head), files)
+    summary = Summary()
+
+    documents = collect_changelogs(group, repo.path.parent, summary)
+
+    # The others are still stored, dated by the head commit's time.
+    assert [d.canonical_id for d in documents] == ["changelog:1.37"]
+    assert documents[0].versions[0].valid_from_date == HEAD_TIME
+    assert summary.failures[0].startswith("CHANGELOG/CHANGELOG-1.35.md: not valid UTF-8")
+    assert summary.failures[1:] == [f"CHANGELOG/CHANGELOG-1.36.md: absent at head ({head})"]

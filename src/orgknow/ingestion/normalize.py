@@ -13,12 +13,14 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
-# Front matter: a `---` line (after any blank lines), the YAML, then a closing `---` line.
-FRONT_MATTER = re.compile(r"\A(?:[ \t]*\n)*---[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
+# Front matter: a line of 3 or more dashes (after any blank lines), the YAML, then a closing
+# `---` line. Hugo renders a post that opens with `------` (the VAP GA post; S05-R2 sitting).
+FRONT_MATTER = re.compile(r"\A(?:[ \t]*\n)*-{3,}[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.S)
 LINK_TARGET = re.compile(r"\]\([^)]*\)")  # [text](url) -> [text]
 LINK_DEFINITION = re.compile(r"^(\s*\[[^\]]+\]:)[ \t]*\S.*$", re.M)  # [id]: url -> [id]:
 
@@ -29,7 +31,9 @@ class FileState:
 
     content_hash: str
     source_path: str
-    metadata: dict[str, Any]  # parsed front matter (or kep.yaml), stripped keys included
+    # Parsed front matter (or kep.yaml), stripped keys included. A governance doc has none: its
+    # metadata holds only its title.
+    metadata: dict[str, Any]
     claimed_status: str | None = None  # KEP only (ADR-002 D5)
     claimed_stage: str | None = None
     aliases: tuple[str, ...] = ()  # front-matter `aliases`, as written
@@ -61,6 +65,28 @@ def split_front_matter(text: str) -> tuple[dict[str, Any], str]:
     if match is None:
         raise ValueError("no front matter (a `---` block at the top)")
     return _yaml_mapping(match.group(1), "front matter"), text[match.end() :]
+
+
+def front_matter_time(value: object) -> datetime | None:
+    """A front-matter date or time, as Hugo reads it; None if the value isn't one.
+
+    PyYAML gives a `date`, a `datetime`, or text: YAML 1.1 needs a colon in an offset, so
+    `2023-08-15T12:00:00+0000` stays a string (8 blog posts, spike §7 S). The `metadata` column
+    holds them as text too. A time with an offset keeps it, so a URL can use the day as written;
+    one without is in the site's time zone, UTC; a bare date is midnight UTC.
+    """
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, time())
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.strip())
+        except ValueError:
+            return None  # e.g. a draft's `XXXX-XX-XX`, or `date: draft`
+    else:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def clean_text(body: str) -> str:
@@ -133,4 +159,31 @@ def kep_state(
         metadata=_as_json(kep),
         claimed_status=_claim(kep, "status", synonyms),
         claimed_stage=_claim(kep, "stage", synonyms),
+    )
+
+
+def single_kep_state(
+    path: str, raw: bytes, strip: frozenset[str], synonyms: Mapping[str, str]
+) -> FileState:
+    """Hash, metadata and claims of an old single-file KEP, which keeps its metadata in front
+    matter instead of a kep.yaml (S05-R2 sitting). `strip` is the manifest's kep_yaml list.
+    Raises ValueError if it has no parseable front matter."""
+    front_matter, body = split_front_matter(decode(raw))
+    return FileState(
+        content_hash=content_hash(front_matter, body, strip),
+        source_path=path,
+        metadata=_as_json(front_matter),
+        claimed_status=_claim(front_matter, "status", synonyms),
+        claimed_stage=_claim(front_matter, "stage", synonyms),
+    )
+
+
+def governance_state(path: str, text: str, title: str) -> FileState:
+    """Hash and metadata of a governance doc's decoded text. It has no front matter, so the whole
+    text is hashed (no strip list), and its metadata holds only its title (S05-R2 decision 4),
+    which the chunk header and citations read like any other title."""
+    return FileState(
+        content_hash=content_hash({}, text, frozenset()),
+        source_path=path,
+        metadata={"title": title},
     )

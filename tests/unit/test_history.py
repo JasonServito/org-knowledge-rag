@@ -12,6 +12,7 @@ from orgknow.ingestion.history import (
     Close,
     HistoryMismatch,
     Observed,
+    changelog_version,
     date_history,
     plan_changes,
     release_history,
@@ -28,10 +29,6 @@ def _utc(*args: int) -> datetime:
     return datetime(*args, tzinfo=UTC)  # type: ignore[misc]
 
 
-def _times(*iso: str) -> tuple[datetime, ...]:
-    return tuple(datetime.fromisoformat(t) for t in iso)
-
-
 # --- KEP-2579: a date-scoped source -------------------------------------------------------------
 
 
@@ -46,45 +43,32 @@ def _kep(release: str) -> FileState:
 
 # Enhancements `master` at each release date (config/corpus_manifest.lock.yaml), then head. The
 # snapshots between 1.26 and 1.37 hold the same files as 1.26, so they add nothing and are left out.
-# Commit times are the real `git log --format=%cI` output, newest first, with the committers'
-# own offsets: the commits touching README.md or kep.yaml since the previous snapshot. Only the
-# newest and oldest of each range are listed (1.22 has 47).
+# Each change carries its merge time: the committer time of the last first-parent commit touching
+# README.md or kep.yaml since the previous snapshot, as `git log --first-parent --format=%cI` prints
+# it (S05-R2 sitting). These are master's merge commits, not the PR branches' own commits.
 KEP_2579 = [
     Observed(Snapshot(20, "master", "2df83383d452cf5dd029de73e1963543dbf37998"), None),
     Observed(Snapshot(21, "master", "a500df8dc9597839caf8616ec4d03885274593f4"), None),
     Observed(
         Snapshot(22, "master", "96fd20c76108d86a94abbbe9929cf862bdf82986"),
         _kep("1.22"),
-        _times(
-            "2021-05-11T13:46:27-07:00",  # 182464a6 fix typo
-            "2021-05-11T13:42:01-07:00",  # 18948fdb fill in monitoring requirements
-            "2021-03-30T14:48:34-07:00",  # 56b19d92 Rename to placeholder name
-        ),
+        datetime.fromisoformat("2021-05-12T16:25:28+00:00"),  # 7712007e
     ),
     Observed(
         Snapshot(23, "master", "789f79c47e11ddf542b660ced225d7051160ab4b"),
         _kep("1.23"),
-        _times(
-            "2021-11-04T21:29:13-04:00",  # 69d3fac5 kep-2579: PodSecurity beta updates
-            "2021-10-05T16:38:34-07:00",  # 1140e3b6 [PodSecurity] Update monitoring proposal
-        ),
+        datetime.fromisoformat("2021-11-11T16:46:07+00:00"),  # 0e230b08
     ),
     Observed(Snapshot(24, "master", "afd1749ed97f63b39c20e7d91f93e2ff4ee87086"), _kep("1.23")),
     Observed(
         Snapshot(25, "master", "1360780fdac95441a071b9fa05406b095d882391"),
         _kep("1.25"),
-        _times(
-            "2022-06-01T17:05:45-07:00",  # cd5f4f26 PSA GA KEP compliance
-            "2022-05-11T11:18:45-07:00",  # da76cd07 Pod Security GA plan
-        ),
+        datetime.fromisoformat("2022-06-06T16:34:23+00:00"),  # ed335b36
     ),
     Observed(
         Snapshot(26, "master", "0ffd37f8925d8a9af7ce7a7409007db8285a30b1"),
         _kep("1.26"),
-        _times(
-            "2022-09-22T10:28:05+02:00",  # 313ad8b5 Cleanup prr-approvers from kep.yaml
-            "2022-08-31T15:51:14-04:00",  # 9f14627a Update implemented status for sig-auth keps
-        ),
+        datetime.fromisoformat("2022-09-22T15:59:06+00:00"),  # 4b87fd52
     ),
     Observed(Snapshot(37, "master", "c4f439c2dd4acb928094660be0ea771bf63f2b76"), _kep("1.26")),
     Observed(Snapshot(None, "master", "4be81e27aef5d252972fd02b5a9479a18982dfe5"), _kep("1.26")),
@@ -106,12 +90,13 @@ def _window(v: VersionData) -> tuple[Any, ...]:
 def test_kep_2579_windows_and_claims() -> None:
     versions = date_history("enhancements", KEP_2579, RELEASES)
 
-    # Expected values from the S04-R1 sitting (`TZ=UTC git log --date=iso-strict-local`): each
-    # version starts at the LAST commit before its snapshot; each `until` is the next `from`.
-    v1_from = _utc(2021, 5, 11, 20, 46, 27)  # 182464a6
-    v2_from = _utc(2021, 11, 5, 1, 29, 13)  # 69d3fac5
-    v3_from = _utc(2022, 6, 2, 0, 5, 45)  # cd5f4f26
-    v4_from = _utc(2022, 9, 22, 8, 28, 5)  # 313ad8b5
+    # Expected values from the S05-R2 contract (`git log --first-parent`, in the sitting): each
+    # version starts at its merge time; each `until` is the next `from`. Windows [21,22] [22,24]
+    # [24,25] [25,-]. S04 stored the branch commits' times instead (2021-05-11T20:46:27Z, ...).
+    v1_from = _utc(2021, 5, 12, 16, 25, 28)
+    v2_from = _utc(2021, 11, 11, 16, 46, 7)
+    v3_from = _utc(2022, 6, 6, 16, 34, 23)
+    v4_from = _utc(2022, 9, 22, 15, 59, 6)
     assert [_window(v) for v in versions] == [
         (
             v1_from,
@@ -157,16 +142,21 @@ def test_kep_2579_windows_and_claims() -> None:
     assert all(v.valid_from_date.utcoffset() is not None for v in versions)
 
 
-def test_kep_removal_closes_the_version_at_the_last_commit() -> None:
-    removed = Observed(
-        Snapshot(27, "master", "d1b916cc418f7c53bcb4578bb96a08c99043c7e3"),
-        None,
-        _times("2023-01-10T12:00:00+00:00"),  # a hand-made deletion commit
-    )
+SNAPSHOT_27 = Snapshot(27, "master", "d1b916cc418f7c53bcb4578bb96a08c99043c7e3")
+SNAPSHOT_28 = Snapshot(28, "master", "6f435a9d5438c213ddef09ef6ebe1c178700d73b")
+
+
+def test_kep_removal_closes_the_version_at_its_merge_time() -> None:
+    removed = Observed(SNAPSHOT_27, None, _utc(2023, 1, 10, 12))  # a hand-made deletion merge
 
     versions = date_history("enhancements", [*KEP_2579[:7], removed], RELEASES)
 
-    assert _window(versions[-1])[:4] == (_utc(2022, 9, 22, 8, 28, 5), _utc(2023, 1, 10, 12), 25, 26)
+    assert _window(versions[-1])[:4] == (
+        _utc(2022, 9, 22, 15, 59, 6),
+        _utc(2023, 1, 10, 12),
+        25,
+        26,
+    )
 
 
 def test_a_content_change_without_a_commit_is_an_error() -> None:
@@ -177,22 +167,43 @@ def test_a_content_change_without_a_commit_is_an_error() -> None:
 
 
 def test_a_change_dated_before_the_version_it_replaces_is_an_error() -> None:
-    # A hand-made commit time before v1's start (2021-05-11T20:46:27Z): v1's window would be empty.
-    backdated = Observed(
-        KEP_2579[3].snapshot, KEP_2579[3].state, _times("2021-05-01T00:00:00+00:00")
-    )
+    # A hand-made merge time before v1's start (2021-05-12T16:25:28Z): v1's window would be empty.
+    backdated = Observed(KEP_2579[3].snapshot, KEP_2579[3].state, _utc(2021, 5, 1))
 
     with pytest.raises(ValueError, match="not after the version it replaces"):
         date_history("enhancements", [*KEP_2579[:3], backdated], RELEASES)
 
 
-def test_a_version_from_before_the_first_release_is_an_error() -> None:
-    too_early = Observed(
-        KEP_2579[0].snapshot, KEP_2579[2].state, _times("2020-12-07T23:59:59+00:00")
-    )
+def test_a_version_older_than_the_first_release_keeps_its_date_and_starts_at_20() -> None:
+    # S05-R2 decision 1: a hand-made 2019 merge time, before 1.20's release (2020-12-08). The
+    # date window is authoritative for a date-scoped source; the release window starts at the
+    # scope's first release, 20.
+    older = Observed(KEP_2579[0].snapshot, KEP_2579[2].state, _utc(2019, 6, 29, 12))
 
-    with pytest.raises(ValueError, match=r"before the first release \(1\.20, 2020-12-08\)"):
-        date_history("enhancements", [too_early], RELEASES)
+    (version,) = date_history("enhancements", [older], RELEASES)
+
+    assert (version.valid_from_date, version.valid_from_release) == (_utc(2019, 6, 29, 12), 20)
+    assert (version.valid_until_date, version.valid_until_release) == (None, None)
+
+
+def test_a_document_recreated_before_its_last_version_closed_is_an_error() -> None:
+    # E1 (S05-R2): KEP-2579 removed at 1.27 by a hand-made merge on 2023-01-10, then back at 1.28.
+    # Dated after the removal, the new version simply follows the closed one.
+    removed = Observed(SNAPSHOT_27, None, _utc(2023, 1, 10, 12))
+    back = Observed(SNAPSHOT_28, KEP_2579[6].state, _utc(2023, 5, 1))
+
+    versions = date_history("enhancements", [*KEP_2579[:7], removed, back], RELEASES)
+
+    assert [_window(v)[:4] for v in versions[-2:]] == [
+        (_utc(2022, 9, 22, 15, 59, 6), _utc(2023, 1, 10, 12), 25, 26),
+        (_utc(2023, 5, 1), None, 27, None),
+    ]
+
+    # Dated before the removal, the two date windows would overlap (R8): a ValueError for this
+    # document, never a database error.
+    backdated = Observed(SNAPSHOT_28, KEP_2579[6].state, _utc(2023, 1, 1))
+    with pytest.raises(ValueError, match="before its previous version closed"):
+        date_history("enhancements", [*KEP_2579[:7], removed, backdated], RELEASES)
 
 
 # --- Docs: a release-scoped source -------------------------------------------------------------
@@ -230,6 +241,38 @@ def test_docs_windows_with_a_gap_and_a_return_to_earlier_text() -> None:
     ]
     assert versions[0].snapshot_ref == "release-1.24"
     assert versions[0].metadata == {"title": "Example"}
+
+
+# --- CHANGELOG: one file per release, read at the kubernetes lock head ------------------------
+
+# The kubernetes lock head (config/corpus_manifest.lock.yaml) and its committer time, as
+# `git log -1 --format=%cI 7c596ad7` prints it in the clone (S05-R2 decision 6).
+KUBERNETES_HEAD = Snapshot(None, "master", "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5")
+HEAD_TIME = _utc(2026, 9, 30, 1, 30, 57)
+
+
+def test_a_changelog_version_speaks_for_its_release_from_the_head_commit_time() -> None:
+    state = FileState(
+        content_hash="c" * 64,
+        source_path="CHANGELOG/CHANGELOG-1.30.md",
+        metadata={"title": "CHANGELOG-1.30"},
+    )
+
+    version = changelog_version("kubernetes", KUBERNETES_HEAD, state, 30, HEAD_TIME)
+
+    # Release window [30, 30], set at insert; date window from the head commit's time, open.
+    assert _window(version) == (
+        HEAD_TIME,
+        None,
+        30,
+        30,
+        None,
+        None,
+        "7c596ad7938d030a4cab3c1e55b16b7f61cf7ca5",
+    )
+    assert (version.snapshot_repo, version.snapshot_ref) == ("kubernetes", "master")
+    assert (version.source_path, version.content_hash) == ("CHANGELOG/CHANGELOG-1.30.md", "c" * 64)
+    assert version.metadata == {"title": "CHANGELOG-1.30"}
 
 
 # --- plan_changes: compare and extend ----------------------------------------------------------

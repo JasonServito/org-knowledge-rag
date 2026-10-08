@@ -1,4 +1,4 @@
-"""Renames (ADR-002 D4): which file at release R+1 continues which file at release R.
+"""Renames (ADR-002 D4): which file at snapshot R+1 continues which file at snapshot R.
 
 Pure functions: ingestion reads the files, the redirect file and git's similarity scores, and
 this module decides. A **chain** is one document's file at each snapshot (None where absent).
@@ -16,6 +16,10 @@ Gate files (one file per feature gate, from 1.29):
 2. Same front-matter `title`. This covers the 1.32 renames from kebab case to the gate name.
 3. The new file's front-matter `former_titles` holds the gone file's title.
 4. git similarity >= 50%, as for web pages (`APIServingWithRoute` -> `APIServingWithRoutine`).
+
+Governance docs, read at date snapshots (S05-R2 decision 2; ADR-002 D4):
+1. Same path: the chain builder's own rule.
+2. git similarity >= 50% between the adjacent snapshots (sig-release PR #2984's 8 moves).
 
 Refused links (their files are left out of the later rules, so they stay unlinked):
 - A file that one rule links twice (a gone file claimed by two new files, or the reverse) is a
@@ -119,8 +123,8 @@ def redirect_rule(redirects: Sequence[Mapping[str, str]]) -> LinkRule:
 
 
 def _alias_ids(path: str, raw: bytes) -> set[str]:
-    """The ids of a page's front-matter `aliases`. None if the front matter can't be read: the
-    page's document then fails with the reason, when its versions are derived."""
+    """The ids of a page's front-matter `aliases`. An empty set if the front matter can't be
+    read: the page's document then fails with the reason, when its versions are derived."""
     try:
         return {alias_id(alias) for alias in docs_state(path, raw, frozenset()).aliases}
     except ValueError:
@@ -182,6 +186,13 @@ def gate_link_rules() -> dict[str, LinkRule]:
     return {"same title": same_title, "former title": former_title}
 
 
+def date_link_rules() -> dict[str, LinkRule]:
+    """The declared link rules for governance docs: none. Rule 1, same path, is the chain
+    builder's own, and git similarity always runs last. Governance docs have no URL, redirect or
+    front matter to declare a move (S05-R2 decision 2)."""
+    return {}
+
+
 def _link_pair(
     after: int,
     before: Mapping[str, bytes],
@@ -225,7 +236,8 @@ def build_chains(
     similar: SimilarRenames,
     source_types: Mapping[str, str],
 ) -> Chains:
-    """Group the files of release-scoped sources into chains, one per document.
+    """Group the files of a source into chains, one per document, across its snapshots (a
+    release's branch, or a date snapshot of a default branch).
 
     `listings[i]` holds every file at the i-th snapshot (path -> raw content). `rules` are the
     declared link rules, in order; git similarity runs last, on the files they left unlinked.

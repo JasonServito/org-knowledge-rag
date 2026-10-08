@@ -5,8 +5,11 @@ The rules are in docs/domain-model.md, "How windows are derived":
 - Docs (release-scoped): a version starts at the first release whose snapshot has its content
   and closes at the first later release R2 that differs or lacks the file: release `until` =
   R2 - 1, date `until` = R2's release date.
-- KEPs (date-scoped): a version starts at the committer time of the LAST commit touching the
-  files since the previous snapshot; the previous version closes at that same instant.
+- KEPs and governance docs (date-scoped): a version starts at its merge time, the committer time
+  of the last first-parent commit touching the files since the previous snapshot; the previous
+  version closes at that same instant. Its release window never starts before the first release.
+- CHANGELOG-1.R: read at an ingestion snapshot, a version speaks for release R only, `[R, R]`, and
+  starts at that snapshot commit's time (S05-R2 decision 6).
 """
 
 from collections.abc import Sequence
@@ -24,9 +27,9 @@ class Observed:
 
     snapshot: Snapshot
     state: FileState | None  # None: the document is absent from this snapshot
-    # Date-scoped sources only: committer times (UTC) of the commits touching the document's
-    # files since the previous snapshot. Needed wherever the content changed.
-    commit_times: tuple[datetime, ...] = ()
+    # Date-scoped sources only: the merge time (UTC) of the last change to the document's files
+    # since the previous snapshot (`git_reader.merge_time`). Needed wherever the content changed.
+    changed_at: datetime | None = None
 
 
 def midnight_utc(day: date) -> datetime:
@@ -34,14 +37,11 @@ def midnight_utc(day: date) -> datetime:
 
 
 def _release_on_or_before(at: datetime, releases: Sequence[Release]) -> int:
-    """The latest release whose date (00:00 UTC) is on or before `at`."""
-    started = [r.minor for r in releases if midnight_utc(r.release_date) <= at]
-    if not started:
-        first = releases[0]
-        raise ValueError(
-            f"{at.isoformat()} is before the first release ({first.version}, {first.release_date})"
-        )
-    return max(started)
+    """The latest release whose date (00:00 UTC) is on or before `at`, but never before the
+    first release: a text older than 1.20 keeps its true date, and its release window starts at
+    the scope's first release (S05-R2 decision 1; ADR-002 D3)."""
+    started = (r.minor for r in releases if midnight_utc(r.release_date) <= at)
+    return max(started, default=releases[0].minor)
 
 
 def _release_before(at: datetime, releases: Sequence[Release]) -> int:
@@ -98,37 +98,59 @@ def release_history(
 def date_history(
     repo: str, observed: Sequence[Observed], releases: Sequence[Release]
 ) -> list[VersionData]:
-    """Versions of a date-scoped document (KEP), from its snapshots, oldest first."""
+    """Versions of a date-scoped document (KEP, governance doc), from its snapshots, oldest first.
+
+    Raises ValueError where the dates can't make valid windows: a change dated no later than the
+    open version's start (R5), or a document re-created before its last version closed (R8, E1).
+    """
     versions: list[VersionData] = []
     previous: FileState | None = None
     for obs in observed:
         if _hash(obs.state) == _hash(previous):
             continue
-        if not obs.commit_times:
+        if obs.changed_at is None:
             raise ValueError(
                 f"the content changed at {obs.snapshot.label} ({obs.snapshot.sha}), "
                 "but no commit since the previous snapshot touches it"
             )
-        # The last commit: the stored text was exactly the live text from then on.
-        at = max(obs.commit_times)
-        if versions and versions[-1].valid_until_date is None:
-            current = versions[-1]
-            if at <= current.valid_from_date:
+        # The merge time: the stored text was exactly the live text from then on.
+        at = obs.changed_at
+        last = versions[-1] if versions else None
+        if last is not None and last.valid_until_date is None:
+            if at <= last.valid_from_date:
                 raise ValueError(
                     f"the change at {obs.snapshot.label} is dated {at.isoformat()}, not after "
-                    f"the version it replaces ({current.valid_from_date.isoformat()})"
+                    f"the version it replaces ({last.valid_from_date.isoformat()})"
                 )
-            versions[-1] = current.model_copy(
+            versions[-1] = last.model_copy(
                 update={
                     "valid_until_release": _release_before(at, releases),
                     "valid_until_date": at,
                 }
+            )
+        elif last is not None and last.valid_until_date is not None and at < last.valid_until_date:
+            raise ValueError(
+                f"the document is back at {obs.snapshot.label}, dated {at.isoformat()}, which "
+                f"is before its previous version closed ({last.valid_until_date.isoformat()})"
             )
         if obs.state is not None:
             from_release = _release_on_or_before(at, releases)
             versions.append(_new_version(repo, obs.snapshot, obs.state, from_release, at))
         previous = obs.state
     return versions
+
+
+def changelog_version(
+    repo: str, snapshot: Snapshot, state: FileState, release: int, at: datetime
+) -> VersionData:
+    """The version of CHANGELOG-1.R read at an ingestion snapshot (ADR-002 D1, D3).
+
+    Its release window is `[R, R]`, set at insert: the file describes release R, whenever it's
+    read. Its date window starts at `at`, the snapshot commit's committer time (S05-R2 decision
+    6), and stays open: the clone has no history, so nothing before this snapshot is known.
+    """
+    version = _new_version(repo, snapshot, state, release, at)
+    return version.model_copy(update={"valid_until_release": release})
 
 
 # --- Re-ingest: compare and extend (S04-R1 decision 2) -----------------------------------------

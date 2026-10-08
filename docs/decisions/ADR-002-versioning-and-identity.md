@@ -1,6 +1,6 @@
 # ADR-002: Versioning and document identity
 
-- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence. See "Changes from the S02 spike".
+- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S05-R2 sitting (2026-10-07). See the two "Changes" tables at the end.
 - **Date:** 2026-09-22
 - **Blueprint refs:** §10, §13, §15; readiness gaps #3 and #13
 - **Evidence:** `docs/research/corpus-spike-report.md` (cited below as "spike §N")
@@ -44,7 +44,7 @@ Each version stores `valid_from_release`, `valid_until_release`, `valid_from_dat
 - **Release-scoped sources (docs):** the release window is authoritative. Dates are derived from the `releases` table.
 - **Date-scoped sources (KEPs, blog, governance):**
   - The date window is authoritative. `valid_from_date` is the date of the **commit that introduced the change**, found with `git log` between the two snapshot SHAs, not the snapshot date. This means a change like `sig-release versioning.md` on 2026-02-13 gets its true date.
-  - The release window is derived as "latest release on or before that date".
+  - The release window is derived as "latest release on or before that date", but never before the scope's first release (D6). A version that started before 1.20 keeps its true date, and its release window starts at 20 (S05-R2).
   - Blog posts get one version per commit that changes the normalized content (D2). This captures in-place updates.
 - **Blog: `valid_from` = max(commit time, publication time).** Publication is the first moment Hugo would render the post: the live version isn't `draft: true`, and its date has passed (the site config has `buildFuture` off and `timeZone` UTC). 317 of 416 posts were merged ahead of their date, by up to 28.5 days (spike §5 K).
   - A version superseded before publication gets an empty window, so it isn't stored. That drops 214 never-public versions (19% of blog versions).
@@ -60,10 +60,10 @@ A `releases` table (`version`, `release_date`, `end_of_life_date`) is the bridge
 |---|---|---|
 | Docs pages and website release records | `web:<URL path>`, from Hugo's path rules: drop `content/en` and `.md`; `index.md` and `_index.md` become their folder; lowercase. A move into a page bundle keeps the URL (spike §4 H). | **Declared signals first:** a redirect whose target was added in the same release (otherwise it's a removal), or a Hugo `aliases` entry. **Fallback:** `git diff --find-renames` between adjacent release branches at **50%** (git's default; spike §4 F). Log unmatched adds and deletes per release pair. |
 | Feature gate (one file per gate, 1.29+) | `gate:<name>`, the front-matter `title`. These files have no URL (`_build: render: false`). | `former_titles` first, then git similarity at 50%. The pre-1.29 tables are part of the feature-gates docs page; their rows give stages under the same gate name. |
-| KEP | `kep:<number>` (directory number = tracking issue number) | Stable if a KEP moves SIG directory |
+| KEP | `kep:<number>` (directory number = tracking issue number). An old single-file KEP, which has no number: `kep:<sig folder>/<file name>`, e.g. `kep:sig-auth/0014-dynamic-audit-configuration` (S05-R2) | Stable if a KEP moves SIG directory or its folder's slug changes |
 | CHANGELOG | `changelog:1.R`; chunks anchored per patch section | Not needed |
 | Blog | `web:<URL path>` at publication, from the site's permalink config (`/:section/:year/:month/:day/:slug/`, with the front-matter `url:` override and Hugo's date and slug fallbacks) | Not needed for file moves: the URL survived all 349 measured moves of the 2026 year-folder reorganization. A URL changed after publication is linked through a redirect or `aliases` (spike §5 J). |
-| Governance | `community:<path>`, `sig-release:<path>` | `git log --follow` (not tested in the spike) |
+| Governance | `community:<path>`, `sig-release:<path>`, from the first path | Same path, then git similarity ≥ 50% between adjacent snapshots, as for docs; later paths become aliases (S05-R2) |
 
 ### D5. Status is stored twice
 
@@ -136,3 +136,14 @@ Each change was decided by the developer in S02-T6. The evidence is in the spike
 | D4 blog | `blog:<date>-<slug>` | `web:<URL>` at publication | spike §5 J |
 | D5 | "typos normalized" | `GA` → `stable` only; other unknown values flagged; observed stage from R's own snapshot | spike §6 O, §7 R |
 | D6 | "verify the latest release" | 1.37 confirmed | spike §6 M |
+
+## Changes from the S05-R2 sitting (2026-10-07)
+
+Decided by the developer in the S05-R2 sitting; the evidence was checked on the locked clones in the sitting (`docs/slices/S05-stage1-subset-ingestion.md`, run S05-R2).
+
+| Where | Was | Now | Evidence |
+|---|---|---|---|
+| D3 release window of date-scoped sources | "Latest release on or before that date" | The same, but never before the scope's first release; the date stays true | 67 KEPs and governance docs start before 1.20's release date (the earliest 2019-06-29) |
+| D4 governance renames | `git log --follow` (never run) | Same path, then git similarity ≥ 50% between adjacent snapshots; the first path is the id | The only moves in range: 8 files in sig-release PR #2984 (1.36 → 1.37), at 66–100%. The per-commit log shows the same 8 pairs and no edit before a move. A devil's advocate argued for `--follow`; its concession condition holds |
+| D4 old single-file KEPs | No id (only the known limit) | `kep:<sig folder>/<file name>`; still separate documents | 25 files at the 1.20 snapshot, none with a KEP number |
+

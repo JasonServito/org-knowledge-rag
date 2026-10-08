@@ -49,6 +49,19 @@ class GitRepo:
         self._git("commit", "--quiet", "--allow-empty", "-m", f"commit at {when}", env=dates)
         return self._git("rev-parse", "HEAD")
 
+    def switch(self, branch: str, create: bool = False) -> None:
+        """Check out `branch`; with `create`, a new branch at the current commit."""
+        self._git("switch", "--quiet", *(["--create"] if create else []), branch)
+
+    def merge(self, branch: str, when: str) -> str:
+        """Merge `branch` into the current branch with a merge commit (never a fast-forward), as
+        GitHub merges a pull request, at committer time `when`; return the merge commit's SHA."""
+        dates = {"GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when}
+        self._git(
+            "merge", "--quiet", "--no-ff", "-m", f"merge {branch} at {when}", branch, env=dates
+        )
+        return self._git("rev-parse", "HEAD")
+
 
 @pytest.fixture
 def make_git_repo(tmp_path: Path) -> Callable[[str], GitRepo]:

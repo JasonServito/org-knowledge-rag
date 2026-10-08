@@ -1,6 +1,6 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates.
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10.
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
 - **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
 
@@ -20,7 +20,7 @@ This is the spec for the tables, their rules, and the write functions S04 ingest
 - **Release window per source:**
   - **Docs and other release-branch sources:** the releases whose branch had this content. The PSP page's second version is `[21, 22]`.
   - **Date-scoped sources** (KEP, blog, governance): the releases in effect while the text was live (ADR-002 D3). Two edits inside one release cycle both get that release, so their release windows overlap.
-  - **CHANGELOG-1.R:** always `[R, R]`, because it describes release R. A later edit gives a second version with the same release window and a later date window.
+  - **CHANGELOG-1.R:** always `[R, R]`, set at insert, because it describes release R. A later edit gives a second version with the same release window and a later date window.
 - **Only date windows must not overlap** (rule R8). Release windows may overlap, for the reasons above.
 - **Validity is not authority.** The v1.30 launch post's current text still "speaks for" 1.37. Whether it's trustworthy for a "now" question is ADR-003's job (tiers, mode adjustments), not the window's.
 - **`version_status` (ADR-003 D5) is derived, not stored:**
@@ -71,7 +71,7 @@ This is the spec for the tables, their rules, and the write functions S04 ingest
 | `valid_until_date` | `timestamptz` NULL | Exclusive |
 | `claimed_status` | `text` NULL | KEP only, stored as written (ADR-003 D5); no CHECK, so unknown values are kept |
 | `claimed_stage` | `text` NULL | Same |
-| `metadata` | `jsonb` NOT NULL, default `{}` | Parsed front matter (or `kep.yaml`), including stripped keys |
+| `metadata` | `jsonb` NOT NULL, default `{}` | Parsed front matter (or `kep.yaml`), including stripped keys. A governance doc or a CHANGELOG has no front matter: its metadata holds only its `title` (see "Chunk header") |
 
 ### `chunks`
 
@@ -113,7 +113,12 @@ Document: <canonical_id>
 Section: <heading path joined with " > ">
 ```
 
-- **Title:** the front-matter `title`; for a KEP, `KEP-<number>: <kep.yaml title>`.
+- **Title:** the version's metadata `title`:
+  - a docs page, release record, gate or blog post: the front-matter `title`
+  - a KEP folder: `KEP-<number>: <kep.yaml title>`
+  - an old single-file KEP: its front-matter `title`, with no `KEP-<n>:` prefix (it has no number)
+  - a governance doc (S05-R2 decision 4): the version's first `# ` heading with HTML comments removed (`# Google Cloud Platform <!-- omit in toc -->` → `Google Cloud Platform`), else its repo path. Ingestion stores it as the version's metadata `title`, so the chunk header and citations read it like any other title.
+  - a CHANGELOG (decision 4): its file name, `CHANGELOG-1.R`, stored the same way.
 - **Section:** omitted when the heading path is empty (text before the first heading).
 
 **A gate's chunk text** (S05-R1 decision 1). A gate's stages live only in its front matter, so a `gate:` document whose file has `stages` gets them at the start of its body: the header, a blank line, the YAML, a blank line, then the body.
@@ -142,6 +147,8 @@ Use stricter validation for fields containing IP addresses and CIDR values.
 - The feature-gates pages are `web:` documents and get no YAML.
 - **Not in the header:** release window, `version_status`, tier. They change when a newer version arrives, or depend on the question (ADR-003 D3), so they're attached to each retrieved chunk from these tables at answer time (product spec must-have 2, amended).
 
+**CHANGELOG chunks hold release notes only** (S05-R2 decision 8). The text before the first heading (the generated table of contents) and every section whose heading path holds a heading starting with `Downloads for ` (the sha512 download tables) make no chunk. Those sections hold every sha512 row of the 18 files (8,397 at the lock head). The version's hash still covers the whole file. Chunks fall per patch section (`v1.R.x` is the heading path's first element): 371 sections in the 18 files at the lock head.
+
 ## Rules
 
 Each rule has an integration test that breaks it on purpose and asserts the exact failure (S03-T4). "Code" means a check in the data-access function, because the database can't express it (ADR-005).
@@ -157,7 +164,7 @@ Each rule has an integration test that breaks it on purpose and asserts the exac
 | R7 | A closed text has a last release: date `until` set ⇒ release `until` set | CHECK | `CheckViolation` |
 | R8 | Date windows of one document never overlap | EXCLUDE (`btree_gist`) | `ExclusionViolation` |
 | R9 | At most one current version per document | The R8 constraint: two open windows overlap | `ExclusionViolation` |
-| R10 | A window is closed once: only an open version can be closed, and nothing reopens or moves it | Code in `close_version` | `ValueError` |
+| R10 | A window is closed once. Only an open version can be closed, a release `until` set at insert never changes, and nothing reopens or moves it (S05-R2 decision 7) | Code in `close_version` | `ValueError` |
 | R11 | Hashes are well-formed: `content_hash` 64 hex, `snapshot_sha` 40 hex | CHECK | `CheckViolation` |
 | R12 | A chunk position is unique within its version | UNIQUE | `UniqueViolation` |
 | R13 | A chunk's `content_hash` is the SHA-256 of its `text` | Code in `add_chunks` (computes it) | (tested against a known SHA-256 value) |
@@ -184,7 +191,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 | `find_document(conn, canonical_id) -> id \| None` | Look up by `canonical_id` only. `make ingest` stores a document under its own id with it, so an id that is another document's alias gets the R3 error from `create_document`, not that document's history (S05-T1) |
 | `resolve_document(conn, id_or_alias) -> id \| None` | Look up by `canonical_id` or alias |
 | `insert_version(conn, version) -> id` | Insert one version: a `NewVersion`, which is `VersionData` (the columns ingestion derives from snapshots) plus `document_id` |
-| `close_version(conn, version_id, valid_until_release, valid_until_date)` | Close an open version (R10) |
+| `close_version(conn, version_id, valid_until_release, valid_until_date)` | Close an open version; a release `until` already set must be the one passed (R10) |
 | `add_chunks(conn, version_id, chunks) -> ids` | Insert chunks; computes each `content_hash` (R13) |
 | `versions_without_chunks(conn) -> list` | Every version with no chunks yet, oldest id first, with its document's `canonical_id` and source type: what `make ingest` chunks (S04-R1) |
 | `texts_without_embedding(conn, model) -> list` | Each distinct chunk text (hash + text) with no vector for `model`, ordered by hash: what `make embed` sends (S04-R1) |
@@ -217,18 +224,32 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
   - Each source type is hashed with its own strip list: release records with `release_record`'s (which strips `card`), docs pages with `docs_page`'s, feature gates and their pages with `feature_gate_reference`'s (`_build`, `weight`, `card`). `stages` and `removed` are never stripped, so a stage change is a new version.
   - A file matched by the paths of two release-scoped groups is an error when the scope is loaded, before any read or write.
 - **Rebuilding from empty (S05-R1 decision 2):** moving the first release from 24 to 20 changes every stored first version, which a re-ingest reports as a history mismatch. `make reset-corpus` empties `documents`, `document_aliases`, `document_versions` and `chunks` (ids restart at 1), then `make ingest` rebuilds them. `releases` and `embeddings` are kept: vectors are a cache keyed by content hash, so an unchanged chunk text keeps its vector. Dev database only.
-- **Date-scoped sources (KEPs):** snapshots are `main` at each release date, plus `head`.
-  - A new version's `valid_from_date` is the committer time, in UTC, of the **last** commit touching the document's files between the previous snapshot and this one. The stored text was exactly live from then; edits in between are folded into the previous version's window.
+- **Date-scoped sources (KEPs, governance docs):** snapshots are the repo's default branch at each release date, plus `head`.
+  - A new version's `valid_from_date` is its **merge time** (S05-R2 sitting): the committer time, in UTC, of the **last first-parent commit** touching the document's files between the previous snapshot and this one (`git log --first-parent -1 --format=%cI <prev>..<snap> -- <paths>`). For the first snapshot, the range is its whole history. The paths are the document's files at both snapshots, so a move or a KEP folder rename is seen.
+  - First-parent follows only the default branch, so a pull request's version starts when it was merged, not at its branch's commits. KEP-2579's first version starts at 2021-05-12T16:25:28Z (its merge), not 2021-05-11T20:46:27Z (its branch's last commit, S04's date).
+  - The stored text was exactly live from then; edits in between are folded into the previous version's window.
   - The previous version closes at that same instant.
-  - `valid_from_release` = the latest release on or before `valid_from_date`. `valid_until_release` = the latest release strictly before `valid_until_date`.
+  - `valid_from_release` = the latest release on or before `valid_from_date`, but **never before the scope's first release** (S05-R2 decision 1): a version older than 1.20's release date keeps its true `valid_from_date`, and its `valid_from_release` is 20. 67 documents start that early (48 KEPs, 19 governance docs). `valid_until_release` = the latest release strictly before `valid_until_date`.
+  - Dates that can't make valid windows are a `ValueError` for that document, never a database error: a change dated no later than the open version's start (R5), or a document deleted and re-created with its new version dated before the closed one's `until` (R8; 0 on real data).
 - **A KEP version covers README + `kep.yaml`:** both are hashed together (with the `kep_yaml` strip list), so a `kep.yaml`-only change is a new version. `claimed_status` and `claimed_stage` come from that version's `kep.yaml`, with `GA` → `stable` the only mapping (ADR-003 D5). The raw `kep.yaml` is kept in `metadata`.
+- **Which KEPs (S05-T4):** every KEP in the manifest's `sig_dirs` (`kep: all` in the `full` scope).
+  - A KEP folder `keps/<sig>/<number>-<slug>/` is `kep:<number>`. A folder renamed or moved between the 3 SIG folders keeps its document (1669, 3257 and 4444 each have two names, never at once; two folders with one number at one snapshot is an error). A KEP that leaves the 3 SIG folders closes as removed (506, 2004, 2030).
+  - Only the folder's `README.md` and `kep.yaml` are read. Its other files (images, `images/authorizer-chain-computation.md`) are ignored: not read, not reported.
+  - **Old single-file KEPs** (25 files at the 1.20 snapshot, `keps/<sig>/<name>.md`) are separate documents, `kep:<sig>/<name>` (S05-R2 decision 3), not linked to their later folders (ADR-002 known limit). Their metadata is their front matter: hashed with the `kep_yaml` strip list, `claimed_status` from `status`, `claimed_stage` from `stage` (none has one). Their body is chunked without the front matter.
+  - Skipped with a reason: the 7 symlinks (mode `120000`) and `keps/sig-network/README.md` (an index of the SIG's KEPs).
+- **Governance docs (S05-T4):** the manifest's `community` and `sig-release` paths, `.md` files only. A doc has no front matter: its whole text is hashed (no strip list), and its title comes from its first `# ` heading (see "Chunk header").
+- **CHANGELOGs (S05-T6):** `CHANGELOG/CHANGELOG-1.R.md` for each release R in scope (1.20–1.37), read at the kubernetes lock head (`master`), a snapshot of their own, not a website release branch. `CHANGELOG-1.38.md` exists there but is out of range, so it isn't read.
+  - One document per file, `changelog:1.R`, source type `release_record`. The whole file is hashed with no strip list (it has no front matter).
+  - Its version's release window is `[R, R]`, set at insert. Its `valid_from_date` is the head commit's committer time, 2026-09-30T01:30:57Z (S05-R2 decision 6): a git fact read from the clone, not the lock's `fetched_at`. The date `until` stays open.
+  - The clone has no history, so text from before the first ingestion isn't reconstructed (ADR-002 D1). The rule for a later lock head: an unchanged file keeps its version; a changed one closes it at that head's time, keeping its release `until` (R10), and opens a new `[R, R]` version. Known limit: past head SHAs aren't kept (S14), so after a lock refresh every CHANGELOG would start at the new head's time and a re-ingest would report a history mismatch, changed file or not.
+- **Blog posts (S05-T5):** not read at snapshots: one first-parent log of website `main` up to the lock head, and a version starts at its publication or its merge (see "Blog posts" below).
 - **Re-ingest (compare and extend):** ingestion computes each document's full history from the snapshots, then compares it with the stored versions.
   - None stored → insert them all.
   - Equal → change nothing.
   - Stored is a prefix (a new release arrived) → close the open version, insert the new ones.
   - Anything else → report a history mismatch for that document, leave it untouched, and exit non-zero.
 
-## Renames: one document across moves (ADR-002 D4, S05-T2, S05-T3)
+## Renames: one document across moves (ADR-002 D4, S05-T2, S05-T3, S05-T4)
 
 A page or a feature gate that moves stays one document. Ingestion links the files of the release-scoped sources into **chains**, one per document: a chain is the document's file at each release (`ingestion/renames.py`).
 
@@ -266,6 +287,33 @@ A page or a feature gate that moves stays one document. Ingestion links the file
 - **Versions across a move:** a version is still a change in normalized content, wherever the file lives. A move that changes only stripped keys adds no version, so the open version keeps its `source_path` and snapshot. The deprecation policy moved at 1.37 by adding `aliases` only: its open version stays at the old path, from 1.31.
 - **Unmatched adds and deletes** are logged at INFO per release pair, a delete with its redirect target if it has one. A page that moves out of scope closes; a page that moves in from out of scope is a new document.
 - A path that comes back after a gap continues its chain, as it did before renames.
+- **Governance docs** (S05-R2 decision 2, amending ADR-002 D4's `git log --follow`) use the same chain builder on their date snapshots, with two rules:
+  1. Same path: a file at both snapshots stays in its chain.
+  2. git similarity ≥ 50% between the adjacent snapshots (`git diff -M50%`), for the files left. They have no URL, redirect or front matter to declare a move.
+  - The `canonical_id` is `<repo>:` + the chain's first path (`sig-release:release-engineering/versioning.md`); each later path is an alias (`sig-release:release-engineering/reference/versioning.md`).
+  - On real data this links the 8 moves of sig-release PR #2984 (1.36 → 1.37, 66–100% similar). The R100 move of `baseimage-exception-list.md` adds no version: its open version keeps the old path and snapshot. A chain continues from 1.37 to `head` (`branch-creation.md`, `release-cuts.md`).
+  - An old path that comes back after its move starts a new chain with the same first path: both chains are refused as one id held twice, never merged (0 on real data).
+- The 50% threshold is a named constant citing ADR-002 D4, not a setting: changing it changes `canonical_id`s (S05-R2 decision 9).
+
+## Blog posts: windows from publication, identity at publication (ADR-002 D2–D4, S05-T5)
+
+The rules are `ingestion/blog.py`; the blog's history is read by `git_reader.post_histories`.
+
+- **History** (S05-R2 decision 5): one first-parent log of website `main` up to the lock head, over the `.md` files under the manifest's `blog_post` paths (`git log --first-parent --find-renames=50% --raw -z`). Per post, one entry per commit touching its file: the file's content then, or none once deleted. git's rename detection follows a moved post, so website PR #53902's year-folder move continues each history. A post that loses its `.md` there (the 1.23 and 1.24 release interviews) is deleted: Hugo doesn't render it, so its open version closes at that merge (2026-02-21).
+- **A version** is an entry whose normalized hash (the `blog_post` strip list) differs from the previous entry's, as for every source (ADR-002 D2).
+- **Due time** of an entry: none if it's deleted or `draft: true`; else `publishDate`, else the page date, else the commit time.
+  - The **page date** is Hugo's, in the site's order: front-matter `date`, else the filename's `YYYY-MM-DD-` (a page bundle's folder name), else `publishDate`, else `lastmod`.
+  - A date is a YAML `date` (midnight UTC), a `datetime`, or text: `2023-08-15T12:00:00+0000` (no colon in the offset, 8 posts) and milliseconds are text to YAML. A time without an offset is UTC (the site's `timeZone`); one with an offset keeps it. A value that isn't a date (`XXXX-XX-XX`, `date: draft`) is ignored, so the next source of the date is used.
+- **Publication** is the first moment Hugo renders the post (`buildFuture` is off): for each entry in order, max(commit time, due time), if that is before the next entry's commit (or it's the last entry). A post never published isn't stored.
+- **Stored versions:** the version live at publication, from the publication moment, then every later version from its commit time. A version superseded before publication was never public, so it isn't stored. After publication, a deletion or `draft: true` closes the open version at that commit, and a later rendered version opens a new one. Windows then follow the date-scoped rules above (release window from the latest release on or before the start).
+  - Known approximations: publication assumes the site builds on every merge; a version re-dated into the future after publication still starts at its commit.
+- **Snapshot of a version:** repo `website`, ref `main`, the entry's commit SHA, and the post's path at that commit. A move that changes no normalized content adds no version, so the open version keeps its old path and snapshot.
+- **Scope:** the page date of the version live at publication is on or after 1.20's release date (2020-12-08, 00:00 UTC), and the post was ever published. Posts out of scope are counted in the ingest log, not listed one by one.
+- **Front matter** may open with 3 or more dashes, as Hugo renders it (the VAP GA post opens with `------`). This applies to every source. A post whose front matter can't be parsed is reported with the commit and the reason, and isn't stored.
+- **Identity** (ADR-002 D4): `web:` + the URL at publication, lowercase, with a trailing slash: `web:/blog/2025/11/12/ingress-nginx-retirement/`.
+  - The URL is the front-matter `url:` (tokens allowed), else the manifest's `permalink` (`/:section/:year/:month/:day/:slug/`). `:year`/`:month`/`:day` come from the page date as written; `:slug` is the front-matter `slug`, else the filename's (only when the date came from the filename), else the title through an approximation of Hugo's urlize (lowercase, punctuation dropped, spaces to hyphens); `:section` is `blog`.
+  - **Aliases:** the URL of every later stored version that differs from the id, and every front-matter `aliases` entry of the stored versions, never the id itself. On real data: 3 URLs changed after publication (`introducing-headlamp-plugin-for-karpenter` 09/23 → 10/06, `ingress-nginx-retirement` 11/12 → 11/11, `ccm-new-metric-route-sync-total` 02/26 → 05/15, whose front-matter alias is its id), plus `web:/dockershim/` (the 2022 dockershim FAQ's `aliases`).
+  - Two posts with one id are an error, never a merge (0 on real data).
 
 ## Handed to S04
 

@@ -8,13 +8,17 @@ with no chunks are chunked, so a re-run writes nothing.
    dates, since windows are derived from them. Otherwise stop, before any git read or write,
    and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
 2. Read (git): every snapshot of the scope, the release-scoped groups first (docs pages,
-   website release records, feature gates, with each release's redirect file), then the KEPs.
-   A git failure stops here, before any write.
-3. Derive (pure): link the files of a page or gate that moved into one chain (`renames.py`; the
-   unmatched adds and deletes are logged per release pair), then per document normalize and
-   hash each snapshot with its group's strip list and build its versions. A document that
-   can't be parsed, a link between two source types, or two chains with one id is reported;
-   the others continue.
+   website release records, feature gates, with each release's redirect file), then the
+   CHANGELOGs at the kubernetes lock head, with that commit's time, then the date-scoped groups
+   (KEPs, governance docs), with the merge time of each change, then the blog's first-parent log
+   and each post's files by blob id. A git failure stops here, before any write.
+3. Derive (pure): link the files of a page, gate or governance doc that moved into one chain
+   (`renames.py`; the unmatched adds and deletes are logged per snapshot pair), group a KEP's
+   files by its number, then per document normalize and hash each snapshot with its group's
+   strip list and build its versions. A CHANGELOG-1.R has one version, `[R, R]`. A blog post's
+   versions start at its publication (`blog.py`); posts out of scope are counted. A document
+   that can't be parsed, a link between two source types, or two chains with one id is
+   reported; the others continue.
 4. Store (DB): one transaction per document. A history mismatch or an R3 conflict (an id that
    is another document's alias) is reported, leaves that document untouched, and makes the
    exit code non-zero.
@@ -38,10 +42,22 @@ from orgknow.db.documents import add_alias, create_document, find_document, reso
 from orgknow.db.models import NewVersion, Release, VersionData
 from orgknow.db.releases import list_releases
 from orgknow.db.versions import close_version, insert_version, list_versions
-from orgknow.ingestion.chunker import chunk_version
+from orgknow.ingestion.blog import (
+    Entry,
+    Publication,
+    hugo_url,
+    in_scope,
+    post_versions,
+    publication,
+)
+from orgknow.ingestion.chunker import changelog_title, chunk_version, governance_title
 from orgknow.ingestion.git_reader import (
-    commit_times,
+    PostCommit,
+    commit_time,
     first_present,
+    merge_time,
+    post_histories,
+    read_blob,
     read_file,
     read_files,
     similar_renames,
@@ -49,17 +65,25 @@ from orgknow.ingestion.git_reader import (
 from orgknow.ingestion.history import (
     HistoryMismatch,
     Observed,
+    changelog_version,
     date_history,
     plan_changes,
     release_history,
 )
 from orgknow.ingestion.identity import (
+    KEP_FOLDER_FILES,
     alias_id,
+    blog_canonical_id,
+    changelog_canonical_id,
     docs_canonical_id,
     gate_canonical_id,
-    kep_canonical_id,
+    governance_canonical_id,
+    kep_file_canonical_id,
 )
 from orgknow.ingestion.manifest import (
+    BlogGroup,
+    ChangelogGroup,
+    DateGroup,
     ReleaseGroup,
     Scope,
     Snapshot,
@@ -67,12 +91,21 @@ from orgknow.ingestion.manifest import (
     load_releases,
     load_scope,
 )
-from orgknow.ingestion.normalize import decode, docs_state, kep_state
+from orgknow.ingestion.normalize import (
+    FileState,
+    content_hash,
+    decode,
+    docs_state,
+    governance_state,
+    kep_state,
+    single_kep_state,
+)
 from orgknow.ingestion.renames import (
     REDIRECT_FILES,
     Chains,
     SimilarRenames,
     build_chains,
+    date_link_rules,
     gate_link_rules,
     page_url,
     parse_redirects,
@@ -311,10 +344,10 @@ def _pair(snapshots: Sequence[Snapshot], after: int) -> str:
 
 
 def _log_renames(
-    chains: Chains, snapshots: Sequence[Snapshot], redirects: Sequence[Mapping[str, str]]
+    chains: Chains, snapshots: Sequence[Snapshot], redirects: Sequence[Mapping[str, str]] = ()
 ) -> None:
-    """Log each release pair's links, conflicts, and unmatched deletes (with the redirect
-    target, if any) and adds, in release order."""
+    """Log each snapshot pair's links, conflicts, and unmatched deletes (with the redirect
+    target, if any: web pages only) and adds, in snapshot order."""
     lines: list[tuple[int, int, str]] = []  # (position of R+1, log level, message)
     for link in chains.links:
         lines.append((link.after, logging.INFO, f"linked {link.gone} -> {link.new} ({link.rule})"))
@@ -322,7 +355,7 @@ def _log_renames(
         message = f"conflict, not linked: {link.gone} -> {link.new} ({link.rule})"
         lines.append((link.after, logging.WARNING, message))
     for after, path in chains.deleted:
-        target = redirects[after].get(page_url(path))
+        target = redirects[after].get(page_url(path)) if redirects else None
         redirect = f" (redirect -> {target})" if target else ""
         lines.append((after, logging.INFO, f"deleted {path}{redirect}"))
     for after, path in chains.added:
@@ -331,44 +364,326 @@ def _log_renames(
         log.log(level, "%s: %s", _pair(snapshots, after), message)
 
 
+def changelog_document(
+    group: ChangelogGroup, release: int, path: str, raw: bytes, at: datetime
+) -> Document:
+    """CHANGELOG-1.R from its file at the group's snapshot: `changelog:1.R`, with one version
+    `[R, R]` from `at`, the snapshot commit's time (S05-R2 decision 6), and no aliases.
+
+    It has no front matter: the whole file is hashed with no strip list, the TOC and download
+    tables included, though they make no chunk. Its metadata holds only its title,
+    `CHANGELOG-1.R` (decision 4). Raises ValueError if the file can't be decoded.
+    """
+    state = FileState(
+        content_hash=content_hash({}, decode(raw), frozenset()),
+        source_path=path,
+        metadata={"title": changelog_title(release)},
+    )
+    version = changelog_version(group.repo, group.snapshot, state, release, at)
+    return Document(changelog_canonical_id(release), group.source_type, [version], [])
+
+
+def collect_changelogs(group: ChangelogGroup, cache_dir: Path, summary: Summary) -> list[Document]:
+    """Read each CHANGELOG-1.R.md at the group's snapshot (the kubernetes lock head) and derive one
+    document per release, each version dated by the snapshot commit's time. Only the files the
+    group lists are read (CHANGELOG-1.38.md is out of range). A listed file absent there, or not
+    valid UTF-8, is reported."""
+    repo = cache_dir / group.repo
+    at = commit_time(repo, group.snapshot.sha)
+    paths = [path for _, path in group.files]
+    files, skipped = read_files(repo, paths, [group.snapshot], (".md",))
+    summary.skipped += skipped
+    documents = []
+    for release, path in group.files:
+        raw = files.get(path, [None])[0]
+        if raw is None:
+            summary.failures.append(
+                f"{path}: absent at {group.snapshot.label} ({group.snapshot.sha})"
+            )
+            continue
+        try:
+            documents.append(changelog_document(group, release, path, raw, at))
+        except ValueError as exc:
+            summary.failures.append(f"{path}: {exc}")
+    return documents
+
+
+def _merge_times(
+    repo: Path, snapshots: Sequence[Snapshot], chain: Sequence[Mapping[str, bytes]]
+) -> list[datetime | None]:
+    """For a date-scoped document's files at each snapshot ({path: raw content}), the merge time
+    of the last change to them since the previous snapshot (the whole history for the first),
+    read only where its files changed; None elsewhere. The paths are its files at both
+    snapshots, so a move or a KEP folder rename is seen (S05-R2 sitting)."""
+    times: list[datetime | None] = []
+    for i, (snapshot, files) in enumerate(zip(snapshots, chain, strict=True)):
+        before = chain[i - 1] if i > 0 else {}
+        if files == before:
+            times.append(None)
+            continue
+        since = snapshots[i - 1].sha if i > 0 else None
+        times.append(merge_time(repo, since, snapshot.sha, sorted(before.keys() | files.keys())))
+    return times
+
+
+def is_other_kep_folder_file(path: str) -> bool:
+    """Whether a file sits in a KEP folder (`keps/<sig>/<folder>/...`) but is neither its
+    README.md nor its kep.yaml, e.g. images/authorizer-chain-computation.md. Such files are
+    ignored: never read, never reported."""
+    parts = path.split("/")
+    return len(parts) > 4 or (len(parts) == 4 and parts[3] not in KEP_FOLDER_FILES)
+
+
+def kep_chains(
+    files: Mapping[str, Sequence[bytes | None]], snapshots: Sequence[Snapshot]
+) -> tuple[dict[str, list[dict[str, bytes]]], list[str]]:
+    """Group the files read under the KEP paths into one chain per KEP id: its files at each
+    snapshot ({path: raw content}, empty where it has none). A KEP folder whose name changes
+    keeps its chain (the number is the id). A file that is no KEP (sig-network's README.md
+    index) is skipped: "<first snapshot holding it> <path>: <reason>"."""
+    chains: dict[str, list[dict[str, bytes]]] = {}
+    skipped = []
+    for path, contents in sorted(files.items()):
+        try:
+            canonical_id = kep_file_canonical_id(path)
+        except ValueError as exc:
+            first = next(i for i, raw in enumerate(contents) if raw is not None)
+            skipped.append(f"{snapshots[first].label} {path}: {exc}")
+            continue
+        chain = chains.setdefault(canonical_id, [{} for _ in snapshots])
+        for files_at, raw in zip(chain, contents, strict=True):
+            if raw is not None:
+                files_at[path] = raw
+    return chains, skipped
+
+
+def kep_files_state(
+    files: Mapping[str, bytes], strip: frozenset[str], synonyms: Mapping[str, str]
+) -> FileState | None:
+    """One KEP at one snapshot, from its files there; None if it has none. An old single-file
+    KEP (a file directly in `keps/<sig>/`) is hashed alone; a folder's README.md and kep.yaml
+    are hashed together. Raises ValueError if the KEP's number has two folders at once."""
+    if not files:
+        return None
+    folders = sorted({path.rsplit("/", 1)[0] for path in files})
+    if len(folders) > 1:
+        raise ValueError(f"{len(folders)} folders at one snapshot: {', '.join(folders)}")
+    folder = folders[0]
+    if folder.count("/") == 1:  # keps/<sig>: an old single-file KEP, alone under its id
+        ((path, raw),) = files.items()
+        return single_kep_state(path, raw, strip, synonyms)
+    readme, kep_yaml = (f"{folder}/{name}" for name in KEP_FOLDER_FILES)
+    return kep_state(readme, files.get(readme), files.get(kep_yaml), strip, synonyms)
+
+
+def kep_document(
+    group: DateGroup,
+    canonical_id: str,
+    chain: Sequence[Mapping[str, bytes]],
+    changed_at: Sequence[datetime | None],
+    strip: frozenset[str],
+    synonyms: Mapping[str, str],
+    releases: Sequence[Release],
+) -> Document:
+    """One KEP from its files at each of the group's snapshots and the merge time of each
+    change (`_merge_times`). A KEP has no aliases. Raises ValueError if a snapshot's files
+    can't be parsed or their dates can't make valid windows."""
+    states = [kep_files_state(files, strip, synonyms) for files in chain]
+    observed = [
+        Observed(snapshot, state, at)
+        for snapshot, state, at in zip(group.snapshots, states, changed_at, strict=True)
+    ]
+    return Document(
+        canonical_id, group.source_type, date_history(group.repo, observed, releases), []
+    )
+
+
 def collect_keps(
-    scope: Scope,
+    group: DateGroup,
     cache_dir: Path,
     strip: frozenset[str],
     synonyms: Mapping[str, str],
     releases: Sequence[Release],
     summary: Summary,
 ) -> list[Document]:
-    """Read each KEP's README + kep.yaml at every snapshot and derive its versions."""
-    repo = cache_dir / scope.kep_repo
-    snapshots = scope.kep_snapshots
+    """Read every KEP under the group's paths at each snapshot (a folder's README.md and kep.yaml,
+    or an old single-file KEP), group its files by KEP id, and derive its versions, each dated
+    by its merge time."""
+    repo = cache_dir / group.repo
+    files, skipped = read_files(
+        repo, group.paths, group.snapshots, (".md", ".yaml"), ignore=is_other_kep_folder_file
+    )
+    chains, not_keps = kep_chains(files, group.snapshots)
+    summary.skipped += skipped + not_keps
     documents = []
-    for number, directory in scope.keps:
-        readme, kep_yaml = f"{directory}README.md", f"{directory}kep.yaml"
-        files, skipped = read_files(repo, [readme, kep_yaml], snapshots, (".md", ".yaml"))
-        summary.skipped += skipped
-        readmes = files.get(readme, [None] * len(snapshots))
-        kep_yamls = files.get(kep_yaml, [None] * len(snapshots))
-        # Commit times are read only where the files changed since the previous snapshot.
-        times: list[tuple[datetime, ...]] = []
-        for i, snapshot in enumerate(snapshots):
-            previous = (None, None) if i == 0 else (readmes[i - 1], kep_yamls[i - 1])
-            since = None if i == 0 else snapshots[i - 1].sha
-            changed = (readmes[i], kep_yamls[i]) != previous
-            found = commit_times(repo, since, snapshot.sha, [readme, kep_yaml]) if changed else []
-            times.append(tuple(found))
+    for canonical_id, chain in chains.items():
         try:
-            observed = [
-                Observed(snapshot, kep_state(readme, r, k, strip, synonyms), found)
-                for snapshot, r, k, found in zip(snapshots, readmes, kep_yamls, times, strict=True)
-            ]
-            versions = date_history(scope.kep_repo, observed, releases)
-            if not versions:
-                raise ValueError(f"{directory} is in no snapshot")
-            documents.append(Document(kep_canonical_id(number), "kep", versions, []))
+            changed_at = _merge_times(repo, group.snapshots, chain)
+            documents.append(
+                kep_document(group, canonical_id, chain, changed_at, strip, synonyms, releases)
+            )
         except ValueError as exc:
-            summary.failures.append(f"KEP {number}: {exc}")
+            summary.failures.append(f"{canonical_id}: {exc}")
     return documents
+
+
+def governance_document(
+    group: DateGroup,
+    chain: Sequence[tuple[str, bytes] | None],
+    changed_at: Sequence[datetime | None],
+    releases: Sequence[Release],
+) -> Document:
+    """One governance doc from its chain of files (at each of the group's snapshots, its (path,
+    raw content), or None where it's absent) and the merge time of each change.
+
+    The canonical id is `<repo>:<first path>`; each later path is an alias (ADR-002 D4, S05-R2
+    decision 2). Its title is its first `# ` heading, else its path (decision 4). Raises
+    ValueError if a file can't be decoded or the dates can't make valid windows.
+    """
+    states: list[FileState | None] = []
+    for link in chain:
+        if link is None:
+            states.append(None)
+            continue
+        path, text = link[0], decode(link[1])
+        states.append(governance_state(path, text, governance_title(text, path)))
+    observed = [
+        Observed(snapshot, state, at)
+        for snapshot, state, at in zip(group.snapshots, states, changed_at, strict=True)
+    ]
+    ids = [governance_canonical_id(group.repo, link[0]) for link in chain if link is not None]
+    return Document(
+        ids[0],
+        group.source_type,
+        date_history(group.repo, observed, releases),
+        sorted(set(ids) - {ids[0]}),
+    )
+
+
+def collect_governance(
+    group: DateGroup, cache_dir: Path, releases: Sequence[Release], summary: Summary
+) -> list[Document]:
+    """Read the group's governance docs at each snapshot, link a moved file into one chain (same
+    path, then git similarity, `date_link_rules`), and derive one document per chain, each
+    version dated by its merge time. Two chains with one id are an error, never a merge."""
+    repo = cache_dir / group.repo
+    files, skipped = read_files(repo, group.paths, group.snapshots, (".md",))
+    summary.skipped += skipped
+    listings: list[dict[str, bytes]] = [{} for _ in group.snapshots]  # path -> raw content
+    for path, contents in files.items():
+        for listing, raw in zip(listings, contents, strict=True):
+            if raw is not None:
+                listing[path] = raw
+    similar = _git_similarity(repo, group.snapshots)
+    chains = build_chains(
+        listings, date_link_rules(), similar, {path: group.source_type for path in files}
+    )
+    _log_renames(chains, group.snapshots)
+    documents = []
+    for paths in chains.paths:
+        chain = [
+            None if path is None else (path, listing[path])
+            for path, listing in zip(paths, listings, strict=True)
+        ]
+        files_at = [{} if link is None else {link[0]: link[1]} for link in chain]
+        try:
+            changed_at = _merge_times(repo, group.snapshots, files_at)
+            documents.append(governance_document(group, chain, changed_at, releases))
+        except ValueError as exc:
+            first = next(path for path in paths if path is not None)
+            summary.failures.append(f"{group.repo}:{first}: {exc}")
+    return without_duplicate_ids(documents, summary)
+
+
+def blog_document(
+    group: BlogGroup,
+    entries: Sequence[Entry],
+    published: Publication,
+    releases: Sequence[Release],
+) -> Document:
+    """One blog post from its history and its publication (ADR-002 D3, D4).
+
+    The canonical id is the URL at publication. The URL of each later stored version that
+    differs, and the front-matter `aliases` of the stored versions, are its aliases, never the
+    id itself. Raises ValueError if the version live at publication has no URL (no page date)
+    or the dates can't make valid windows.
+    """
+    versions = post_versions(group.repo, group.ref, entries, published, releases)
+    urls = [hugo_url(v.metadata, v.source_path, group.permalink) for v in versions]
+    if urls[0] is None:
+        raise ValueError("no URL at publication: no page date to fill the permalink")
+    canonical_id = blog_canonical_id(urls[0])
+    aliases = {blog_canonical_id(url) for url in urls[1:] if url is not None}
+    for version in versions:
+        front_matter = {str(key).lower(): value for key, value in version.metadata.items()}
+        aliases |= {alias_id(alias) for alias in front_matter.get("aliases") or []}
+    return Document(canonical_id, group.source_type, versions, sorted(aliases - {canonical_id}))
+
+
+def post_entries(
+    history: Sequence[PostCommit], blobs: Mapping[str, bytes], strip: frozenset[str]
+) -> list[Entry]:
+    """A post's history with its file at each commit normalized and hashed (ADR-002 D2; `strip`
+    is the blog_post list). Raises ValueError, naming the file and the commit, if its front
+    matter can't be parsed."""
+    entries = []
+    for commit in history:
+        state = None
+        if commit.blob is not None:
+            try:
+                state = docs_state(commit.path, blobs[commit.blob], strip)
+            except ValueError as exc:
+                raise ValueError(f"{commit.path} at {commit.sha}: {exc}") from exc
+        entries.append(Entry(commit.committed, commit.sha, commit.path, state))
+    return entries
+
+
+def collect_blog(
+    group: BlogGroup,
+    cache_dir: Path,
+    strip: frozenset[str],
+    releases: Sequence[Release],
+    summary: Summary,
+) -> list[Document]:
+    """Read the blog's history (one first-parent log up to the lock head, following renames),
+    normalize and hash every post's file at each commit (`strip`: the blog_post list), and
+    derive one document per post in scope: ever published, with a page date at publication on
+    or after `group.since`. Posts out of scope are counted in the log, not listed. A post whose
+    front matter can't be parsed is reported with the commit and the reason."""
+    repo = cache_dir / group.repo
+    histories = post_histories(repo, group.head, group.paths)
+    blobs: dict[str, bytes] = {}  # by blob id: each file content is read once
+    for history in histories:
+        for commit in history:
+            if commit.blob is not None and commit.blob not in blobs:
+                blobs[commit.blob] = read_blob(repo, commit.blob)
+    documents = []
+    never_published = dated_before = 0
+    for history in histories:
+        try:
+            entries = post_entries(history, blobs, strip)
+        except ValueError as exc:
+            summary.failures.append(str(exc))
+            continue
+        published = publication(entries)
+        if published is None:
+            never_published += 1
+        elif not in_scope(entries[published.entry], group.since):
+            dated_before += 1
+        else:
+            try:
+                documents.append(blog_document(group, entries, published, releases))
+            except ValueError as exc:
+                summary.failures.append(f"{history[-1].path}: {exc}")
+    log.info(
+        "blog: %d posts; %d in scope; %d never published; %d dated before %s",
+        len(histories),
+        len(documents),
+        never_published,
+        dated_before,
+        f"{group.since:%Y-%m-%d}",
+    )
+    return without_duplicate_ids(documents, summary)
 
 
 def store_document(
@@ -431,10 +746,18 @@ def ingest(
             + "; ".join(problems)
         )
     summary = Summary()
-    documents = [
-        *collect_release_scoped(scope, cache_dir, strip, releases, summary),
-        *collect_keps(scope, cache_dir, strip["kep_yaml"], synonyms, releases, summary),
-    ]
+    documents = collect_release_scoped(scope, cache_dir, strip, releases, summary)
+    if scope.changelogs is not None:
+        documents += collect_changelogs(scope.changelogs, cache_dir, summary)
+    for group in scope.date_groups:
+        if group.source_type == "kep":
+            documents += collect_keps(
+                group, cache_dir, strip["kep_yaml"], synonyms, releases, summary
+            )
+        else:
+            documents += collect_governance(group, cache_dir, releases, summary)
+    if scope.blog is not None:
+        documents += collect_blog(scope.blog, cache_dir, strip["blog_post"], releases, summary)
     for document in documents:
         try:
             store_document(conn, document, summary)

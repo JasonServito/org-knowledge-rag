@@ -135,10 +135,12 @@ sources:
     branch: main  # never from release branches (ADR-002 D1)
     paths:
       - content/en/blog/_posts/
-    # Keep posts whose front-matter `date` is on or after this release's release_date.
-    # Most filenames carry no date, so the front matter is the only reliable source.
+    # Keep posts ever published whose page date (front-matter `date`, else the filename's) at
+    # publication is on or after this release's release_date, 00:00 UTC (S05-R2 sitting).
     from_release: "1.20"
     exclude_drafts: true  # front matter `draft: true`
+    # Hugo's blog permalink; the same in all 69 site-config versions since 1.20 (spike §5).
+    permalink: "/:section/:year/:month/:day/:slug/"
 
   governance_doc:
     - repo: community
@@ -200,6 +202,8 @@ scopes:
   # S05: grows task by task until it is the whole manifest (S05-R1 sitting).
   full:
     docs_page: {sigs: [auth, network, release], from_release: "1.20"}
-    release_record: {repos: [website], from_release: "1.20"}  # T6 adds kubernetes (CHANGELOG)
+    release_record: {repos: [website, kubernetes], from_release: "1.20"}  # kubernetes (CHANGELOG) added by T6
     feature_gate_reference: {from_release: "1.20"}  # added by T3
-    kep: {traced: [2579]}  # as in S04 until T4
+    kep: all  # every KEP in sources.kep.sig_dirs (T4)
+    governance_doc: all  # T4
+    blog_post: all  # T5; sources.blog_post.from_release and exclude_drafts apply

@@ -52,7 +52,9 @@ def close_version(
     """Set the `until` bounds of a version whose date window is still open (R10).
 
     A window is closed once. Raises ValueError if the version doesn't exist or is already
-    closed, so nothing can move or reopen a window that was closed before.
+    closed, so nothing can move or reopen a window that was closed before. A release `until` set
+    at insert (a CHANGELOG's `[R, R]`) never changes: it must be the one passed (S05-R2
+    decision 7).
     """
     # A naive datetime would be read in the database session's time zone.
     if valid_until_date.tzinfo is None:
@@ -62,7 +64,9 @@ def close_version(
         UPDATE document_versions
         SET valid_until_release = %(valid_until_release)s,
             valid_until_date = %(valid_until_date)s
-        WHERE id = %(version_id)s AND valid_until_date IS NULL
+        WHERE id = %(version_id)s
+          AND valid_until_date IS NULL
+          AND (valid_until_release IS NULL OR valid_until_release = %(valid_until_release)s)
         RETURNING id
         """,
         {
@@ -72,7 +76,11 @@ def close_version(
         },
     ).fetchone()
     if row is None:
-        raise ValueError(f"version {version_id} is not open: it doesn't exist or is already closed")
+        raise ValueError(
+            f"version {version_id} was not closed: either it is not open (it doesn't exist or "
+            f"is already closed), or its release until is already set to a release other than "
+            f"{valid_until_release}"
+        )
 
 
 def list_versions(conn: psycopg.Connection[TupleRow], document_id: int) -> list[Version]:

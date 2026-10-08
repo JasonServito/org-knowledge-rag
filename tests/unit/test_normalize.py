@@ -1,10 +1,19 @@
 """ADR-002 D2: what changes a content hash, and what doesn't."""
 
+import hashlib
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-from orgknow.ingestion.normalize import content_hash, docs_state, kep_state
+from orgknow.ingestion.normalize import (
+    content_hash,
+    docs_state,
+    front_matter_time,
+    governance_state,
+    kep_state,
+    single_kep_state,
+)
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 # The manifest's docs_page and kep_yaml strip lists (config/corpus_manifest.yaml), lowercased.
@@ -195,3 +204,135 @@ def test_a_kep_needs_both_files() -> None:
         kep_state(README, b"# T\n", None, KEP_STRIP, SYNONYMS)
     with pytest.raises(ValueError, match="README"):
         kep_state(README, None, b"title: T\n", KEP_STRIP, SYNONYMS)
+
+
+# --- Old single-file KEPs and governance docs (S05-T4) -----------------------------------------
+
+OLD_KEP = "keps/sig-auth/0014-dynamic-audit-configuration.md"
+# Real lines 1-61 of the old single-file KEP at the 1.20 snapshot: front matter, then the body.
+OLD_KEP_RAW = (
+    FIXTURES / "kep_old" / "0014-dynamic-audit-configuration-excerpt-1.20.md"
+).read_bytes()
+
+
+def test_an_old_single_file_kep_keeps_its_metadata_and_claims_in_front_matter() -> None:
+    state = single_kep_state(OLD_KEP, OLD_KEP_RAW, KEP_STRIP, SYNONYMS)
+
+    # Read by hand from the fixture's front matter (lines 2 and 20); it has no `stage` key.
+    assert (state.claimed_status, state.claimed_stage) == ("implementable", None)
+    assert state.source_path == OLD_KEP
+    assert state.metadata["title"] == "Dynamic Audit Configuration"
+    assert state.metadata["creation-date"] == "2018-05-18"
+    assert state.metadata["reviewers"][0] == "@tallclair"  # stripped from the hash, kept here
+
+
+def test_an_old_single_file_kep_is_hashed_with_the_kep_yaml_strip_list() -> None:
+    reviewer_added = OLD_KEP_RAW.replace(b"reviewers:\n", b'reviewers:\n  - "@someone"\n')
+    retitled = OLD_KEP_RAW.replace(b"# Dynamic Audit Control", b"# Dynamic Audit Control v2")
+    assert reviewer_added != OLD_KEP_RAW and retitled != OLD_KEP_RAW
+
+    def _hash(raw: bytes) -> str:
+        return single_kep_state(OLD_KEP, raw, KEP_STRIP, SYNONYMS).content_hash
+
+    assert _hash(reviewer_added) == _hash(OLD_KEP_RAW)
+    assert _hash(retitled) != _hash(OLD_KEP_RAW)
+
+
+def test_a_governance_doc_is_hashed_whole_and_its_metadata_holds_only_its_title() -> None:
+    text = "# Release Engineering\n\nSee [the handbooks](handbooks/)  for   details.\n"
+
+    state = governance_state("release-engineering/README.md", text, "Release Engineering")
+
+    # No front matter: the hash is the empty JSON object, a newline, then the cleaned text
+    # (link target dropped, whitespace collapsed), typed here by hand.
+    cleaned = "# Release Engineering See [the handbooks] for details."
+    assert state.content_hash == hashlib.sha256(("{}\n" + cleaned).encode()).hexdigest()
+    assert state.metadata == {"title": "Release Engineering"}
+    assert state.source_path == "release-engineering/README.md"
+    assert (state.claimed_status, state.claimed_stage) == (None, None)
+
+
+# --- Blog posts (S05-T5): front matter opening with more dashes, and front-matter dates --------
+
+BLOG = FIXTURES / "blog"
+BLOG_STRIP = frozenset({"layout", "math"})  # the manifest's blog_post strip list
+
+
+def test_front_matter_may_open_with_more_than_three_dashes() -> None:
+    # The real VAP GA post opens with `------`, and kubernetes.io renders it (S05-R2 sitting).
+    raw = (BLOG / "validating-admission-policy-ga" / "2de4371a-excerpt.md").read_bytes()
+    assert raw.startswith(b"------\n")
+
+    state = docs_state("content/en/blog/_posts/x/index.md", raw, BLOG_STRIP)
+
+    # Read by hand from the excerpt's lines 2-7. The folded `author` keeps no final newline:
+    # the YAML ends before the closing `---` line's newline.
+    assert state.metadata == {
+        "layout": "blog",
+        "title": "Kubernetes 1.30: Validating Admission Policy Is Generally Available",
+        "slug": "validating-admission-policy-ga",
+        "date": "2024-04-24",
+        "author": "Jiahui Feng (Google)",
+    }
+
+
+def test_k8s_book_club_fix_commit_changes_no_normalized_content() -> None:
+    # Website commit 2912b59c turned the opening `------` into `---` and rewrapped link texts
+    # (whole files, before and after). Once `------` parses, only whitespace changed (S05-R2
+    # contract: the fix "may add no version").
+    before = (BLOG / "k8s-book-club" / "ccb153d2.md").read_bytes()
+    after = (BLOG / "k8s-book-club" / "2912b59c.md").read_bytes()
+    assert before.startswith(b"------\n") and after.startswith(b"---\n") and before != after
+
+    path = "content/en/blog/_posts/2024-02-22-k8s-book-club/index.md"
+    assert (
+        docs_state(path, before, BLOG_STRIP).content_hash
+        == docs_state(path, after, BLOG_STRIP).content_hash
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # PyYAML types: a bare date is midnight UTC; a datetime keeps its offset; one without
+        # an offset is in the site's time zone, UTC.
+        (date(2024, 4, 24), datetime(2024, 4, 24, tzinfo=UTC)),
+        (
+            datetime(2025, 11, 12, 12, tzinfo=timezone(timedelta(hours=-5))),
+            datetime(2025, 11, 12, 12, tzinfo=timezone(timedelta(hours=-5))),
+        ),
+        (datetime(2021, 8, 4, 10, 30), datetime(2021, 8, 4, 10, 30, tzinfo=UTC)),
+        # Text: YAML 1.1 needs a colon in the offset, so PyYAML leaves these as strings
+        # (spike §7 S: 8 posts, e.g. the 1.28 release post, `2023-08-15T12:00:00+0000`).
+        ("2023-08-15T12:00:00+0000", datetime(2023, 8, 15, 12, tzinfo=UTC)),
+        (
+            "2022-08-23T15:00:00-0800",
+            datetime(2022, 8, 23, 15, tzinfo=timezone(timedelta(hours=-8))),
+        ),
+        # Milliseconds (image-registry-change), and no seconds (ingress-nginx-retirement's
+        # `10:30-08:00` form).
+        ("2023-03-10T17:00:00.000Z", datetime(2023, 3, 10, 17, tzinfo=UTC)),
+        (
+            "2025-11-11T10:30-08:00",
+            datetime(2025, 11, 11, 10, 30, tzinfo=timezone(timedelta(hours=-8))),
+        ),
+        # The JSON forms the `metadata` column holds (str() of a date or datetime).
+        ("2024-04-24", datetime(2024, 4, 24, tzinfo=UTC)),
+        (
+            "2025-11-12 12:00:00-05:00",
+            datetime(2025, 11, 12, 12, tzinfo=timezone(timedelta(hours=-5))),
+        ),
+        # Not a date: a placeholder (`XXXX-XX-XX` drafts), the karpenter post's `date: draft`,
+        # nothing, a number.
+        ("XXXX-XX-XX", None),
+        ("draft", None),
+        (None, None),
+        (2024, None),
+    ],
+)
+def test_front_matter_time_reads_every_date_type(value: object, expected: datetime | None) -> None:
+    parsed = front_matter_time(value)
+
+    assert parsed == expected
+    if parsed is not None:  # equal instants aren't enough: the offset as written is kept
+        assert parsed.utcoffset() == expected.utcoffset()  # type: ignore[union-attr]

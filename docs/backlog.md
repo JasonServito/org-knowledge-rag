@@ -190,13 +190,13 @@ Tasks:
 - [x] **S05-T3 `[core]` Feature gates.**
   - Done when: the 1.32 file renames create no new documents.
   - Deps: T1, T2.
-- [ ] **S05-T4 `[core]` KEPs and governance docs (date-scoped, merge-time dating).**
+- [x] **S05-T4 `[core]` KEPs and governance docs (date-scoped, merge-time dating).**
   - Done when: a re-run adds 0 versions; KEP-2579's versions start at their merge times.
   - Deps: T1.
-- [ ] **S05-T5 `[core]` Blog posts.**
+- [x] **S05-T5 `[core]` Blog posts.**
   - Done when: a re-run adds 0 versions; the counts are explained against the spike.
   - Deps: T1.
-- [ ] **S05-T6 `[core]` CHANGELOG.**
+- [x] **S05-T6 `[core]` CHANGELOG.**
   - Done when: 18 documents, 371 patch sections; no sha512 rows in chunks; a set release `until` can't change.
   - Deps: T1.
 - [ ] **S05-T7 `[core]` Chunker fixes.**
@@ -329,4 +329,5 @@ ADRs are decided when their slice starts, not earlier.
 - **S06 sitting (S04-R2 question 1; moved in the S05 sitting): keep the stop reason when the model is cut off.** Reason: if the model is cut off or refuses partway through its JSON, `messages.parse` raises before it returns, so `GenerationError` has no stop reason and no token usage. The ask still fails cleanly (one stderr line, exit 1). Options: keep it for S04, or switch to `messages.create` with the same `output_config` and validate `ModelAnswer` ourselves on `end_turn`, which keeps both on every path but amends ADR-006 D2. Decide before the S06 baseline. (PR #24 question 1; Greptile on PR #24.)
 - **S06: store the question vectors for eval runs.** Reason: Voyage's question vector varies between calls; a second retrieval for the same question moved distances by up to 0.0044 and swapped near-ties (seed #6 rank 10, seed #9 ranks 8–9). Fix the vectors, or repeat runs, before trusting small ablation deltas. (S04-T8, PR #25.)
 - **S09: near-duplicate crowding in the top 10.** Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)
+- **Link the 25 old single-file KEPs to their later KEP folders by exact title (S10 sitting at the latest, before S06 labels if wanted sooner).** Reason: 24 of 25 match a 1.21 folder's `kep.yaml` title exactly (e.g. `0014-dynamic-audit-configuration.md` → `600-dynamic-audit-configuration/`), so one history per KEP is possible. Needs an ADR-002 amendment (the known limit) and a one-time link rule; changing ids after S06 means relabeling. (S05-R2 sitting, decision 3, option C.)
 - **S10: check KEP Implementation History dates against the `releases` table.** Reason: seed #8 repeated KEP-2579's "2021-11-03: v1.23 Beta version released" as fact; 1.23 shipped 2021-12-07. The model never sees release dates. (S04-T8, PR #25; Appendix A conflict case.)

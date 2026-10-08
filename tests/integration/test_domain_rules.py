@@ -224,6 +224,23 @@ def test_r10_cannot_close_a_missing_version(conn: Conn) -> None:
         close_version(conn, -1, 30, D31)
 
 
+def test_r10_a_release_until_set_at_insert_never_changes(conn: Conn) -> None:
+    # CHANGELOG-1.30's version: release window [30, 30] set at insert, date window open
+    # (S05-R2 decision 7). Closing it may set the date `until`, never move the release `until`.
+    document_id = create_document(conn, "changelog:1.30", "release_record")
+    version_id = insert_version(conn, _version(document_id, valid_until_release=30))
+
+    with pytest.raises(ValueError, match="release until is already set"), conn.transaction():
+        close_version(conn, version_id, 31, D32)
+
+    # Nothing changed; the same release `until` closes it.
+    [version] = versions_at_release(conn, document_id, 30)
+    assert (version.valid_until_release, version.valid_until_date) == (30, None)
+    close_version(conn, version_id, 30, D31)
+    [version] = versions_at_release(conn, document_id, 30)
+    assert (version.valid_until_release, version.valid_until_date) == (30, D31)
+
+
 @pytest.mark.parametrize(
     ("changes", "constraint"),
     [
