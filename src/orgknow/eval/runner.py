@@ -12,6 +12,8 @@ crash. No Langfuse trace: the results folder is the record.
 
 `score_retrieval_only` (S07-T3, `make eval-retrieval`) runs the same label check and retrieval,
 from stored vectors only, and scores the hits with no answer call: free, and it writes nothing.
+
+In rerank mode (S08-T2), both get the reranker the caller loaded once, before the question loop.
 """
 
 import hashlib
@@ -41,6 +43,7 @@ from orgknow.eval.golden import (
 from orgknow.eval.metrics import RetrievalMetrics, score_retrieval
 from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
+from orgknow.retrieval.rerank import Reranker
 from orgknow.retrieval.retrieve import retrieve
 from orgknow.settings import Settings
 
@@ -62,6 +65,12 @@ class RunSettings(BaseModel):
     retrieval_candidates: int | None = None
     rrf_k: int | None = None
     hnsw_ef_search: int | None = None
+    # S08-T2: rerank mode's model and its thread count; None in other modes and older folders.
+    rerank_model: str | None = None
+    rerank_revision: str | None = None
+    rerank_max_length: int | None = None
+    rerank_batch_size: int | None = None
+    torch_threads: int | None = None
     generation_model: str
     generation_effort: str
     generation_max_tokens: int
@@ -80,6 +89,8 @@ class RunInfo(BaseModel):
     smoke: bool
     questions: int
     settings: RunSettings
+    # Seconds to load the reranker, once per run (S08-T2); None in other modes and older folders.
+    rerank_load_s: float | None = None
 
 
 class RankedHit(BaseModel):
@@ -91,9 +102,10 @@ class RankedHit(BaseModel):
     canonical_id: str
     heading_path: list[str]
     distance: float | None  # None when only lexical search found the text
-    rrf_score: float | None  # hybrid only
+    rrf_score: float | None  # hybrid and rerank only
     dense_rank: int | None
     lexical_rank: int | None
+    rerank_score: float | None = None  # rerank only (S08-T2); absent in older folders
 
 
 class QuestionRow(BaseModel):
@@ -237,9 +249,13 @@ def run(
     settings: Settings,
     smoke: bool,
     name: str,
+    reranker: Reranker | None = None,
+    rerank_load_s: float | None = None,
+    torch_threads: int | None = None,
 ) -> Path:
     """Run the golden set (only its `smoke: true` questions with `smoke`) and write its results
     folder; return the folder. `embedder` is called only for questions with no stored vector.
+    Rerank mode needs `reranker`; `run.json` records its load time and torch's thread count.
 
     Raises GoldenSetError for an invalid golden file, and EvalError when a label matches no
     stored text, a vector is missing with no embedder, or embedding fails: all before any
@@ -274,11 +290,12 @@ def run(
     stored = StoredVectors(settings.embedding_model, vectors)
     rows = []
     for question in questions:
-        row = _run_question(question, conn, stored, generator, settings)
+        row = _run_question(question, conn, stored, generator, settings, reranker)
         status = row.answer.answer_status if row.answer else row.error
         print(f"{row.id}  {status}  {row.latency_s:.1f} s")
         rows.append(row)
 
+    rerank_mode = settings.retrieval_mode == "rerank"
     run_info = RunInfo(
         name=name,
         started_at=started_at,
@@ -296,10 +313,16 @@ def run(
             retrieval_candidates=settings.retrieval_candidates,
             rrf_k=settings.rrf_k,
             hnsw_ef_search=settings.hnsw_ef_search,
+            rerank_model=settings.rerank_model if rerank_mode else None,
+            rerank_revision=settings.rerank_revision if rerank_mode else None,
+            rerank_max_length=settings.rerank_max_length if rerank_mode else None,
+            rerank_batch_size=settings.rerank_batch_size if rerank_mode else None,
+            torch_threads=torch_threads,
             generation_model=settings.generation_model,
             generation_effort=settings.generation_effort,
             generation_max_tokens=settings.generation_max_tokens,
         ),
+        rerank_load_s=rerank_load_s,
     )
     summary = summarize(name, golden_sha256, started_at, rows)
     (folder / "run.json").write_text(run_info.model_dump_json(indent=2) + "\n", encoding="utf-8")
@@ -318,12 +341,13 @@ def _run_question(
     embedder: StoredVectors,
     generator: Generator,
     settings: Settings,
+    reranker: Reranker | None,
 ) -> QuestionRow:
     """Retrieve, answer and score one question. An ask error (`cli.ASK_ERRORS`) becomes the row's
     `error`. Retrieval reads a stored vector, so it makes no network call: its failure is a bug
     or a database failure, and stops the run."""
     start = time.monotonic()
-    hits = retrieve(question.question, embedder, conn, settings)
+    hits = retrieve(question.question, embedder, conn, settings, reranker)
     result: Answer | None = None
     usage: TokenUsage | None = None
     error: str | None = None
@@ -348,6 +372,7 @@ def _run_question(
                 rrf_score=hit.rrf_score,
                 dense_rank=hit.dense_rank,
                 lexical_rank=hit.lexical_rank,
+                rerank_score=hit.rerank_score,
             )
             for rank, hit in enumerate(hits, start=1)
         ],
@@ -361,14 +386,14 @@ def _run_question(
 
 
 def score_retrieval_only(
-    conn: psycopg.Connection[TupleRow], settings: Settings
+    conn: psycopg.Connection[TupleRow], settings: Settings, reranker: Reranker | None = None
 ) -> list[RetrievalMetrics]:
     """`make eval-retrieval` (S07-R1 decision 5): retrieve, in the settings' mode, for every
     answerable golden question with its stored vector, and score the hits; return the metrics in
     file order. No Voyage call, no Anthropic call, nothing written.
 
     Raises GoldenSetError and EvalError as `run` does, and EvalError when a question has no
-    stored vector: this command never embeds.
+    stored vector: this command never embeds. Rerank mode needs `reranker`.
     """
     golden, _ = check_golden(conn, settings.eval_golden_path)
     questions = [question for question in golden.questions if question.answerable]
@@ -383,7 +408,7 @@ def score_retrieval_only(
     stored = StoredVectors(settings.embedding_model, vectors)
     scores = []
     for question in questions:
-        hits = retrieve(question.question, stored, conn, settings)
+        hits = retrieve(question.question, stored, conn, settings, reranker)
         metrics = score_retrieval(question, hits, settings.retrieval_top_k)
         if metrics is not None:  # always: an answerable question has labels (ADR-007)
             scores.append(metrics)
@@ -391,13 +416,20 @@ def score_retrieval_only(
 
 
 def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> str:
-    """`make eval-retrieval`'s two lines (S07-R1, pinned format): the mode and its settings, then
-    the metric means over the answerable questions."""
-    if settings.retrieval_mode == "hybrid":
+    """`make eval-retrieval`'s two lines (S07-R1, S08-R1, pinned formats): the mode and its
+    settings, then the metric means over the answerable questions."""
+    hybrid = (
+        f"candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
+        f"width {settings.hnsw_ef_search}"
+    )
+    if settings.retrieval_mode == "rerank":
+        # The revision shortened to 7 characters, as git shortens a commit SHA.
         mode = (
-            f"hybrid (candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
-            f"width {settings.hnsw_ef_search})"
+            f"rerank ({hybrid}, model {settings.rerank_model}@{settings.rerank_revision[:7]}, "
+            f"max length {settings.rerank_max_length})"
         )
+    elif settings.retrieval_mode == "hybrid":
+        mode = f"hybrid ({hybrid})"
     else:
         mode = f"dense (width {settings.hnsw_ef_search})"
 

@@ -10,11 +10,14 @@
   questions) through retrieval and one answer call each, write a results folder under
   EVAL_RESULTS_DIR (`runner.py`), then rebuild the ablation table. Paid: one Anthropic call per
   question with hits, and one Voyage request when a question has no stored vector. NAME defaults
-  to RETRIEVAL_MODE (`dense` or `hybrid`); with `--smoke`, `<mode>-smoke`, so smoke runs get
-  their own ablation-table row.
+  to RETRIEVAL_MODE (`dense`, `hybrid` or `rerank`); with `--smoke`, `<mode>-smoke`, so smoke
+  runs get their own ablation-table row.
 - `retrieval`: retrieve for every answerable golden question with its stored vector, in
   RETRIEVAL_MODE, and print the retrieval metrics (S07-T3). Free: no Voyage or Anthropic call; a
   missing vector is an error. Writes nothing.
+
+In rerank mode, `run` and `retrieval` load the cross-encoder once, before the question loop, and
+time the load (S08-T2).
 - `table`: rebuild the ablation table from every results folder (`table.py`).
 
 Errors go to stderr, one line each. Exit codes: 0 done, 1 an error, 2 bad usage (argparse).
@@ -22,11 +25,14 @@ Errors go to stderr, one line each. Exit codes: 0 done, 1 an error, 2 bad usage 
 
 import argparse
 import sys
+import time
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import anthropic
 import psycopg
 
+from orgknow.cli import load_reranker
 from orgknow.db.eval import canonical_ids, document_texts
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.eval import runner
@@ -41,6 +47,9 @@ from orgknow.eval.golden import (
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import AnthropicGenerator
 from orgknow.settings import Settings
+
+if TYPE_CHECKING:  # for the annotation only: importing the module loads torch
+    from orgknow.retrieval.cross_encoder import CrossEncoderReranker
 
 
 def check(settings: Settings) -> int:
@@ -74,6 +83,20 @@ def sections(settings: Settings, document: str) -> int:
     return 0
 
 
+def _load_reranker(settings: Settings) -> tuple["CrossEncoderReranker | None", float | None]:
+    """`load_reranker` and its load time in seconds; (None, None) outside rerank mode. Raises
+    OSError when the model isn't cached and Hugging Face can't be reached."""
+    start = time.monotonic()
+    reranker = load_reranker(settings)
+    return reranker, None if reranker is None else round(time.monotonic() - start, 3)
+
+
+def _load_failed(error: OSError) -> int:
+    """Print why the reranker didn't load, on one line; return 1."""
+    print(f"error: {' '.join(str(error).split())}", file=sys.stderr)
+    return 1
+
+
 def run(settings: Settings, smoke: bool, name: str) -> int:
     """`make eval` / `make eval-smoke`: run the golden set, then rebuild the ablation table; 1 on
     an error that stops the run. A failed ask doesn't stop it: it is a row with its error."""
@@ -91,8 +114,13 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
     client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
     generator = AnthropicGenerator(client, settings)
     try:
+        reranker, load_s = _load_reranker(settings)
+    except OSError as error:
+        return _load_failed(error)
+    threads = None if reranker is None else reranker.threads
+    try:
         with psycopg.connect(settings.database_url) as conn:
-            runner.run(conn, embedder, generator, settings, smoke, name)
+            runner.run(conn, embedder, generator, settings, smoke, name, reranker, load_s, threads)
     except GoldenSetError as error:
         for line in error.errors:
             print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
@@ -106,8 +134,12 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
 def retrieval(settings: Settings) -> int:
     """`make eval-retrieval`: print the mode and the retrieval metrics; 1 on an error."""
     try:
+        reranker, _ = _load_reranker(settings)
+    except OSError as error:
+        return _load_failed(error)
+    try:
         with psycopg.connect(settings.database_url) as conn:
-            scores = runner.score_retrieval_only(conn, settings)
+            scores = runner.score_retrieval_only(conn, settings, reranker)
     except GoldenSetError as error:
         for line in error.errors:
             print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
@@ -144,8 +176,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     run_parser.add_argument(
         "--name",
         help=(
-            "the pipeline's name in the results (default: RETRIEVAL_MODE, dense or hybrid; "
-            "with --smoke, RETRIEVAL_MODE-smoke)"
+            "the pipeline's name in the results (default: RETRIEVAL_MODE, dense, hybrid or "
+            "rerank; with --smoke, RETRIEVAL_MODE-smoke)"
         ),
     )
     commands.add_parser(

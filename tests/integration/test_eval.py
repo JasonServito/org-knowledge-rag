@@ -14,7 +14,7 @@ from pathlib import Path
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
-from tests.conftest import FakeEmbedder, FakeGenerator
+from tests.conftest import FakeEmbedder, FakeGenerator, FakeReranker
 
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import add_alias, create_document
@@ -415,10 +415,17 @@ def test_a_run_writes_the_pinned_results_format(
             "retrieval_candidates": 20,
             "rrf_k": 60,
             "hnsw_ef_search": 100,
+            # S08-T2: the reranker's fields are null outside rerank mode.
+            "rerank_model": None,
+            "rerank_revision": None,
+            "rerank_max_length": None,
+            "rerank_batch_size": None,
+            "torch_threads": None,
             "generation_model": "claude-opus-5-5",
             "generation_effort": "medium",
             "generation_max_tokens": 16000,
         },
+        "rerank_load_s": None,
     }
 
     rows = _rows(folder)
@@ -440,6 +447,7 @@ def test_a_run_writes_the_pinned_results_format(
             "rrf_score": None,
             "dense_rank": 1,
             "lexical_rank": None,
+            "rerank_score": None,
         },
         {
             "rank": 2,
@@ -450,6 +458,7 @@ def test_a_run_writes_the_pinned_results_format(
             "rrf_score": None,
             "dense_rank": 2,
             "lexical_rank": None,
+            "rerank_score": None,
         },
         {
             "rank": 3,
@@ -460,6 +469,7 @@ def test_a_run_writes_the_pinned_results_format(
             "rrf_score": None,
             "dense_rank": 3,
             "lexical_rank": None,
+            "rerank_score": None,
         },
     ]
     # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
@@ -626,6 +636,47 @@ def test_a_smoke_run_runs_only_the_smoke_questions(
     assert (run_info["smoke"], run_info["questions"]) == (True, 2)
 
 
+# Rerank mode (S08-T2) with a fake reranker. Every question's fused pool holds the 3 texts (see
+# the retrieval-only tests below); the fake scores "b usage" highest, then "a install", "a intro".
+RERANK_SCORES = {"a intro": 0.1, "a install": 0.2, "b usage": 0.9}
+
+
+def test_a_rerank_run_records_the_reranker_and_each_hits_score(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    settings = run_settings.model_copy(update={"retrieval_mode": "rerank"})
+
+    folder = run(
+        conn,
+        FakeEmbedder(),
+        _refusing(),
+        settings,
+        smoke=True,
+        name="rerank",
+        reranker=FakeReranker(RERANK_SCORES),
+        rerank_load_s=3.25,
+        torch_threads=11,
+    )
+
+    run_info = json.loads((folder / "run.json").read_text(encoding="utf-8"))
+    # The settings defaults (ADR-008), and the load time and threads as the caller passed them.
+    assert {key: run_info["settings"][key] for key in run_info["settings"] if "rerank" in key} == {
+        "rerank_model": "BAAI/bge-reranker-base",
+        "rerank_revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "rerank_max_length": 512,
+        "rerank_batch_size": 8,
+    }
+    assert (run_info["settings"]["torch_threads"], run_info["rerank_load_s"]) == (11, 3.25)
+    # q01's hits in the fake's order, each with its raw score.
+    hits = _rows(folder)[0]["hits"]
+    assert isinstance(hits, list)
+    assert [(hit["chunk_id"], hit["rerank_score"]) for hit in hits] == [
+        (chunk_ids["b usage"], 0.9),
+        (chunk_ids["a install"], 0.2),
+        (chunk_ids["a intro"], 0.1),
+    ]
+
+
 def test_a_label_matching_nothing_stops_the_run_before_any_call(
     conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
 ) -> None:
@@ -755,6 +806,16 @@ def _store_vectors(settings: Settings, *questions: str) -> Path:
             "Mode: hybrid (candidates 20, k 60, width 100). Answerable questions: 2.\n"
             "Recall@10 1.000  Hit@10 1.000  MRR 1.000  nDCG@10 0.960",
         ),
+        # S08-T2, the fake reranker's order: "b usage", "a install", "a intro" for both. q01's
+        # labels at ranks 1 and 2: MRR 1, nDCG 1. q02's at rank 3: MRR 1/3, nDCG
+        # (1/log2(4)) / 1 = 0.5. Means: MRR 0.666667, nDCG 0.75. The model's revision is
+        # shortened to 7 characters.
+        (
+            "rerank",
+            "Mode: rerank (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, "
+            "max length 512). Answerable questions: 2.\n"
+            "Recall@10 1.000  Hit@10 1.000  MRR 0.667  nDCG@10 0.750",
+        ),
     ],
 )
 def test_retrieval_only_scores_each_mode_and_writes_nothing(
@@ -764,7 +825,8 @@ def test_retrieval_only_scores_each_mode_and_writes_nothing(
     vectors_before = vectors_path.read_bytes()
     settings = run_settings.model_copy(update={"retrieval_mode": mode})
 
-    scores = score_retrieval_only(conn, settings)
+    # Dense and hybrid never call the reranker.
+    scores = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
 
     assert retrieval_report(settings, scores) == expected
     assert not settings.eval_results_dir.exists()

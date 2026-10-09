@@ -206,3 +206,37 @@ def test_a_search_width_equal_to_the_larger_search_is_accepted() -> None:
 def test_bad_hybrid_retrieval_settings_are_refused(field: str, value: object) -> None:
     with pytest.raises(ValidationError, match=field):
         Settings(_env_file=None, database_url="x", **{field: value})
+
+
+def test_rerank_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("RERANK_MODEL", "RERANK_REVISION", "RERANK_MAX_LENGTH", "RERANK_BATCH_SIZE"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # ADR-008 D1 and D3; the S08-R1 contract, "Claude's calls", Settings.
+    assert settings.rerank_model == "BAAI/bge-reranker-base"
+    assert settings.rerank_revision == "2cfc18c9415c912f9d8155881c133215df768a70"
+    assert settings.rerank_max_length == 512
+    assert settings.rerank_batch_size == 8
+
+
+def test_rerank_mode_is_accepted() -> None:
+    assert Settings(_env_file=None, database_url="x", retrieval_mode="rerank").retrieval_mode == (
+        "rerank"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        # 512 tokens is the model's longest input (ADR-008 D3).
+        ("rerank_max_length", 0),
+        ("rerank_max_length", 513),
+        ("rerank_batch_size", 0),
+        ("rerank_batch_size", 257),
+    ],
+)
+def test_bad_rerank_settings_are_refused(field: str, value: int) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: value})

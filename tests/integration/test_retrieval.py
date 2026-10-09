@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
-from tests.conftest import FakeEmbedder
+from tests.conftest import FakeEmbedder, FakeReranker
 
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import create_document
@@ -150,6 +150,7 @@ def test_a_text_in_two_versions_is_one_hit_citing_the_newest(conn: Conn) -> None
         "rrf_score": None,
         "dense_rank": 1,
         "lexical_rank": None,
+        "rerank_score": None,
     }
 
 
@@ -266,6 +267,7 @@ def test_lexical_an_exact_term_ranks_its_text_first(conn: Conn) -> None:
             "rrf_score": None,
             "dense_rank": None,
             "lexical_rank": 1,
+            "rerank_score": None,
         }
     ]
 
@@ -414,3 +416,60 @@ def test_dense_mode_records_the_distance_and_dense_rank_only(
         (chunk_ids[FARTHER], 3, None, None),
     ]
     assert [hit.distance for hit in hits] == pytest.approx([0, 0.955806, 0.96875], abs=1e-6)
+
+
+# Rerank mode (S08-T2), through `retrieve` with the fake embedder and a fake reranker, on the
+# hybrid rows above. With 2 candidates per search, hybrid's fused pool is, in order: ADJACENT,
+# NEAREST, SCATTERED (as in the hybrid test). The fake scores SCATTERED, last in the pool, highest.
+
+
+def _rerank_settings(settings: Settings) -> Settings:
+    """Rerank mode, 2 candidates per search, and a top 2: the pool (3 texts) is longer than the
+    top K, so a pool cut to the top K before scoring would lose SCATTERED."""
+    return settings.model_copy(
+        update={
+            "retrieval_mode": "rerank",
+            "retrieval_candidates": 2,
+            "retrieval_top_k": 2,
+            "rrf_k": 60,
+            "hnsw_ef_search": WIDTH,
+        }
+    )
+
+
+def test_rerank_scores_hybrids_whole_pool_and_keeps_the_top_k_by_score(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    chunk_ids = _hybrid_rows(conn, fake_embedder.model)
+    reranker = FakeReranker({ADJACENT: 0.1, NEAREST: 0.5, SCATTERED: 0.9})
+
+    hits = retrieve(QUESTION, fake_embedder, conn, _rerank_settings(settings), reranker)
+
+    # One call with the whole pool, in fused order.
+    assert reranker.calls == [(QUESTION, [ADJACENT, NEAREST, SCATTERED])]
+    # The fake's order, top 2: SCATTERED (0.9), NEAREST (0.5). Each keeps its fused score and
+    # ranks: SCATTERED lexical 2, 1/62 = 0.016129; NEAREST dense 1, 1/61 = 0.016393.
+    assert [(hit.chunk_id, hit.rerank_score, hit.dense_rank, hit.lexical_rank) for hit in hits] == [
+        (chunk_ids[SCATTERED], 0.9, None, 2),
+        (chunk_ids[NEAREST], 0.5, 1, None),
+    ]
+    assert [hit.rrf_score for hit in hits] == pytest.approx([0.016129, 0.016393], abs=1e-6)
+
+
+def test_rerank_mode_without_a_reranker_raises(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    _hybrid_rows(conn, fake_embedder.model)
+
+    with pytest.raises(ValueError, match="rerank mode needs a reranker"):
+        retrieve(QUESTION, fake_embedder, conn, _rerank_settings(settings))
+
+
+def test_rerank_with_an_empty_pool_returns_no_hits_without_a_model_call(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    # No rows: dense and lexical search both find nothing.
+    reranker = FakeReranker({})
+
+    assert retrieve(QUESTION, fake_embedder, conn, _rerank_settings(settings), reranker) == []
+    assert reranker.calls == []

@@ -22,6 +22,9 @@ from orgknow.settings import Settings
         ("dense", ["run", "--smoke"], "dense-smoke"),
         ("hybrid", ["run", "--smoke"], "hybrid-smoke"),
         ("hybrid", ["run", "--smoke", "--name", "custom"], "custom"),
+        # S08-T2.
+        ("rerank", ["run"], "rerank"),
+        ("rerank", ["run", "--smoke"], "rerank-smoke"),
     ],
 )
 def test_the_run_name_defaults_to_the_retrieval_mode(

@@ -268,7 +268,7 @@ Tasks:
 
 - [x] **S08-T1 `[core]` ADR-008: reranker model, runtime and candidate count.**
   - Decided in the S08-R1 sitting (2026-10-09) from a measured prototype; committed as Accepted in the run PR.
-- [ ] **S08-T2 `[core]` Reranker module and `rerank` mode.**
+- [x] **S08-T2 `[core]` Reranker module and `rerank` mode.**
   - A `Reranker` interface, the local cross-encoder and a fake; `rerank` mode reranks hybrid's whole pool and keeps the top K.
   - Done when: unit tests give the hand-predicted order; `make eval-retrieval` in rerank mode prints the sitting's numbers; dense and hybrid print theirs.
   - Deps: T1.
