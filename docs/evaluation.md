@@ -75,7 +75,7 @@ What the runs show:
 
 - **Refusals follow retrieval misses.**
   - q31 and q43 have no labeled source in their top 10, and the model refused both in every run.
-  - q41 was answered, refused, then answered.
+  - Not every refusal is a miss: q41 found 1 of its 5 labeled sources (at rank 3), and was answered, refused, then answered.
 - **About 3 of 10 slots repeat a section**: another version of it, or another packed piece of a long one.
 - **CURRENT questions rank worst:** MRR 0.467, against 0.905 for WHY.
 - **Same prompt every run.** Input tokens were identical in all 3 runs (232,992), because the hits were. Output was 16,484–16,975 tokens, of which 1,388–1,548 were reasoning.
