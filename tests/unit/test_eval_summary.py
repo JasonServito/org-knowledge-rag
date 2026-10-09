@@ -1,8 +1,9 @@
 """The summary's p95 latencies and cost per question (S08-T3), and `make eval-resummarize`, from
-hand-built rows.
+hand-built rows; and `make eval-retrieval`'s timing line (S08-T4), from hand-written times.
 
 Every expected value is by hand: a nearest-rank p95 is the value at sorted index
-ceil(n * 0.95) - 1 (0-based), and a question's cost is (input * $4 + output * $20) / 1,000,000.
+ceil(n * 0.95) - 1 (0-based), a median of an even count is the mean of the 2 middle values, and a
+question's cost is (input * $4 + output * $20) / 1,000,000.
 """
 
 import json
@@ -13,7 +14,7 @@ import pytest
 
 from orgknow.eval import __main__ as eval_main
 from orgknow.eval.checks import AnswerChecks
-from orgknow.eval.runner import QuestionRow, Summary, summarize
+from orgknow.eval.runner import QuestionRow, Summary, summarize, timing_line
 from orgknow.generation.schema import TokenUsage
 from orgknow.settings import Settings
 
@@ -197,3 +198,31 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
     assert capsys.readouterr().out == (
         f"{folder}: p95 latency 4.000 s, retrieve p95 n/a, cost/question $0.006000\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("retrieve_s", "load_s", "expected"),
+    [
+        # Dense and hybrid: no reranker, so no load part. 1 to 20 s, given largest first. The
+        # median, (10 + 11) / 2 = 10.5; the p95, ceil(20 * 0.95) - 1 = 18: the 19th smallest, not
+        # the largest.
+        (
+            [float(seconds) for seconds in range(20, 0, -1)],
+            None,
+            "Retrieve time: p50 10.50 s, p95 19.00 s (20 questions).",
+        ),
+        # Rerank. Sorted: 3.0, 4.0, 4.5, 6.25. The median, (4.0 + 4.5) / 2 = 4.25; the p95,
+        # ceil(4 * 0.95) - 1 = 3: the largest. The load time to 1 decimal: 3.21 -> 3.2.
+        (
+            [4.0, 6.25, 3.0, 4.5],
+            3.21,
+            "Retrieve time: p50 4.25 s, p95 6.25 s (4 questions). Reranker load 3.2 s.",
+        ),
+        # No answerable question, so nothing was timed.
+        ([], None, "Retrieve time: p50 n/a, p95 n/a (0 questions)."),
+    ],
+)
+def test_the_retrieve_time_line(
+    retrieve_s: list[float], load_s: float | None, expected: str
+) -> None:
+    assert timing_line(retrieve_s, load_s) == expected

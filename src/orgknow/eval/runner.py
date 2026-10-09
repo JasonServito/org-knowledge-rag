@@ -11,7 +11,8 @@ one golden set retrieves exactly the same hits. A failed ask is a row with its e
 crash. No Langfuse trace: the results folder is the record.
 
 `score_retrieval_only` (S07-T3, `make eval-retrieval`) runs the same label check and retrieval,
-from stored vectors only, and scores the hits with no answer call: free, and it writes nothing.
+from stored vectors only, and scores the hits with no answer call: free, and it writes nothing. It
+also times each question's retrieval (S08-T4), which `timing_line` reports.
 
 In rerank mode (S08-T2), both get the reranker the caller loaded once, before the question loop.
 
@@ -22,6 +23,7 @@ rows, so a summary written before a new summary field gains it with no new run.
 import hashlib
 import json
 import math
+import statistics
 import subprocess
 import time
 from collections.abc import Iterable, Mapping, Sequence
@@ -401,10 +403,11 @@ def _run_question(
 
 def score_retrieval_only(
     conn: psycopg.Connection[TupleRow], settings: Settings, reranker: Reranker | None = None
-) -> list[RetrievalMetrics]:
+) -> tuple[list[RetrievalMetrics], list[float]]:
     """`make eval-retrieval` (S07-R1 decision 5): retrieve, in the settings' mode, for every
     answerable golden question with its stored vector, and score the hits; return the metrics in
-    file order. No Voyage call, no Anthropic call, nothing written.
+    file order, and each question's retrieve time in seconds (S08-T4: the wall time of the
+    `retrieve` call, rerank included). No Voyage call, no Anthropic call, nothing written.
 
     Raises GoldenSetError and EvalError as `run` does, and EvalError when a question has no
     stored vector: this command never embeds. Rerank mode needs `reranker`.
@@ -421,17 +424,20 @@ def score_retrieval_only(
         )
     stored = StoredVectors(settings.embedding_model, vectors)
     scores = []
+    retrieve_s = []
     for question in questions:
+        start = time.monotonic()
         hits = retrieve(question.question, stored, conn, settings, reranker)
+        retrieve_s.append(time.monotonic() - start)
         metrics = score_retrieval(question, hits, settings.retrieval_top_k)
         if metrics is not None:  # always: an answerable question has labels (ADR-007)
             scores.append(metrics)
-    return scores
+    return scores, retrieve_s
 
 
 def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> str:
-    """`make eval-retrieval`'s two lines (S07-R1, S08-R1, pinned formats): the mode and its
-    settings, then the metric means over the answerable questions."""
+    """`make eval-retrieval`'s first two lines (S07-R1, S08-R1, pinned formats): the mode and its
+    settings, then the metric means over the answerable questions. `timing_line` is the third."""
     hybrid = (
         f"candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
         f"width {settings.hnsw_ef_search}"
@@ -456,6 +462,22 @@ def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> 
         f"Mode: {mode}. Answerable questions: {len(scores)}.\n"
         f"Recall@{k} {mean([s.recall for s in scores])}  Hit@{k} {mean([s.hit for s in scores])}"
         f"  MRR {mean([s.mrr for s in scores])}  nDCG@{k} {mean([s.ndcg for s in scores])}"
+    )
+
+
+def timing_line(retrieve_s: Sequence[float], load_s: float | None) -> str:
+    """`make eval-retrieval`'s third line (S08-R1 decision 5, pinned format): the median (p50; of
+    an even count, the mean of the 2 middle values) and the nearest-rank p95 of the questions'
+    retrieve times, then, in rerank mode, the reranker's load time."""
+
+    def seconds(value: float | None) -> str:
+        return "n/a" if value is None else f"{value:.2f} s"
+
+    p50 = statistics.median(retrieve_s) if retrieve_s else None
+    load = "" if load_s is None else f" Reranker load {load_s:.1f} s."
+    return (
+        f"Retrieve time: p50 {seconds(p50)}, p95 {seconds(_p95(retrieve_s))} "
+        f"({len(retrieve_s)} questions).{load}"
     )
 
 

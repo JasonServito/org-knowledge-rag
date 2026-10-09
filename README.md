@@ -75,7 +75,7 @@ To evaluate the pipeline on the golden set (`EVAL_GOLDEN_PATH`, default `eval/go
 ```bash
 make eval-check             # validate the golden file and count the stored texts each label matches (free)
 make eval-sections DOC=gate:LegacyServiceAccountTokenCleanUp   # a document's sections, as labels write them (free)
-make eval-retrieval         # retrieval scores alone (Recall@10, Hit@10, MRR, nDCG@10) in RETRIEVAL_MODE, from the stored question vectors (free; writes nothing)
+make eval-retrieval         # retrieval scores alone (Recall@10, Hit@10, MRR, nDCG@10) and retrieve time (p50, p95) in RETRIEVAL_MODE, from the stored question vectors (free; writes nothing)
 make eval-smoke             # the smoke questions end to end (paid: one Claude call per question)
 make eval                   # every question (paid; run only when asked)
 make eval-table             # rebuild eval/results/ablation.md from every results folder (free)

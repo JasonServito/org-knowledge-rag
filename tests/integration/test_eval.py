@@ -840,9 +840,11 @@ def test_retrieval_only_scores_each_mode_and_writes_nothing(
     settings = run_settings.model_copy(update={"retrieval_mode": mode})
 
     # Dense and hybrid never call the reranker.
-    scores = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
+    scores, retrieve_s = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
 
     assert retrieval_report(settings, scores) == expected
+    assert len(retrieve_s) == 2  # one retrieve time per answerable question (S08-T4)
+    assert all(seconds >= 0 for seconds in retrieve_s)
     assert not settings.eval_results_dir.exists()
     assert vectors_path.read_bytes() == vectors_before
 

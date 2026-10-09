@@ -153,6 +153,48 @@ What the runs show:
 - **Input tokens: 241,671 per run, +8,679 (+3.7%) over dense**, identical in all 3 runs. Output was 16,066–16,908 tokens, of which 1,388–1,648 were reasoning.
 - **Each run took 3 min 22 s to 5 min 6 s** and cost $1.29–1.30.
 
+## Reranker timing and S15 sizing
+
+S08-T4, 2026-10-09. How long rerank mode's retrieval takes on this laptop and on 2 CPUs, to size S15's server (ADR-008 assumes about 2 vCPUs). Measured with `make eval-retrieval`: free, from the stored question vectors, with no answer call.
+
+- **The machine:** Intel Core Ultra 7 155H under WSL2, 22 logical CPUs (11 cores, 2 threads each), 15 GB RAM, no GPU (torch is the CPU-only build).
+- **Retrieve time:** one question's wall time in retrieval: its stored vector, the dense and lexical searches, fusion, and the reranker scoring ~21 texts.
+  - Dense and hybrid take 0.01 s (p50 and p95), so in rerank mode it is almost all reranking.
+- **p50** is the median (of 36 questions, the mean of the 18th and 19th). **p95** is nearest rank (the 35th of 36).
+- **Reranker load:** once per command, from the local model cache. It includes importing torch and transformers.
+  - A separate check split ~7.4 s into 4.2 s of imports and 3.0–3.3 s of model load (the sitting's "3 s warm").
+- **Peak RAM:** "Maximum resident set size" from `/usr/bin/time -v` around `uv run`: the most RAM the largest single process (Python) held at once. Postgres runs separately and isn't counted.
+- **`taskset -c 0,2`** pins the command to 2 logical CPUs. Torch then uses 2 threads by itself (`torch.get_num_threads()` is 2).
+
+| Setup | Torch threads | Retrieve p50 | Retrieve p95 | Reranker load | Peak RAM | Whole command |
+|---|---|---|---|---|---|---|
+| Default | 11 | 4.91 s | 6.14 s | 7.4 s | 1.63 GiB (1,708,380 KB) | 3 min 29 s |
+| 2 CPUs (`taskset -c 0,2`) | 2 | 11.50 s | 15.36 s | 7.7 s | 1.51 GiB (1,587,180 KB) | 8 min 4 s |
+
+The printed lines (both runs also printed the gate's metrics: Recall@10 0.516, Hit@10 0.972, MRR 0.703, nDCG@10 0.489):
+
+```
+Retrieve time: p50 4.91 s, p95 6.14 s (36 questions). Reranker load 7.4 s.
+Retrieve time: p50 11.50 s, p95 15.36 s (36 questions). Reranker load 7.7 s.
+```
+
+- **2 CPUs are 2.3× slower at p50** (11.50 ÷ 4.91) and 2.5× at p95. The load time doesn't change.
+- **Runs vary by ~0.3 s:** a repeat on the default threads gave p50 4.77 s, p95 6.46 s, load 8.2 s.
+
+What it means for S15 (a projection; S15 decides):
+
+- **Rerank alone on 2 CPUs: ~11.5 s per question at p50, ~15.4 s at p95.** ADR-008 expected 10–15 s.
+- **Projected answer p95 on 2 CPUs: 24.2–36.3 s, mean 28.3 s,** over the 23 s ceiling in all 3 runs.
+  - The sum of hybrid's 3 p95 latencies (8.8, 8.9 and 20.9 s) and the 2-CPU retrieve p95. The answer call runs at Anthropic, so the server's CPUs don't change it.
+  - Adding two p95s overstates it when the slow questions differ. With the p50 instead: 20.3–32.4 s, mean 24.4 s.
+  - The same sum on this laptop: 15.0–27.1 s, mean 19.0 s. T5 measures the real p95 here.
+- **Not counted:** a live `orgknow ask` also embeds the question (one Voyage call), and loads the reranker (~7.5 s) until the API keeps it loaded (S12).
+- **RAM:** ~1.6 GiB for this process alone.
+- **The levers (ADR-008):**
+  - A bigger instance: 11 threads here give ~4.9 s.
+  - The hosted Voyage `rerank-2.5` fallback: no local model, ~$0.0004 per question (not verified).
+  - ONNX quantization: not measured; unquantized ONNX was no faster.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.

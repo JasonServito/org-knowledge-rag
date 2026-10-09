@@ -275,7 +275,7 @@ Tasks:
 - [x] **S08-T3 `[commodity]` p95 latency and cost in the summary and table.**
   - `summary.json` gains p95 latency, retrieval-only p95 and cost per question; the 6 existing folders are refilled; the table shows them.
   - Done when: hand-calculated unit tests pass; the table shows dense 10.7 s / $0.029 and hybrid 12.9 s / $0.030.
-- [ ] **S08-T4 `[commodity]` Rerank latency benchmark and S15 sizing note.**
+- [x] **S08-T4 `[commodity]` Rerank latency benchmark and S15 sizing note.**
   - `make eval-retrieval` prints retrieval p50/p95 and the model's load time; the sizing note covers 11 threads and 2 CPUs, plus peak RAM.
   - Done when: the line prints and the note is in `docs/evaluation.md`.
   - Deps: T2.

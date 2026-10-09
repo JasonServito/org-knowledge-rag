@@ -86,7 +86,7 @@ The eval path, `make eval` / `make eval-smoke` (`python -m orgknow.eval run`, `e
   write_table (eval/table.py): ablation.md, one row per (name, golden_sha256)
 ```
 
-`make eval-retrieval` (`python -m orgknow.eval retrieval`) runs the same label check, then retrieves in `RETRIEVAL_MODE` for every answerable question from its stored vector, scores the hits and prints the mode and the 4 metric means. No Voyage or Anthropic call (a missing vector is an error), and it writes nothing: the free check before a paid run.
+`make eval-retrieval` (`python -m orgknow.eval retrieval`) runs the same label check, then retrieves in `RETRIEVAL_MODE` for every answerable question from its stored vector, scores the hits and prints the mode, the 4 metric means, and the retrieve time's p50 and p95 per question (in rerank mode, also the model's load time). No Voyage or Anthropic call (a missing vector is an error), and it writes nothing: the free check before a paid run.
 
 `summary.json` reports, besides the metric means, the p95 latency (nearest rank over the questions' retrieve + answer times), the retrieve stage's own p95 (null in folders written before S08-T3, whose rows don't time it) and the mean cost per question (input and output tokens at `GENERATION_PRICE_*`, over the questions with usage). `make eval-resummarize` (`python -m orgknow.eval resummarize`) rebuilds every folder's `summary.json` from its `questions.jsonl`, keeping its name, golden hash and start time, so older folders gain these fields; it writes nothing else, and `make eval-table` then shows them.
 
