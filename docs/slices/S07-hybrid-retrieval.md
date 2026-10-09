@@ -1,9 +1,9 @@
 # S07: Hybrid retrieval
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 4 (lexical retrieval + RRF fusion)
 - **Started:** 2026-10-08
-- **Finished:**
+- **Finished:** 2026-10-08
 
 ## Outcome
 
@@ -17,11 +17,11 @@
 
 ## Exit checks
 
-- [ ] `search_vector` column and GIN index exist (migration); `make migrate` is idempotent.
-- [ ] RRF is a pure function with hand-calculated unit tests.
-- [ ] `RETRIEVAL_MODE=hybrid` works in `orgknow ask` and `make eval`; `dense` still reproduces the baseline.
-- [ ] The `hybrid` row is in the ablation table (3 runs), and `docs/evaluation.md` says whether it meets the improvement rule (product spec); if not, the keep/drop reason is written (AC7).
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] `search_vector` column and GIN index exist (migration); `make migrate` is idempotent.
+- [x] RRF is a pure function with hand-calculated unit tests.
+- [x] `RETRIEVAL_MODE=hybrid` works in `orgknow ask` and `make eval`; `dense` still reproduces the baseline.
+- [x] The `hybrid` row is in the ablation table (3 runs), and `docs/evaluation.md` says whether it meets the improvement rule (product spec); if not, the keep/drop reason is written (AC7).
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -85,7 +85,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S07-R1: hybrid retrieval
 
-- **Status:** PR open
+- **Status:** merged (PR #34)
 - **Branch:** `s07-r1-hybrid-retrieval`
 - **Tasks, in this order:** S07-T1 (lexical search) → S07-T2 (RRF) → S07-T3 (hybrid retrieval and config) → S07-T4 (hybrid eval run).
 - **Closes the slice:** no; `/slice-retro` runs after the developer has read T4's result (a fail needs the developer's AC7 write-up).
@@ -107,7 +107,7 @@ A throwaway script (scratchpad, not committed) scored retrieval on golden set v0
 | Lexical alone (best) | 0.281 | 0.639 | 0.426 | 0.260 | — |
 
 - AND matching finds 0 texts for 23 of 36 questions (`websearch_to_tsquery`: 22); OR: 0.
-- Hybrid (decisions 1–3) changes 13 questions at @10: MRR up on q06, q12, q14, q22, q30; down a little on q02, q04, q07, q19, q25, q35, q40.
+- Hybrid (decisions 1–3) changes 12 questions at @10 (first written as 13; the ids listed are 12, and the 3 runs confirmed 12, corrected in the retro): MRR up on q06, q12, q14, q22, q30; down a little on q02, q04, q07, q19, q25, q35, q40.
 - HNSW search width vs. an exact scan (43 questions): 20 candidates at width 100 → 0 differ; 50 at width 50 → 17 differ; 50 at width 400 → 1 differs. 10 at width 40, 50, 100, 200 or 400 → 0 differ.
 - Lexical query over 48,273 chunks (temp GIN index): 1 ms median, 5 ms max. `to_tsvector('english', …)` over every chunk: no error.
 - About 30 configurations were tried on v0, so v0 is not a clean test of the chosen one (a known limit; v1 is).
@@ -262,7 +262,31 @@ RETRIEVAL_MODE=hybrid uv run orgknow ask "What enforces pod security standards i
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - **S07-R1** (PR #34), 4 tasks in 1 PR:
+    - **T1:** migration 0005 adds a generated `search_vector` and a GIN index over 48,273 chunks. The word query runs in about 1 ms (`EXPLAIN ANALYZE`).
+    - **T2:** RRF as a pure function, with 5 hand-calculated tests.
+    - **T3:** `fuse`, `retrieve`, 4 settings and `make eval-retrieval` (free, 2.4 s). Dense mode reproduced the baseline exactly; hybrid equalled the sitting's prototype exactly.
+    - **T4:** the 2 eval fixes, then 3 paid runs: 0 errors, all `git_dirty: false`.
+  - **Result:** hybrid passes the improvement rule, so `RETRIEVAL_MODE` now defaults to `hybrid` (decision 6).
+    - Retrieval: MRR 0.614 → 0.675 (+0.060). Recall@10 −0.003, Hit@10 0, nDCG@10 +0.016.
+    - Answers: AC1–AC3 100%; false refusals 2.3 of 36, the same as dense.
+    - Cost and speed: $0.030 per question (dense $0.029); p95 12.9 s (8.8–20.9; dense 10.7).
+  - **Paid:** 130 Anthropic calls (129 eval + 1 demo), about $3.89 for the runs; 1 Voyage request. Cap: $5.
+  - **Tests:** 478 unit and 120 integration (from 453 and 106).
+  - **PR size:** 36 files, about 1,290 reviewable lines (estimate about 1,000). Greptile: 5/5, 0 comments.
 - **Surprises:**
+  - **The word search rarely fires.** 23 of 36 answerable questions match no text, because every word must match. Of the 430 fused hits, 13 came from the word search alone and 39 from both lists.
+  - **The whole MRR gain is 5 questions** (q06, q12, q14, q22, q30). In each, the first good source moved to rank 1 from rank 3–6.
+  - **Run 1 had 3 slow answers** (q17 26.2 s, q10 21.9 s, q25 20.9 s). The same questions took 2.2–6.7 s in runs 2–3, with the same hits. The cause isn't recorded.
+  - **mypy didn't catch `Hit.distance` becoming optional.** The pydantic plugin types model constructors loosely, so a word-only hit would have failed only at run time. T1's builder found it, and T3 fixed it.
+  - **The sitting's "13 changed questions" was 12.** It was corrected in the retro.
 - **What didn't work / negative results:**
+  - **7 of the 12 changed questions got worse.** q02, q04, q19 and q25 lost one rank on their first good source; Recall@10 fell on q04, q07, q35 and q40.
+  - **Still short of 2 Phase 1 targets:** MRR 0.675 vs ≥ 0.69, and Recall@10 0.382 vs ≥ 0.46. Both are carried to S08 (the developer's call in the retro).
+  - **p95 rose by 2.2 s** (10.7 → 12.9 s), under the 23 s ceiling.
+  - **v0 isn't a clean test of the chosen setup.** About 30 configurations were tried on it in the sitting; v1 is the clean test.
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S07-*.md`
+  - When a model field becomes optional, check every place that constructs it. mypy won't flag it.
+  - Record p95 and cost in the summary (S08 candidate), so a slow run shows in the table and isn't only computed by hand.
+  - Keep counting tests in size estimates. S07 was about 29% over; S06 was 2× over.
+- **Slice brief:** `docs/learning/S07-hybrid-retrieval.md`

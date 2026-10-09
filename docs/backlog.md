@@ -234,7 +234,7 @@ Tasks:
   - Done when: 3 runs of `make eval` on the frozen v0 are committed with their spread; `docs/evaluation.md` is written; thresholds are in the product spec.
   - Deps: T4, T5.
 
-### 🟨 S07 Hybrid retrieval *(Stage 4)*
+### ✅ S07 Hybrid retrieval *(Stage 4)*
 
 - **Outcome:** lexical + dense retrieval fused with RRF, and an ablation row showing the delta.
 - **Slice doc:** `docs/slices/S07-hybrid-retrieval.md`
@@ -257,9 +257,10 @@ Tasks:
   - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail against the improvement rule with numbers.
   - Deps: T3.
 
-### ⬜ S08 Reranking *(Stage 5)*
+### 🟨 S08 Reranking *(Stage 5)*
 
 - **Outcome:** a local BGE cross-encoder rerank stage, with an ablation row and the CPU p95 latency recorded.
+- **Phase 1 gaps carried from S07** (developer, S07 retro): hybrid is at MRR 0.675 vs ≥ 0.69, and Recall@10 0.382 vs ≥ 0.46.
 - **Candidate tasks:**
   - ADR-008: reranker model and candidate count
   - reranker module
@@ -361,3 +362,4 @@ ADRs are decided when their slice starts, not earlier.
 - **Report: remove `counts_by_release`'s unprinted per-type values and 1 duplicate fingerprint test case.** Reason: dead code. (S05-R3, PR #30 parked 9; kept in the S06-R1 sitting.)
 - **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)
 - **BM25 ranking for the lexical search (Postgres extension, e.g. pg_search or VectorChord-bm25).** Reason: Postgres `ts_rank`/`ts_rank_cd` have no IDF, so a common word ("kubernetes") weighs as much as a rare one ("PodSecurity"). S07 uses AND matching, which matches 0 texts for 23 of 36 v0 questions; OR matching added noise (Recall@20 0.603 → 0.540). Needs an ADR (new dependency, custom DB image). Try it if S08/S09 show lexical recall is the bottleneck. (S07 sitting, decision 1, 2026-10-08.)
+- **S07 parked test gaps (PR #34).** Reason: 3 small gaps the reviewers parked as beyond the plan. (1) No test that the `retrieve` trace records the mode, RRF score and ranks; it was checked once on a demo trace. (2) No lexical test for a question with flags (`--service-account-issuer`); it was checked by hand. (3) The autocommit width test proves the width doesn't leak, not that it applied during the query. (S07-R1, 2026-10-08.)

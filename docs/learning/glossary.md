@@ -28,6 +28,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 |---|---|
 | **Ablation** | Measuring the system with and without one component, to prove that component's contribution. |
 | **Bi-encoder** | Embeds query and document separately, then compares the vectors. Fast; used for dense retrieval. |
+| **BM25** | The standard ranking for word search: a rare word (high IDF, inverse document frequency) counts more than a common one, and repeating a word helps less each time. Postgres's built-in `ts_rank` has neither; BM25 needs an extension. |
 | **Chunking (structure-aware)** | Splitting documents into retrievable pieces at their headings, so each chunk is one section with its heading path. Code blocks and HTML tables are never cut; an oversize list or pipe table is cut between items or rows (S05). |
 | **Citation validation** | A plain-code check that every chunk id the model cites was retrieved for this question. One bad id rejects the answer (ADR-006). |
 | **Cosine distance** | 1 − the cosine similarity of two vectors: 0 = same direction, 1 = unrelated, 2 = opposite. pgvector's `<=>` operator. |
