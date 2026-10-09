@@ -1,9 +1,9 @@
 """The `orgknow` command (S04-T7): `orgknow ask "<question>"` prints the answer as JSON.
 
-One ask embeds the question, retrieves the nearest chunk texts (S04-T5), then answers from them
-with one model call and validates the citations (S04-T6). The JSON goes to stdout; "tracing off"
-and errors go to stderr, one line each. Exit codes: 0 when an answer prints (either status), 1 on
-an error, 2 on bad usage (argparse's own errors exit 2 too).
+One ask embeds the question, retrieves chunk texts in RETRIEVAL_MODE (dense, S04-T5, or hybrid,
+S07-T3), then answers from them with one model call and validates the citations (S04-T6). The
+JSON goes to stdout; "tracing off" and errors go to stderr, one line each. Exit codes: 0 when an
+answer prints (either status), 1 on an error, 2 on bad usage (argparse's own errors exit 2 too).
 
 With both Langfuse keys set, each ask leaves one trace named `ask` (ADR-006 D3). This module is
 the only caller of Langfuse, and it never puts the settings or a key in a trace.
@@ -24,7 +24,7 @@ from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.generation.generator import AnthropicGenerator, GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
-from orgknow.retrieval.dense import retrieve
+from orgknow.retrieval.retrieve import retrieve
 from orgknow.settings import Settings
 
 # The failures `ask` reports as one stderr line (exit 1) instead of a traceback:
@@ -100,10 +100,27 @@ def _traced_answer(
             with root.start_as_current_observation(
                 name="retrieve",
                 as_type="span",
-                input={"k": settings.retrieval_top_k, "model": embedder.model},
+                input={
+                    "mode": settings.retrieval_mode,
+                    "k": settings.retrieval_top_k,
+                    "model": embedder.model,
+                },
             ) as span:
                 hits = retrieve(question, embedder, conn, settings)
-                span.update(output=[{"chunk_id": h.chunk_id, "distance": h.distance} for h in hits])
+                # Per hit, why it ranked there (S07-R1 decision 4): a score or rank is None when
+                # the mode doesn't set it or that list didn't hold the text.
+                span.update(
+                    output=[
+                        {
+                            "chunk_id": h.chunk_id,
+                            "distance": h.distance,
+                            "rrf_score": h.rrf_score,
+                            "dense_rank": h.dense_rank,
+                            "lexical_rank": h.lexical_rank,
+                        }
+                        for h in hits
+                    ]
+                )
             if hits:
                 result = _traced_generation(root, question, hits, generator, settings)
             else:

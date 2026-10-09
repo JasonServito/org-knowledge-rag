@@ -248,7 +248,7 @@ Tasks:
 - [x] **S07-T2 `[core]` RRF.**
   - A pure function: ranked id lists in, one fused ranking with scores out.
   - Done when: unit tests match hand-calculated scores, including an id in one list only, ties and empty lists.
-- [ ] **S07-T3 `[core]` Hybrid retrieval and config.**
+- [x] **S07-T3 `[core]` Hybrid retrieval and config.**
   - Dense N + lexical N → RRF → top K; mode, N, k and the HNSW search width in settings; `ask` and the eval use and record the mode; `make eval-retrieval` scores retrieval for free.
   - Done when: hybrid on fixtures returns the hand-predicted order; dense mode reproduces the baseline's retrieval scores.
   - Deps: T1, T2.

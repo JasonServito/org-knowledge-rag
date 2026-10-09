@@ -16,17 +16,29 @@ from orgknow.db.models import Hit
 
 
 def search(
-    conn: psycopg.Connection[TupleRow], question_vector: Sequence[float], model: str, k: int
+    conn: psycopg.Connection[TupleRow],
+    question_vector: Sequence[float],
+    model: str,
+    k: int,
+    ef_search: int,
 ) -> list[Hit]:
     """Return the `k` chunk texts whose `model` vectors are nearest `question_vector` by cosine
     distance, nearest first, ties by content hash. No vectors: an empty list.
 
     One hit per text: it cites the chunk in the newest version holding the text and lists the
-    release window of every version holding it. `k` is at most 40 (RETRIEVAL_TOP_K, settings).
+    release window of every version holding it. `dense_rank` is the hit's position, from 1.
+
+    `ef_search` is the HNSW search width for this query (HNSW_EF_SEARCH, S07-R1 decision 3). An
+    HNSW index scan returns at most that many rows, so it must be at least `k` (settings check).
     """
     # This builds a parameter value, not SQL: the query below stays a fixed string.
     vector_text = "[" + ",".join(str(x) for x in question_vector) + "]"
-    with conn.cursor(row_factory=class_row(Hit)) as cur:
+    # set_config(..., true) is SET LOCAL: the width lasts until the transaction ends. The block
+    # gives it a transaction to live in, so it applies to the query below even on an autocommit
+    # connection (where it then ends with the block). Inside a caller's transaction the block is a
+    # savepoint, and the width lasts until that transaction ends.
+    with conn.transaction(), conn.cursor(row_factory=class_row(Hit)) as cur:
+        conn.execute("SELECT set_config('hnsw.ef_search', %s, true)", [str(ef_search)])
         cur.execute(
             """
             -- The k nearest texts. ORDER BY the distance expression alone, so the planner can
@@ -41,7 +53,10 @@ def search(
                 ORDER BY e.embedding <=> %(query)s::vector
                 LIMIT %(k)s
             )
-            SELECT n.content_hash, n.distance, cited.*, windows.release_windows
+            -- The rank is the position in the final order below, from 1.
+            SELECT n.content_hash, n.distance,
+                   row_number() OVER (ORDER BY n.distance, n.content_hash) AS dense_rank,
+                   cited.*, windows.release_windows
             FROM nearest n
             -- Per text, the chunk to cite: the one in the newest version (latest date window)
             -- holding the text, and the lowest id if that version holds it twice. The order is

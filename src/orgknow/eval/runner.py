@@ -9,6 +9,9 @@ answer, score → write the folder. `__main__` then rebuilds the ablation table 
 Retrieval reads each question's vector from the vector file (S06-R1 decision 7), so every run of
 one golden set retrieves exactly the same hits. A failed ask is a row with its error, never a
 crash. No Langfuse trace: the results folder is the record.
+
+`score_retrieval_only` (S07-T3, `make eval-retrieval`) runs the same label check and retrieval,
+from stored vectors only, and scores the hits with no answer call: free, and it writes nothing.
 """
 
 import hashlib
@@ -26,11 +29,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from orgknow.cli import ASK_ERRORS
 from orgknow.embeddings.embedder import DIMENSIONS, Embedder, EmbedResult, InputType
 from orgknow.eval.checks import AnswerChecks, check_answer
-from orgknow.eval.golden import Mode, Question, check_labels, check_line, load_golden_file
+from orgknow.eval.golden import (
+    GoldenSet,
+    LabelCount,
+    Mode,
+    Question,
+    check_labels,
+    check_line,
+    load_golden_file,
+)
 from orgknow.eval.metrics import RetrievalMetrics, score_retrieval
 from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
-from orgknow.retrieval.dense import retrieve
+from orgknow.retrieval.retrieve import retrieve
 from orgknow.settings import Settings
 
 
@@ -46,6 +57,11 @@ class RunSettings(BaseModel):
 
     embedding_model: str
     retrieval_top_k: int
+    # S07-T3: a new run writes all 4; None in a folder written before them (the dense baseline).
+    retrieval_mode: str | None = None
+    retrieval_candidates: int | None = None
+    rrf_k: int | None = None
+    hnsw_ef_search: int | None = None
     generation_model: str
     generation_effort: str
     generation_max_tokens: int
@@ -67,13 +83,17 @@ class RunInfo(BaseModel):
 
 
 class RankedHit(BaseModel):
-    """One retrieved hit, as much as the metrics and AC2 need to score it again."""
+    """One retrieved hit, as much as the metrics and AC2 need to score it again, and why it
+    ranked there (S07-R1 decision 4): the `Hit` fields of the same names."""
 
     rank: int
     chunk_id: int
     canonical_id: str
     heading_path: list[str]
-    distance: float
+    distance: float | None  # None when only lexical search found the text
+    rrf_score: float | None  # hybrid only
+    dense_rank: int | None
+    lexical_rank: int | None
 
 
 class QuestionRow(BaseModel):
@@ -193,6 +213,23 @@ class StoredVectors:
         return EmbedResult(vectors=[self._vectors[question_key(t)] for t in texts], total_tokens=0)
 
 
+def check_golden(
+    conn: psycopg.Connection[TupleRow], golden_path: Path
+) -> tuple[GoldenSet, list[LabelCount]]:
+    """Load and validate the golden file, then check its labels against the stored texts; return
+    the golden set (aliases resolved) and each label's count.
+
+    Raises GoldenSetError for an invalid file, and EvalError when a label matches no stored text.
+    """
+    golden, counts = check_labels(conn, load_golden_file(golden_path))
+    unmatched = [count for count in counts if count.texts == 0]
+    if unmatched:
+        labels = "; ".join(check_line(count) for count in unmatched)
+        noun = "label matches" if len(unmatched) == 1 else "labels match"
+        raise EvalError(f"{len(unmatched)} {noun} no stored text (see `make eval-check`): {labels}")
+    return golden, counts
+
+
 def run(
     conn: psycopg.Connection[TupleRow],
     embedder: Embedder | None,
@@ -211,13 +248,8 @@ def run(
     started_at = _now()
     git_sha, git_dirty = _git_state()  # the code the run starts on
     golden_path = settings.eval_golden_path
-    golden, counts = check_labels(conn, load_golden_file(golden_path))
+    golden, counts = check_golden(conn, golden_path)
     golden_sha256 = hashlib.sha256(golden_path.read_bytes()).hexdigest()
-    unmatched = [count for count in counts if count.texts == 0]
-    if unmatched:
-        labels = "; ".join(check_line(count) for count in unmatched)
-        noun = "label matches" if len(unmatched) == 1 else "labels match"
-        raise EvalError(f"{len(unmatched)} {noun} no stored text (see `make eval-check`): {labels}")
     questions = [question for question in golden.questions if question.smoke or not smoke]
     if not questions:
         raise EvalError(f"{golden_path}: no questions to run")
@@ -260,6 +292,10 @@ def run(
         settings=RunSettings(
             embedding_model=settings.embedding_model,
             retrieval_top_k=settings.retrieval_top_k,
+            retrieval_mode=settings.retrieval_mode,
+            retrieval_candidates=settings.retrieval_candidates,
+            rrf_k=settings.rrf_k,
+            hnsw_ef_search=settings.hnsw_ef_search,
             generation_model=settings.generation_model,
             generation_effort=settings.generation_effort,
             generation_max_tokens=settings.generation_max_tokens,
@@ -309,6 +345,9 @@ def _run_question(
                 canonical_id=hit.canonical_id,
                 heading_path=hit.heading_path,
                 distance=hit.distance,
+                rrf_score=hit.rrf_score,
+                dense_rank=hit.dense_rank,
+                lexical_rank=hit.lexical_rank,
             )
             for rank, hit in enumerate(hits, start=1)
         ],
@@ -318,6 +357,59 @@ def _run_question(
         usage=usage,
         latency_s=round(time.monotonic() - start, 3),
         error=error,
+    )
+
+
+def score_retrieval_only(
+    conn: psycopg.Connection[TupleRow], settings: Settings
+) -> list[RetrievalMetrics]:
+    """`make eval-retrieval` (S07-R1 decision 5): retrieve, in the settings' mode, for every
+    answerable golden question with its stored vector, and score the hits; return the metrics in
+    file order. No Voyage call, no Anthropic call, nothing written.
+
+    Raises GoldenSetError and EvalError as `run` does, and EvalError when a question has no
+    stored vector: this command never embeds.
+    """
+    golden, _ = check_golden(conn, settings.eval_golden_path)
+    questions = [question for question in golden.questions if question.answerable]
+    vectors_path = settings.eval_vectors_dir / f"{settings.embedding_model}.json"
+    vectors = load_vectors(vectors_path)
+    missing = [q.id for q in questions if question_key(q.question) not in vectors]
+    if missing:
+        raise EvalError(
+            f"no stored vector for {', '.join(missing)} in {vectors_path}: eval-retrieval never "
+            "calls Voyage (`make eval-smoke` or `make eval` embeds missing questions)"
+        )
+    stored = StoredVectors(settings.embedding_model, vectors)
+    scores = []
+    for question in questions:
+        hits = retrieve(question.question, stored, conn, settings)
+        metrics = score_retrieval(question, hits, settings.retrieval_top_k)
+        if metrics is not None:  # always: an answerable question has labels (ADR-007)
+            scores.append(metrics)
+    return scores
+
+
+def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> str:
+    """`make eval-retrieval`'s two lines (S07-R1, pinned format): the mode and its settings, then
+    the metric means over the answerable questions."""
+    if settings.retrieval_mode == "hybrid":
+        mode = (
+            f"hybrid (candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
+            f"width {settings.hnsw_ef_search})"
+        )
+    else:
+        mode = f"dense (width {settings.hnsw_ef_search})"
+
+    def mean(values: Sequence[float]) -> str:
+        value = _mean(values)
+        return "n/a" if value is None else f"{value:.3f}"
+
+    k = settings.retrieval_top_k
+    return (
+        f"Mode: {mode}. Answerable questions: {len(scores)}.\n"
+        f"Recall@{k} {mean([s.recall for s in scores])}  Hit@{k} {mean([s.hit for s in scores])}"
+        f"  MRR {mean([s.mrr for s in scores])}  nDCG@{k} {mean([s.ndcg for s in scores])}"
     )
 
 

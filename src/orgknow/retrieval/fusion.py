@@ -10,10 +10,13 @@ k damps the top ranks' advantage: with k = 60, rank 1 gives 1/61 and rank 2 give
 one list's first place can't outweigh agreement between lists. k = 60 is the value from the
 RRF paper (Cormack et al., 2009), not tuned here.
 
-Pure: ranked ids in, a fused ranking out. No database, no network; k is passed in.
+`rrf` fuses ranked ids; `fuse` applies it to the two lists of `Hit`s that hybrid retrieval
+gets (S07-T3). Both are pure: no database, no network; k is passed in.
 """
 
 from collections.abc import Sequence
+
+from orgknow.db.models import Hit
 
 
 def rrf(rankings: Sequence[Sequence[str]], k: int) -> list[tuple[str, float]]:
@@ -32,3 +35,33 @@ def rrf(rankings: Sequence[Sequence[str]], k: int) -> list[tuple[str, float]]:
             seen.add(doc_id)
             scores[doc_id] = scores.get(doc_id, 0.0) + 1 / (k + rank)
     return sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+
+
+def fuse(dense: Sequence[Hit], lexical: Sequence[Hit], k: int, top_k: int) -> list[Hit]:
+    """Fuse the dense and lexical hits, each list best first, with `rrf` over their content
+    hashes; return the `top_k` best fused hits (all of them if fewer).
+
+    Each text is one hit. A text in both lists keeps the dense hit's fields: both searches cite
+    the same chunk for a text, and only the dense hit has a distance. Every fused hit gets its
+    `rrf_score`, and its position in each list, from 1, as `dense_rank` and `lexical_rank` (None
+    for a list that doesn't hold it): the ranks `rrf` scored.
+    """
+    dense_ranks = {hit.content_hash: rank for rank, hit in enumerate(dense, start=1)}
+    lexical_ranks = {hit.content_hash: rank for rank, hit in enumerate(lexical, start=1)}
+    # Dense first, so setdefault keeps the dense hit of a text in both lists.
+    hits: dict[str, Hit] = {}
+    for hit in [*dense, *lexical]:
+        hits.setdefault(hit.content_hash, hit)
+
+    # The lists themselves, not the rank dicts' keys: rrf refuses a text twice in one list.
+    fused = rrf([[hit.content_hash for hit in dense], [hit.content_hash for hit in lexical]], k)
+    return [
+        hits[content_hash].model_copy(
+            update={
+                "rrf_score": score,
+                "dense_rank": dense_ranks.get(content_hash),
+                "lexical_rank": lexical_ranks.get(content_hash),
+            }
+        )
+        for content_hash, score in fused[:top_k]
+    ]

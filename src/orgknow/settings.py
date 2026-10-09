@@ -1,9 +1,9 @@
 """Configuration read from environment variables, falling back to a local `.env` file."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, PositiveInt, SecretStr
+from pydantic import Field, PositiveInt, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The API's effort levels: how much the model reasons before it answers (ADR-006 D1).
@@ -50,10 +50,25 @@ class Settings(BaseSettings):
     # `make embed` refuses to start when the texts it would send exceed this many estimated
     # tokens: a guard against embedding far more than planned (CLAUDE.md, spending).
     embed_max_tokens_per_run: int = 2_000_000
-    # How many chunk texts dense retrieval returns (S04-R2 decision 6). At most 40, pgvector's
-    # default `hnsw.ef_search`: an HNSW index scan returns at most that many rows. No similarity
-    # threshold: the top k are always returned.
+    # How many chunk texts retrieval returns, in either mode (S04-R2 decision 6). At most 40, the
+    # cap S04-R2 set when every search used pgvector's default width (40); the width is now
+    # HNSW_EF_SEARCH, which must be at least this (checked below). No similarity threshold: the
+    # top k are always returned.
     retrieval_top_k: int = Field(default=10, ge=1, le=40)
+    # Which retrieval `ask` and the eval use (S07-R1): `dense` (the nearest vectors) or `hybrid`
+    # (dense and lexical candidates fused with RRF). `dense` until S07-T4's eval decides
+    # (decision 6).
+    retrieval_mode: Literal["dense", "hybrid"] = "dense"
+    # Hybrid: how many texts each search, dense and lexical, returns before fusion (decision 3).
+    retrieval_candidates: int = Field(default=20, ge=1, le=1000)
+    # RRF's k: rank r in one list adds 1 / (k + r) to a text's fused score. 60 is the RRF paper's
+    # value, not tuned (decision 3).
+    rrf_k: int = Field(default=60, ge=1)
+    # HNSW search width (pgvector's `hnsw.ef_search`, default 40, 1 to 1000), set for every dense
+    # search in both modes. An HNSW index scan returns at most this many rows, and a wider search
+    # is closer to an exact scan: at 100, 20 candidates matched an exact scan on all 43 golden
+    # questions (decision 3).
+    hnsw_ef_search: int = Field(default=100, ge=1, le=1000)
     # The answer step (ADR-006 D1). Opus 5.5 always reasons, and effort sets how much; there is
     # no temperature (Opus 5.5 rejects it). Reasoning counts toward the max tokens and is billed
     # as output. At most 21,333: above that, the SDK refuses a non-streaming call (it expects
@@ -77,3 +92,13 @@ class Settings(BaseSettings):
     # The stored question vectors, one file per embedding model (S06-R1 decision 7): a run embeds
     # only questions with no vector here, so retrieval is exactly repeatable.
     eval_vectors_dir: Path = Path("eval/question_vectors")
+
+    @model_validator(mode="after")
+    def _search_width_covers_each_search(self) -> Self:
+        """An HNSW scan narrower than a search's k would silently return fewer than k texts."""
+        if self.hnsw_ef_search < max(self.retrieval_top_k, self.retrieval_candidates):
+            raise ValueError(
+                "hnsw_ef_search must be at least retrieval_top_k and retrieval_candidates: an "
+                "HNSW index scan returns at most hnsw_ef_search rows"
+            )
+        return self
