@@ -69,6 +69,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Lockfile** | A file (`uv.lock`) recording the exact version of every dependency, including indirect ones, so every machine installs the same set. |
 | **Migration** | A versioned, ordered schema change applied by a tool (Alembic), so every environment has the same schema. |
 | **Named volume** | Docker-managed storage that outlives the container, so `make down` / `make up` keep the database's data. |
+| **p95 latency** | The time 95% of requests finish within: a tail measure, where a mean hides slow outliers. Here it's nearest rank: sort the times and take the ⌈0.95 n⌉-th (the 41st of 43). |
 | **Partial clone** | `git clone --filter=blob:none`: download commits and directory listings but no file contents, then fetch only the files you need. S02's corpus cache is built this way. |
 | **Permissive license (MIT)** | Lets anyone use, modify and redistribute the code, even in closed-source products, as long as they keep the copyright notice. It covers this repo's code, not the corpus. |
 | **Pre-commit hook** | A script git runs before each commit. If it fails or modifies files, the commit stops so you can review. Here it runs ruff only. |

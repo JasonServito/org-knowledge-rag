@@ -1,9 +1,9 @@
 # S08: Reranking
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 5 (cross-encoder reranking)
 - **Started:** 2026-10-08
-- **Finished:**
+- **Finished:** 2026-10-09
 
 ## Outcome
 
@@ -18,13 +18,13 @@
 
 ## Exit checks
 
-- [ ] A reranker interface with a local cross-encoder and a test fake; unit tests need no model download.
-- [ ] `RETRIEVAL_MODE=rerank` works in `orgknow ask`, `make eval-retrieval` and `make eval`; `dense` and `hybrid` still print their pinned numbers.
-- [ ] `summary.json` and the ablation table record p95 latency and cost per question.
-- [ ] The rerank stage's CPU p95 is measured and written down, with an instance-sizing note for S15.
-- [ ] The `rerank` row is in the ablation table (3 runs), and `docs/evaluation.md` says whether it meets the improvement rule; if not, the keep/drop reason is written (AC7).
-- [ ] ADR-008 is Accepted.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] A reranker interface with a local cross-encoder and a test fake; unit tests need no model download.
+- [x] `RETRIEVAL_MODE=rerank` works in `orgknow ask`, `make eval-retrieval` and `make eval`; `dense` and `hybrid` still print their pinned numbers.
+- [x] `summary.json` and the ablation table record p95 latency and cost per question.
+- [x] The rerank stage's CPU p95 is measured and written down, with an instance-sizing note for S15.
+- [x] The `rerank` row is in the ablation table (3 runs), and `docs/evaluation.md` says whether it meets the improvement rule; if not, the keep/drop reason is written (AC7).
+- [x] ADR-008 is Accepted.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -95,7 +95,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S08-R1: reranking
 
-- **Status:** PR open
+- **Status:** merged (PR #37)
 - **Branch:** `s08-r1-reranking`
 - **Tasks, in this order:** S08-T2 (reranker and `rerank` mode) → S08-T3 (p95 and cost in the summary) → S08-T4 (timing line and sizing note) → S08-T5 (rerank eval run). T1 (ADR-008) was done in the sitting.
 - **Closes the slice:** no; `/slice-retro` runs after the developer has read T5's result.
@@ -299,7 +299,37 @@ RETRIEVAL_MODE=rerank uv run orgknow ask "What enforces pod security standards i
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - **S08-R1** (PR #37), 4 tasks in 1 PR; T1 (ADR-008) was done in the sitting:
+    - **T2:** the `Reranker` interface, the local `BAAI/bge-reranker-base` cross-encoder (`transformers` + CPU `torch`) and a fake. Rerank mode reproduced the sitting's prototype exactly (0.516 / 0.972 / 0.703 / 0.489); dense and hybrid printed S06/S07's numbers.
+    - **T3:** p95 latency, retrieve p95 and cost per question in every summary. The 6 old folders were refilled and equal the sitting's recompute (dense 10.7 s / $0.0295, hybrid 12.9 s / $0.0301).
+    - **T4:** `make eval-retrieval` prints retrieve p50/p95 and load time; the S15 sizing note.
+    - **T5:** 3 paid runs: 0 errors, all `git_dirty: false`, identical top 10s in all 3.
+  - **Result:** rerank passes the improvement rule and the p95 ceiling, so `RETRIEVAL_MODE` now defaults to `rerank` (decision 4).
+    - Retrieval: Recall@10 0.382 → 0.516 (+0.134), Hit@10 +0.028, MRR +0.029, nDCG@10 +0.103.
+    - Answers: AC1–AC3 100%; false refusals 1.3 of 36 (hybrid 2.3).
+    - Speed and cost: p95 14.2 s (13.4–15.0; hybrid 12.9); retrieve p95 6.7 s; $0.031 per question (hybrid $0.030).
+    - Both Phase 1 retrieval targets are met on v0: Recall@10 0.516 ≥ 0.46, MRR 0.703 ≥ 0.69 (by 0.013).
+  - **Timing:** rerank p50 4.9 s on 11 threads, 11.5 s pinned to 2 CPUs; peak RAM 1.6 GiB; load 7.4–8.2 s.
+  - **Paid:** 130 Anthropic calls (129 eval + 1 demo), $3.98 for the runs; 1 Voyage request; 0 Hugging Face downloads. Cap: $5.
+  - **Tests:** 506 unit and 126 integration (from 478 and 120).
+  - **PR size:** 48 files, about 1,314 reviewable lines (estimate about 1,000). Greptile: 2 comments, 1 fixed, 1 parked.
 - **Surprises:**
+  - **Loading costs 7.4–8.2 s, not the sitting's 3 s.** About 4.2 s is importing torch and transformers, which the sitting's timer didn't cover.
+  - **CI's `check` job went from 33 s to 91 s.** mypy reads torch and transformers from cold on every run.
+  - **Intel Macs can't install the project.** PyTorch has no Intel Mac wheel. Greptile found it; the docs now say macOS needs Apple Silicon.
+  - **The 3 old dense folders' rows didn't load** for the refill: they predate the hybrid fields. Those 3 fields became optional.
+  - **Every question's top 10 changed.** 164 of 430 hits came from ranks 11–21 of the pool.
+  - **q31 found its first labeled source** (none → rank 1) and was answered in all 3 runs, after 3 refusals in hybrid.
 - **What didn't work / negative results:**
+  - **MRR is nearly flat:** up on 10 questions, down on 10, as the devil's advocate predicted. CHANGE gains (0.569 → 0.944); CURRENT, HISTORY and WHY lose (e.g. CURRENT 0.692 → 0.588). 6 questions lost their rank-1 source.
+  - **Recall@10 fell on 2 questions** (q04, q14, −0.25 each).
+  - **On 2 CPUs the projected answer p95 is 22.3–24.2 s,** over the 23 s ceiling in 2 of 3 runs. It's a projection, not a 2-CPU end-to-end run.
+  - **p95 rose by 1.3 s** (12.9 → 14.2 s); the reranker adds 5–7 s of retrieval per question on this laptop.
+  - **v0 isn't a clean test.** v0 picked the model and pool (~9 setups), and Recall@10 was chosen as the target after the prototype. v1 is the clean test.
 - **Do differently next slice:**
+  - When timing a model in the sitting, time the whole cold start a process pays (imports and load), not just the model load.
+  - When adding a native dependency, read its wheels in the lockfile for every platform ADR-004 lists.
+  - When a setting's default changes, search the tests for ones that relied on the old default (2 needed pinning here).
+  - Keep timing runs alone on the machine; a reviewer's checks overlapped one timing run.
+  - Size estimates: 31% over (S07: 29%). Add about 30% to the next estimate.
 - **Slice brief:** `docs/learning/S08-reranking.md`
