@@ -64,7 +64,7 @@ Then ask a question. Each ask is paid (one Voyage call and one Claude call) and 
 uv run orgknow ask "What enforces pod security standards in-tree?"
 ```
 
-`RETRIEVAL_MODE` picks the retrieval: `dense` (the default: the 10 texts whose vectors are nearest the question's) or `hybrid` (the 20 nearest texts and the 20 best word matches from Postgres full-text search, merged with Reciprocal Rank Fusion, keeping the best 10). For example, `RETRIEVAL_MODE=hybrid uv run orgknow ask "..."`.
+`RETRIEVAL_MODE` picks the retrieval: `hybrid` (the default: the 20 nearest texts and the 20 best word matches from Postgres full-text search, merged with Reciprocal Rank Fusion, keeping the best 10) or `dense` (the 10 texts whose vectors are nearest the question's). For example, `RETRIEVAL_MODE=dense uv run orgknow ask "..."`. Hybrid became the default when it passed the improvement rule (`docs/evaluation.md`).
 
 It prints one line of JSON: `answered` with citations (each with its release windows and a GitHub link at the snapshot commit), or `insufficient_evidence` with a reason. With `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` set, each ask also leaves one Langfuse trace, whose id is the JSON's `trace_id`. Without them, it prints "tracing off" and still answers. Exit codes: 0 when an answer prints, 1 on an error, 2 on bad usage.
 

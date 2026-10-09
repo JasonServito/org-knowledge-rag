@@ -1,0 +1,32 @@
+{
+  "name": "hybrid",
+  "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
+  "started_at": "2026-10-09T02:22:31Z",
+  "questions": 43,
+  "answerable": 36,
+  "errors": 0,
+  "recall": 0.3818562610229277,
+  "hit": 0.9444444444444444,
+  "mrr": 0.674537037037037,
+  "ndcg": 0.38533898154973356,
+  "distinct_sections": 7.111111111111111,
+  "ac1": {
+    "pass": 34,
+    "total": 34
+  },
+  "ac2": {
+    "pass": 43,
+    "total": 43
+  },
+  "ac3": {
+    "pass": 7,
+    "total": 7
+  },
+  "false_refusals": {
+    "count": 2,
+    "total": 36
+  },
+  "input_tokens": 241671,
+  "output_tokens": 16908,
+  "latency_s_mean": 4.59006976744186
+}

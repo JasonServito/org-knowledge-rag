@@ -56,9 +56,9 @@ class Settings(BaseSettings):
     # top k are always returned.
     retrieval_top_k: int = Field(default=10, ge=1, le=40)
     # Which retrieval `ask` and the eval use (S07-R1): `dense` (the nearest vectors) or `hybrid`
-    # (dense and lexical candidates fused with RRF). `dense` until S07-T4's eval decides
-    # (decision 6).
-    retrieval_mode: Literal["dense", "hybrid"] = "dense"
+    # (dense and lexical candidates fused with RRF). `hybrid` since S07-T4's eval passed the
+    # improvement rule (decision 6, docs/evaluation.md).
+    retrieval_mode: Literal["dense", "hybrid"] = "hybrid"
     # Hybrid: how many texts each search, dense and lexical, returns before fusion (decision 3).
     retrieval_candidates: int = Field(default=20, ge=1, le=1000)
     # RRF's k: rank r in one list adds 1 / (k + r) to a text's fused score. 60 is the RRF paper's

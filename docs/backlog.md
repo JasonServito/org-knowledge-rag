@@ -252,7 +252,7 @@ Tasks:
   - Dense N + lexical N → RRF → top K; mode, N, k and the HNSW search width in settings; `ask` and the eval use and record the mode; `make eval-retrieval` scores retrieval for free.
   - Done when: hybrid on fixtures returns the hand-predicted order; dense mode reproduces the baseline's retrieval scores.
   - Deps: T1, T2.
-- [ ] **S07-T4 `[commodity]` Hybrid eval run.**
+- [x] **S07-T4 `[commodity]` Hybrid eval run.**
   - Two eval fixes (dirty check, smoke rows), then 3 paid runs of `make eval` in hybrid mode; the row and the write-up.
   - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail against the improvement rule with numbers.
   - Deps: T3.

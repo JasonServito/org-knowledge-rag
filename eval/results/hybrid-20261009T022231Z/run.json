@@ -1,0 +1,22 @@
+{
+  "name": "hybrid",
+  "started_at": "2026-10-09T02:22:31Z",
+  "finished_at": "2026-10-09T02:26:05Z",
+  "git_sha": "c77484bd43955b15f5cefcc9c4096f2dd8f329b6",
+  "git_dirty": false,
+  "golden_path": "eval/golden_set/v0.yaml",
+  "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
+  "smoke": false,
+  "questions": 43,
+  "settings": {
+    "embedding_model": "voyage-4-large",
+    "retrieval_top_k": 10,
+    "retrieval_mode": "hybrid",
+    "retrieval_candidates": 20,
+    "rrf_k": 60,
+    "hnsw_ef_search": 100,
+    "generation_model": "claude-opus-5-5",
+    "generation_effort": "medium",
+    "generation_max_tokens": 16000
+  }
+}

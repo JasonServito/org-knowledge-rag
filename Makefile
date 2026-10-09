@@ -89,7 +89,7 @@ eval-sections:
 # question with its stored vector (EVAL_VECTORS_DIR), then print the mode and Recall@10, Hit@10,
 # MRR and nDCG@10. Free: no Voyage or Anthropic call (a missing vector is an error), and it writes
 # nothing. The check before a paid `make eval`. Needs `make up`.
-# Example: RETRIEVAL_MODE=hybrid make eval-retrieval
+# Example: RETRIEVAL_MODE=dense make eval-retrieval (the default mode is hybrid)
 eval-retrieval:
 	uv run python -m orgknow.eval retrieval
 

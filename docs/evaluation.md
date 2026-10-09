@@ -81,10 +81,81 @@ What the runs show:
 - **Same prompt every run.** Input tokens were identical in all 3 runs (232,992), because the hits were. Output was 16,484–16,975 tokens, of which 1,388–1,548 were reasoning.
 - **Each run took 3 min 38 s to 4 min 50 s** and cost $1.26–1.27.
 
+## Hybrid
+
+S07-T4, 2026-10-09 (UTC). Two searches, merged into one list:
+
+- **Dense:** the question vector's 20 nearest chunk texts (HNSW search width 100: how many candidates the vector index explores).
+- **Lexical:** the 20 best Postgres full-text matches. Every content word of the question must match; `ts_rank_cd` ranks texts with the words close together higher.
+- **Reciprocal Rank Fusion (RRF), k = 60:** a text scores 1 ÷ (60 + its rank) in each list that holds it, summed. The best 10 go to the same Claude call as the baseline.
+- 3 runs of `RETRIEVAL_MODE=hybrid make eval` on commit `c77484b`, 43 questions each. First, the free gate: `make eval-retrieval` matched the sitting's numbers exactly.
+
+| Measure | Hybrid | Spread over 3 runs | Dense baseline |
+|---|---|---|---|
+| Recall@10 | 0.382 | none | 0.384 |
+| Hit@10 | 0.944 (34 of 36) | none | 0.944 (34 of 36) |
+| MRR | 0.675 | none | 0.614 |
+| nDCG@10 | 0.385 | none | 0.369 |
+| Distinct sections | 7.1 of 10 | none | 7.1 of 10 |
+| AC1 | 100% | 33–34 answered, all pass | 100% |
+| AC2 | 100% (43 of 43) | none | 100% (43 of 43) |
+| AC3 | 100% (7 of 7) | none | 100% (7 of 7) |
+| False refusals | 2.3 of 36 | 2–3 | 2.3 of 36 (2–3) |
+| p95 latency | 12.9 s | 8.8–20.9 s | 10.7 s (9.4–11.3 s) |
+| Cost per question | $0.030 | $0.0300–0.0303 | $0.029 ($0.0293–0.0296) |
+| Errors | 0 | none | 0 |
+
+**The improvement rule** (`docs/product-spec.md`), on the 3-run means (S07-R1 decision 6). Changes are computed before rounding.
+
+| Condition | Dense | Hybrid | Change | Result |
+|---|---|---|---|---|
+| MRR rises by ≥ 0.03 | 0.6144 | 0.6745 | +0.0602 | Pass |
+| Recall@10 drops by ≤ 0.03 | 0.3844 | 0.3819 | −0.0025 | Pass |
+| Hit@10 drops by ≤ 0.03 | 0.9444 | 0.9444 | 0 | Pass |
+| nDCG@10 drops by ≤ 0.03 | 0.3694 | 0.3853 | +0.0160 | Pass |
+| AC1, AC2, AC3 at or above the baseline's range (100% in all 3 runs) | 100% | 100% in all 3 runs | 0 | Pass |
+| False refusals at or below the baseline's range (2–3 of 36) | 2.33 | 2.33 (runs: 3, 2, 2) | 0 | Pass |
+
+- **"At or below the range"** is read as: the hybrid mean is at most the range's top (3 of 36). The stricter readings pass too: every hybrid run is inside 2–3, and the means are equal.
+- **Distinct sections** is a diagnostic, not one of the rule's metrics: 7.14 → 7.11, i.e. 1 section fewer over all 36 questions.
+- **Verdict: pass.** `RETRIEVAL_MODE` now defaults to `hybrid` (decision 6).
+- **The gain is about 2 questions' worth** (0.060 ÷ 0.028 = 2.2), on a set the setup was chosen on (see Known limits).
+
+By question type (retrieval only; the dense baseline in brackets; one question moves a row by 0.10–0.14):
+
+| Mode | Questions | Recall@10 | Hit@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|
+| CURRENT | 10 | 0.374 (0.353) | 0.900 (0.900) | 0.692 (0.467) | 0.385 (0.308) |
+| HISTORY | 10 | 0.330 (0.323) | 0.900 (0.900) | 0.625 (0.550) | 0.346 (0.324) |
+| CHANGE | 9 | 0.336 (0.350) | 1.000 (1.000) | 0.569 (0.624) | 0.314 (0.333) |
+| WHY | 7 | 0.526 (0.562) | 1.000 (1.000) | 0.857 (0.905) | 0.534 (0.569) |
+
+What the runs show:
+
+- **12 of 43 questions got a different top 10**, all answerable. The other 31 kept dense's exact list.
+  - Lexical search adds little at 10: 13 of the 430 hits were found by it alone.
+  - 30 of 43 questions have no lexical hit in their top 10. All-words matching finds nothing for 23 of the 36 answerable questions (S07 sitting), so they keep the dense order.
+- **Better on 5: MRR up** on q06, q12, q14, q22 and q30. Each one's first labeled source moved to rank 1, from rank 3–6.
+  - q06, q12 and q30 also found 1 more labeled source (Recall@10 +0.17 to +0.20).
+- **Worse on 7:**
+  - MRR: rank 1 → 2 on q04, q19 and q25; rank 3 → 4 on q02.
+  - Recall@10, a labeled source pushed out of the top 10: q04 (−0.25), q07, q35 and q40 (−0.125 each).
+- **CURRENT questions gain most:** MRR 0.467 → 0.692 (q06, q22, q30). CHANGE and WHY lose about 0.05 each (q25; q04 and q19, against q14 up).
+- **The same questions are refused as in dense.** Their retrieval didn't change.
+  - q31 and q43 in every run: no labeled source in their top 10 in either mode.
+  - q41 once (run 1). Dense also refused it once (run 2).
+- **Run 1's p95 (20.9 s) is 3 slow answers:** q17 26.2 s, q10 21.9 s, q25 20.9 s.
+  - In runs 2 and 3 the same questions took 2.2–6.7 s, with the same hits and similar output (q10: 144 tokens, against 173–179). The cause isn't recorded.
+  - Runs 2 and 3: 8.8–8.9 s. All 3 runs are under the Phase 1 threshold (≤ 23 s).
+- **Input tokens: 241,671 per run, +8,679 (+3.7%) over dense**, identical in all 3 runs. Output was 16,066–16,908 tokens, of which 1,388–1,648 were reasoning.
+- **Each run took 3 min 22 s to 5 min 6 s** and cost $1.29–1.30.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
 - **37 of the 43 questions were checked by Claude only.** The developer spot-checked 6.
 - **Latency leaves out the question embedding.** The vectors are stored, so a live `orgknow ask` adds one Voyage call.
 - **The summary and table don't report p95 latency or cost yet.** The numbers above were computed from each run's `questions.jsonl`.
-- **Run 3's `run.json` says `git_dirty: true`.** Its only changed tracked file was the ablation table, which run 2 had just rewritten. The code was the same commit.
+- **The dense baseline's run 3 says `git_dirty: true`.** Its only changed tracked file was the ablation table, which run 2 had just rewritten. The code was the same commit.
+  - Since S07 the dirty check ignores `eval/results/`. All 3 hybrid runs say `git_dirty: false`.
+- **v0 isn't a clean test of hybrid.** About 30 retrieval configurations were tried on v0 in the S07 sitting before this one was chosen, so part of the +0.060 MRR may fit v0 only. v1 is the clean test.

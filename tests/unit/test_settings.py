@@ -156,8 +156,9 @@ def test_hybrid_retrieval_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> 
 
     settings = Settings(_env_file=None, database_url="x")
 
-    # S07-R1 decision 3; the mode stays dense until T4's eval decides (decision 6).
-    assert settings.retrieval_mode == "dense"
+    # S07-R1 decision 3; the mode is hybrid since T4's eval passed the improvement rule
+    # (decision 6, docs/evaluation.md).
+    assert settings.retrieval_mode == "hybrid"
     assert settings.retrieval_candidates == 20
     assert settings.rrf_k == 60
     assert settings.hnsw_ef_search == 100
