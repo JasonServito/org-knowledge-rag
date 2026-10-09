@@ -128,17 +128,20 @@ class SectionText(BaseModel):
 
 
 class Hit(BaseModel):
-    """One dense-retrieval result: a distinct chunk text near the question (S04-R2 decision 4).
+    """One retrieval result: a distinct chunk text found for the question (S04-R2 decision 4).
 
     Many chunks can hold one text (one per version where a section didn't change). The hit cites
     the chunk in the newest version holding it, and lists the release window of every version
     holding it, so a gap between releases stays visible. Every other field is the cited chunk's
-    or its version's.
+    or its version's, except the score and ranks, which say why it ranked where it did (S07-R1
+    decision 4).
     """
 
     chunk_id: int  # what a citation points to
     content_hash: str
-    distance: float  # cosine distance to the question, 0 (same direction) to 2 (opposite)
+    # Cosine distance to the question, 0 (same direction) to 2 (opposite). None when only
+    # lexical search found the text: no vector was compared.
+    distance: float | None
     text: str  # header + body, exactly as embedded
     canonical_id: str
     source_type: str
@@ -151,3 +154,6 @@ class Hit(BaseModel):
     snapshot_sha: str
     source_path: str
     metadata: dict[str, Any]  # the version's front matter, including `title`
+    rrf_score: float | None = None  # the fused score, in hybrid mode only
+    dense_rank: int | None = None  # position in the dense list, from 1; None if not in it
+    lexical_rank: int | None = None  # position in the lexical list, from 1; None if not in it

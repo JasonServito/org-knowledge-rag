@@ -2,7 +2,7 @@
 
 - **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10. Amended in the S05-R3 sitting (2026-10-07): the chunking rules (S05-T7), the ingestion report and its fingerprint (S05-T8).
 - **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
-- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5)
+- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5); migration `0005` and lexical search (S07-T1)
 
 This is the spec for the tables, their rules, and the write functions S04 ingestion calls. If code and this doc disagree, fix one of them in the same PR.
 
@@ -83,6 +83,9 @@ This is the spec for the tables, their rules, and the write functions S04 ingest
 | `heading_path` | `text[]` NOT NULL | Headings above the chunk, outermost first; `{}` for text before the first heading |
 | `text` | `text` NOT NULL | Exactly the text that is embedded: header + body (see "Chunk header") |
 | `content_hash` | `text` NOT NULL | SHA-256 of `text`, computed by the write function, never passed in. Indexed (migration `0003`): vectors are looked up by it |
+| `search_vector` | `tsvector` GENERATED ALWAYS AS (`to_tsvector('english', text)`) STORED | The words of `text` (header and body), stop words dropped and the rest stemmed, for lexical search. Postgres computes it on every write, so ingestion never sets it (migration `0005`, S07-R1 decision 2) |
+
+**Search index** (migration `0005`, S07-T1): `chunks_search_vector_idx`, GIN on `search_vector`, so it serves the full-text match `@@`. Every chunk of a text has the same `search_vector`; `search_lexical` ranks texts, not chunks.
 
 ### `embeddings`
 
@@ -246,6 +249,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 | `delete_orphan_embeddings(conn) -> count` | Delete every vector, of any model, whose hash no chunk has (S04-R1) |
 | `list_versions(conn, document_id) -> list` | All versions of a document, oldest first: what re-ingest compares with (S04-R1) |
 | `search(conn, question_vector, model, k) -> list[Hit]` | The `k` texts nearest the vector by cosine distance, among `model`'s vectors that a chunk holds; ties by hash. One hit per text: it cites the chunk in the newest version holding the text (latest date window; lowest chunk id within it) and lists every holding version's release window, never merged (S04-T5) |
+| `search_lexical(conn, question, n) -> list[Hit]` | The `n` texts holding every content word of `question` (`plainto_tsquery('english', …)`: words joined by AND, S07-R1 decision 1), best `ts_rank_cd` first (closer words rank higher), ties by hash. No match, or only stop words: `[]`. Each hit is expanded as in `search`, with `distance` null and `lexical_rank` its position from 1 (S07-T1) |
 | `versions_at_release(conn, document_id, release) -> list` | Versions whose release window includes `release` (inclusive). Can be several for date-scoped sources |
 | `version_at_time(conn, document_id, at) -> version \| None` | The version whose date window contains `at` (half-open) |
 | `counts_by_source_type(conn)`, `counts_by_release(conn) -> list[Counts]` | The ingestion report's counts: documents, versions, chunks and distinct texts per source type with a total row; per release (valid at R) per source type, with a total row per release (S05-T8) |
@@ -380,7 +384,7 @@ The rules are `ingestion/blog.py`; the blog's history is read by `git_reader.pos
   - documents, versions, chunks and distinct chunk texts per source type, and in total, and the alias count
   - per release R (each row of `releases`): the documents valid at R per source type, and the versions, chunks and distinct texts valid at R over all types. Valid at R: the version's release window contains R (inclusive, as in `versions_at_release`).
   - the chunk id range (ids aren't in the fingerprint), and the fingerprint
-- **Fingerprint:** one definition of "identical" (AC8): every stored value except generated ids, so it covers chunk text (through its hash, R13), claims, metadata and snapshots, however the database was built.
+- **Fingerprint:** one definition of "identical" (AC8): every stored value except generated ids and `chunks.search_vector` (Postgres computes it from the text), so it covers chunk text (through its hash, R13), claims, metadata and snapshots, however the database was built.
   - One row per stored record, each a compact JSON array, `json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`:
     - `["document", canonical_id, source_type]`
     - `["alias", canonical_id, alias]`

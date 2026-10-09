@@ -242,7 +242,7 @@ Tasks:
 
 Tasks:
 
-- [ ] **S07-T1 `[core]` Lexical search.**
+- [x] **S07-T1 `[core]` Lexical search.**
   - A migration adds the `search_vector` column + GIN index; a query returns the top N distinct texts by full-text rank.
   - Done when: integration tests on fixtures: an exact term ranks its text first; a text in several chunks appears once; no match → empty.
 - [ ] **S07-T2 `[core]` RRF.**

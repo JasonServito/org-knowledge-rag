@@ -1,6 +1,8 @@
-"""Dense retrieval (S04-T5) against the test database: `search` and `retrieve`.
+"""Dense retrieval (S04-T5) and lexical search (S07-T1) against the test database: `search`,
+`retrieve` and `search_lexical`.
 
 Expected distances are hand arithmetic: the cosine distance of two unit vectors is 1 - cos θ.
+Expected lexical results come from the hand-written texts and Postgres's full-text rules.
 Every test builds its own rows inside `conn`'s rolled-back transaction.
 """
 
@@ -16,7 +18,7 @@ from tests.conftest import FakeEmbedder
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import create_document
 from orgknow.db.models import NewChunk, NewVersion
-from orgknow.db.retrieval import search
+from orgknow.db.retrieval import search, search_lexical
 from orgknow.db.versions import insert_version
 from orgknow.embeddings.embedder import DIMENSIONS
 from orgknow.retrieval.dense import retrieve
@@ -141,6 +143,10 @@ def test_a_text_in_two_versions_is_one_hit_citing_the_newest(conn: Conn) -> None
         "snapshot_sha": SHA_NEW,
         "source_path": "new/page.md",
         "metadata": {"title": "New title"},
+        # S07-R1 decision 4's score and rank fields: `search` sets none of them.
+        "rrf_score": None,
+        "dense_rank": None,
+        "lexical_rank": None,
     }
 
 
@@ -217,3 +223,91 @@ def test_retrieve_embeds_the_question_as_a_query_and_keeps_the_top_k(
 
     assert fake_embedder.calls == [("query", ["What is a pod?"])]
     assert [hit.text for hit in hits] == ["nearest"]
+
+
+# Lexical search (S07-T1). `plainto_tsquery('english', …)` keeps a question's content words,
+# stemmed, joined by AND (decision 1); `ts_rank_cd` ranks a match higher the closer together its
+# words sit (cover density). No vectors are stored: lexical search needs none.
+
+GATE_TEXT = (
+    "The LegacyServiceAccountTokenCleanUp feature gate deletes unused legacy service account "
+    "tokens."
+)
+TOKENS_TEXT = "Service account tokens are mounted into every pod."
+PODS_TEXT = "A pod runs one or more containers."
+
+
+def test_lexical_an_exact_term_ranks_its_text_first(conn: Conn) -> None:
+    [gate_chunk_id, _, _] = _page(conn, "web:/test/page/", [GATE_TEXT, TOKENS_TEXT, PODS_TEXT])
+
+    hits = search_lexical(conn, "What does LegacyServiceAccountTokenCleanUp do?", 10)
+
+    # The gate's name is one word that only GATE_TEXT holds; "what", "does", "do" are stop words.
+    # Every field a dense hit has, with no distance (no vector was compared) and rank 1.
+    assert [hit.model_dump() for hit in hits] == [
+        {
+            "chunk_id": gate_chunk_id,
+            "content_hash": _hash(GATE_TEXT),
+            "distance": None,
+            "text": GATE_TEXT,
+            "canonical_id": "web:/test/page/",
+            "source_type": "docs_page",
+            "heading_path": [],
+            "release_windows": [(24, None)],
+            "claimed_status": None,
+            "claimed_stage": None,
+            "snapshot_repo": "website",
+            "snapshot_sha": SHA_NEW,
+            "source_path": "content/en/docs/test/page.md",
+            "metadata": {"title": "Test page"},
+            "rrf_score": None,
+            "dense_rank": None,
+            "lexical_rank": 1,
+        }
+    ]
+
+
+def test_lexical_every_word_of_the_question_must_match(conn: Conn) -> None:
+    all_words = "Pod security admission enforces the Pod Security Standards."
+    some_words = "A security context sets a pod's user and group."  # no "admission"
+    _page(conn, "web:/test/page/", [all_words, some_words])
+
+    hits = search_lexical(conn, "pod security admission", 10)
+
+    assert [hit.text for hit in hits] == [all_words]
+
+
+def test_lexical_words_close_together_rank_higher(conn: Conn) -> None:
+    # Each text holds each of the 3 words once; only their distance apart differs.
+    adjacent = "Pod security admission checks namespaces against the standards."
+    scattered = "Admission checks namespaces; the pod standards cover security."
+    _page(conn, "web:/test/page/", [scattered, adjacent])  # stored in the losing order
+
+    hits = search_lexical(conn, "pod security admission", 10)
+
+    assert [(hit.text, hit.lexical_rank) for hit in hits] == [(adjacent, 1), (scattered, 2)]
+
+
+def test_lexical_a_text_in_two_versions_is_one_hit_with_both_windows(conn: Conn) -> None:
+    # As in the dense test above: in 1.24, missing from 1.25, back from 1.26 unchanged.
+    document_id = create_document(conn, "web:/test/gap/", "docs_page")
+    new = _version(conn, document_id, (26, None), (D26, None), SHA_NEW, "new/page.md", "New title")
+    old = _version(conn, document_id, (24, 24), (D24, D25), SHA_OLD, "old/page.md", "Old title")
+    add_chunks(conn, old, [NewChunk(ordinal=0, heading_path=["Usage"], text=GATE_TEXT)])
+    [new_chunk_id] = add_chunks(
+        conn, new, [NewChunk(ordinal=0, heading_path=["Usage"], text=GATE_TEXT)]
+    )
+
+    hits = search_lexical(conn, "LegacyServiceAccountTokenCleanUp", 10)
+
+    assert [(hit.chunk_id, hit.release_windows, hit.lexical_rank) for hit in hits] == [
+        (new_chunk_id, [(24, 24), (26, None)], 1)
+    ]
+
+
+def test_lexical_no_match_and_stop_words_only_give_no_hits(conn: Conn) -> None:
+    # The texts hold "the", "and" and "of", but those are stop words: the query keeps no word.
+    _page(conn, "web:/test/page/", [GATE_TEXT, "The history of the API and its removal."])
+
+    assert search_lexical(conn, "kerberos", 10) == []
+    assert search_lexical(conn, "the and of", 10) == []
