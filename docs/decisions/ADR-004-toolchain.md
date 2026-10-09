@@ -82,3 +82,4 @@ ADR-008 (decided in the S08-R1 sitting) picks the reranker and its runtime. Adde
 
 - **`transformers`** (runtime): loads the pinned `BAAI/bge-reranker-base` and its tokenizer, and runs it as a sequence classifier (ADR-008 D2). Rejected: `sentence-transformers` (one more package on top of the same two) and ONNX Runtime (scores differ from the measured ones by up to 0.29).
 - **`torch`** (runtime), **from the PyTorch CPU package index**, pinned in `pyproject.toml` (`[[tool.uv.index]]`, `explicit = true`, plus a `[tool.uv.sources]` entry). The default PyPI wheel on Linux pulls ~2–3 GB of CUDA libraries; the CPU wheel is ~740 MB installed. There's no GPU on the laptop or in S15's plan.
+- **macOS now needs Apple Silicon** (arm64, macOS 14 or later), narrowing the Dev environment row above. PyTorch publishes no Intel Mac wheel, so `uv sync` fails on Intel Macs. Linux and WSL2, the platforms used (and CI), are unaffected.

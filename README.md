@@ -22,6 +22,7 @@ Organizational knowledge changes over time. Sources differ in authority, and doc
 ### Prerequisites
 
 - **Windows:** WSL2 with Ubuntu. Run every command below in the Ubuntu shell, not in PowerShell. Native Windows is not supported (ADR-004).
+- **macOS:** Apple Silicon only (macOS 14+). PyTorch, which the reranker needs, has no Intel Mac build (ADR-004).
 - **Docker Desktop** as the only Docker engine, with WSL integration enabled for the Ubuntu distro (Docker Desktop → Settings → Resources → WSL integration). Don't also install Docker Engine inside Ubuntu.
 - **make:** `sudo apt install make` (or `sudo apt install build-essential`).
 - **uv:** `curl -LsSf https://astral.sh/uv/install.sh | sh`. uv also manages Python: `uv sync` installs Python 3.12 (from `.python-version`) if it's missing, so there's no separate Python install.
