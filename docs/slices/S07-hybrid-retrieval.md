@@ -85,7 +85,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S07-R1: hybrid retrieval
 
-- **Status:** planned
+- **Status:** PR open
 - **Branch:** `s07-r1-hybrid-retrieval`
 - **Tasks, in this order:** S07-T1 (lexical search) → S07-T2 (RRF) → S07-T3 (hybrid retrieval and config) → S07-T4 (hybrid eval run).
 - **Closes the slice:** no; `/slice-retro` runs after the developer has read T4's result (a fail needs the developer's AC7 write-up).
