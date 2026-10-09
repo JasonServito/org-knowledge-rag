@@ -1,6 +1,6 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed \
-	eval-check eval-sections eval-retrieval eval-smoke eval eval-table
+	eval-check eval-sections eval-retrieval eval-smoke eval eval-table eval-resummarize
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -112,3 +112,11 @@ eval:
 # pipeline name and golden file. Free and local; `make eval` and `make eval-smoke` end with it.
 eval-table:
 	uv run python -m orgknow.eval table
+
+# Rebuild the summary.json of every results folder (EVAL_RESULTS_DIR) that has one and a
+# questions.jsonl, from its saved rows (S08-T3), keeping its name, golden hash and start time: an
+# older folder gains the newer fields (p95 latency, retrieve p95, cost per question at
+# GENERATION_PRICE_*). Prints one line per folder and writes only the summaries. Free and local;
+# run `make eval-table` after it.
+eval-resummarize:
+	uv run python -m orgknow.eval resummarize

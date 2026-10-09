@@ -272,7 +272,7 @@ Tasks:
   - A `Reranker` interface, the local cross-encoder and a fake; `rerank` mode reranks hybrid's whole pool and keeps the top K.
   - Done when: unit tests give the hand-predicted order; `make eval-retrieval` in rerank mode prints the sitting's numbers; dense and hybrid print theirs.
   - Deps: T1.
-- [ ] **S08-T3 `[commodity]` p95 latency and cost in the summary and table.**
+- [x] **S08-T3 `[commodity]` p95 latency and cost in the summary and table.**
   - `summary.json` gains p95 latency, retrieval-only p95 and cost per question; the 6 existing folders are refilled; the table shows them.
   - Done when: hand-calculated unit tests pass; the table shows dense 10.7 s / $0.029 and hybrid 12.9 s / $0.030.
 - [ ] **S08-T4 `[commodity]` Rerank latency benchmark and S15 sizing note.**

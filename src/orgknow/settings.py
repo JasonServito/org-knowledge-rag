@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     generation_model: str = "claude-opus-5-5"
     generation_effort: Effort = "medium"
     generation_max_tokens: int = Field(default=16_000, ge=1, le=21_333)
+    # The model's prices in US dollars per million tokens (ADR-006 D1), for the eval summary's cost
+    # per question (S08-T3). Output tokens include reasoning.
+    generation_price_input_usd_per_mtok: float = 4.0
+    generation_price_output_usd_per_mtok: float = 20.0
     # No key: the answer step can't run (tests use a fake generator).
     anthropic_api_key: SecretStr | None = None
     # Langfuse tracing (ADR-006 D3): one trace per `ask`. Either key unset: tracing off, and `ask`

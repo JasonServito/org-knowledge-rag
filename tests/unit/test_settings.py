@@ -123,6 +123,8 @@ def test_generation_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
         "GENERATION_MODEL",
         "GENERATION_EFFORT",
         "GENERATION_MAX_TOKENS",
+        "GENERATION_PRICE_INPUT_USD_PER_MTOK",
+        "GENERATION_PRICE_OUTPUT_USD_PER_MTOK",
         "ANTHROPIC_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -134,6 +136,9 @@ def test_generation_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.generation_effort == "medium"
     assert settings.generation_max_tokens == 16_000
     assert settings.anthropic_api_key is None
+    # ADR-006 D1's prices, $4 / $20 per million tokens (S08-R1, "Claude's calls", Settings).
+    assert settings.generation_price_input_usd_per_mtok == 4.0
+    assert settings.generation_price_output_usd_per_mtok == 20.0
 
 
 @pytest.mark.parametrize(

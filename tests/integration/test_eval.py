@@ -432,11 +432,17 @@ def test_a_run_writes_the_pinned_results_format(
     assert [list(row) for row in rows] == [
         [
             *("id", "mode", "answerable", "hits", "answer", "metrics", "checks", "usage"),
-            *("latency_s", "error"),
+            *("latency_s", "retrieve_s", "error"),
         ]
     ] * 3
     latencies = [row.pop("latency_s") for row in rows]
     assert all(isinstance(latency, float) and latency >= 0 for latency in latencies)
+    # S08-T3: the retrieve stage alone, part of the question's latency.
+    retrieve_times = [row.pop("retrieve_s") for row in rows]
+    assert all(
+        isinstance(t, float) and 0 <= t <= lat
+        for t, lat in zip(retrieve_times, latencies, strict=True)
+    )
     hits = [
         {
             "rank": 1,
@@ -549,6 +555,13 @@ def test_a_run_writes_the_pinned_results_format(
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     latency_s_mean = summary.pop("latency_s_mean")
     assert latency_s_mean == pytest.approx(sum(latencies) / 3)
+    # S08-T3: a nearest-rank p95 of 3 values is at sorted index ceil(3 * 0.95) - 1 = 2, the
+    # largest. Cost per question at $4 / $20 per million tokens: q01 and q03 (1,000 * 4 + 300 *
+    # 20) / 1e6 = $0.010; q02, the cut-off answer, (500 * 4 + 16,000 * 20) / 1e6 = $0.322; the
+    # mean, 0.342 / 3 = $0.114.
+    assert summary.pop("latency_s_p95") == max(latencies)
+    assert summary.pop("retrieve_s_p95") == max(retrieve_times)
+    assert summary.pop("cost_usd_mean") == pytest.approx(0.114)
     # Means over q01 and q02. AC2 counts q01 and q03 (the rows with an answer); false refusals
     # count q01 only (q02 has no answer). Tokens: 1000 + 500 + 1000 in, 300 + 16000 + 300 out.
     assert summary == {
@@ -576,10 +589,11 @@ def test_a_run_writes_the_pinned_results_format(
     (run_settings.eval_results_dir / "s04").mkdir()
     (run_settings.eval_results_dir / "s04" / "README.md").write_text("notes", encoding="utf-8")
     table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
-    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run.
+    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4.
     assert table.splitlines()[4:] == [
         f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
-        "| 1.000 | 1.000 | 1.000 | 1.000 |"
+        f"| 1.000 | 1.000 | 1.000 | 1.000 | {max(latencies):.1f} | {max(retrieve_times):.1f} "
+        "| 0.1140 |"
     ]
 
 

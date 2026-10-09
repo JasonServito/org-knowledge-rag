@@ -3,8 +3,9 @@ folder, so it never needs editing by hand.
 
 A row is a (name, golden_sha256) pair, in order of its first run. Each value is the mean over
 the row's runs to 3 decimals, then its range, min and max joined by an en dash, when more than
-one run has it; an AC cell is the mean of each run's pass rate. A folder without `summary.json`
-(such as `s04/`) is skipped.
+one run has it; an AC cell is the mean of each run's pass rate. The p95 latencies and the cost per
+question (S08-T3) use 1 and 4 decimals; a run without the value is left out, and a row with none
+says n/a. A folder without `summary.json` (such as `s04/`) is skipped.
 """
 
 from collections.abc import Sequence
@@ -19,6 +20,7 @@ GENERATED = (
 COLUMNS = [
     *("Pipeline", "Set", "Runs", "Questions", "Recall@10", "Hit@10", "MRR", "nDCG@10"),
     *("AC1", "AC2", "AC3", "Errors"),
+    *("p95 latency (s)", "Retrieve p95 (s)", "Cost/question ($)"),
 ]
 
 
@@ -57,6 +59,9 @@ def ablation_table(runs: Sequence[tuple[str, Summary]]) -> str:
                     _cell([_pass_rate(s.ac2) for s in summaries]),
                     _cell([_pass_rate(s.ac3) for s in summaries]),
                     _cell([float(s.errors) for s in summaries]),
+                    _cell([s.latency_s_p95 for s in summaries], decimals=1),
+                    _cell([s.retrieve_s_p95 for s in summaries], decimals=1),
+                    _cell([s.cost_usd_mean for s in summaries], decimals=4),
                 ]
             )
         )
@@ -71,14 +76,14 @@ def write_table(results_dir: Path) -> Path:
     return path
 
 
-def _cell(values: Sequence[float | None]) -> str:
+def _cell(values: Sequence[float | None], decimals: int = 3) -> str:
     """The mean of the values that aren't None, with their range when there are several."""
     known = [value for value in values if value is not None]
     if not known:
         return "n/a"
-    cell = f"{sum(known) / len(known):.3f}"
+    cell = f"{sum(known) / len(known):.{decimals}f}"
     if len(known) > 1:
-        cell += f" ({min(known):.3f}\N{EN DASH}{max(known):.3f})"
+        cell += f" ({min(known):.{decimals}f}\N{EN DASH}{max(known):.{decimals}f})"
     return cell
 
 

@@ -33,8 +33,11 @@ K = 10 (`RETRIEVAL_TOP_K`). Retrieval metrics are per answerable question, then 
 | **AC2** | Every cited chunk id was retrieved for this question | No invented citations |
 | **AC3** | An unanswerable question gets `insufficient_evidence` with a reason | The system says "I don't know" when it should |
 | **False refusal** | An answerable question gets `insufficient_evidence` | The system gives up when it shouldn't |
-| **p95 latency** | 95th percentile (nearest rank) of a question's retrieve + answer time | The slow-question experience |
-| **Cost per question** | Input tokens × $4/M + output tokens × $20/M (ADR-006 D1 prices; output includes reasoning) | What one answer costs |
+| **p95 latency** | 95th percentile (nearest rank: the ⌈0.95 × n⌉-th smallest; the 41st of 43) of a question's retrieve + answer time | The slow-question experience |
+| **Retrieve p95** | The same over the retrieval step alone; n/a for runs before S08-T3, which didn't time it | What retrieval, e.g. a reranker, adds to the wait |
+| **Cost per question** | Input tokens × $4/M + output tokens × $20/M (ADR-006 D1 prices, `GENERATION_PRICE_*`; output includes reasoning), averaged over the questions with a model call | What one answer costs |
+
+The ablation table (`eval/results/ablation.md`) shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns.
 
 ## Reading a result
 
@@ -155,7 +158,8 @@ What the runs show:
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
 - **37 of the 43 questions were checked by Claude only.** The developer spot-checked 6.
 - **Latency leaves out the question embedding.** The vectors are stored, so a live `orgknow ask` adds one Voyage call.
-- **The summary and table don't report p95 latency or cost yet.** The numbers above were computed from each run's `questions.jsonl`.
+- **Retrieve p95 is n/a for the dense and hybrid runs.** They ran before the retrieval step was timed (S08-T3).
+  - Their p95 latency and cost were added to each `summary.json` from its `questions.jsonl` by `make eval-resummarize`, and match the numbers above.
 - **The dense baseline's run 3 says `git_dirty: true`.** Its only changed tracked file was the ablation table, which run 2 had just rewritten. The code was the same commit.
   - Since S07 the dirty check ignores `eval/results/`. All 3 hybrid runs say `git_dirty: false`.
 - **v0 isn't a clean test of hybrid.** About 30 retrieval configurations were tried on v0 in the S07 sitting before this one was chosen, so part of the +0.060 MRR may fit v0 only. v1 is the clean test.

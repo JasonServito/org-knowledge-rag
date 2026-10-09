@@ -19,6 +19,9 @@
 In rerank mode, `run` and `retrieval` load the cross-encoder once, before the question loop, and
 time the load (S08-T2).
 - `table`: rebuild the ablation table from every results folder (`table.py`).
+- `resummarize`: rebuild the `summary.json` of every results folder that has one and a
+  `questions.jsonl`, from its saved rows (S08-T3), so an older folder gains the newer summary
+  fields. Prints one line per folder and writes nothing else; `table` then shows them.
 
 Errors go to stderr, one line each. Exit codes: 0 done, 1 an error, 2 bad usage (argparse).
 """
@@ -157,6 +160,26 @@ def table(settings: Settings) -> int:
     return 0
 
 
+def resummarize(settings: Settings) -> int:
+    """`make eval-resummarize`: rebuild each results folder's summary from its saved rows, and
+    print its p95 latencies and cost per question. A folder without both files is skipped."""
+
+    def seconds(value: float | None) -> str:
+        return "n/a" if value is None else f"{value:.3f} s"
+
+    for summary_path in sorted(settings.eval_results_dir.glob("*/summary.json")):
+        folder = summary_path.parent
+        if not (folder / "questions.jsonl").is_file():
+            continue
+        summary = runner.resummarize(folder, settings)
+        cost = "n/a" if summary.cost_usd_mean is None else f"${summary.cost_usd_mean:.6f}"
+        print(
+            f"{folder}: p95 latency {seconds(summary.latency_s_p95)}, "
+            f"retrieve p95 {seconds(summary.retrieve_s_p95)}, cost/question {cost}"
+        )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None, settings: Settings | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m orgknow.eval", description="The eval harness's commands (S06)."
@@ -184,6 +207,9 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         "retrieval", help="score retrieval alone from the stored question vectors (free)"
     )
     commands.add_parser("table", help="rebuild the ablation table from every results folder")
+    commands.add_parser(
+        "resummarize", help="rebuild every results folder's summary.json from its saved rows"
+    )
     args = parser.parse_args(argv)
 
     if settings is None:
@@ -201,6 +227,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         return run(settings, args.smoke, name)
     if args.command == "retrieval":
         return retrieval(settings)
+    if args.command == "resummarize":
+        return resummarize(settings)
     return table(settings)
 
 
