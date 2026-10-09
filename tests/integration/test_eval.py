@@ -14,7 +14,7 @@ from pathlib import Path
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
-from tests.conftest import FakeEmbedder, FakeGenerator
+from tests.conftest import FakeEmbedder, FakeGenerator, FakeReranker
 
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import add_alias, create_document
@@ -415,21 +415,34 @@ def test_a_run_writes_the_pinned_results_format(
             "retrieval_candidates": 20,
             "rrf_k": 60,
             "hnsw_ef_search": 100,
+            # S08-T2: the reranker's fields are null outside rerank mode.
+            "rerank_model": None,
+            "rerank_revision": None,
+            "rerank_max_length": None,
+            "rerank_batch_size": None,
+            "torch_threads": None,
             "generation_model": "claude-opus-5-5",
             "generation_effort": "medium",
             "generation_max_tokens": 16000,
         },
+        "rerank_load_s": None,
     }
 
     rows = _rows(folder)
     assert [list(row) for row in rows] == [
         [
             *("id", "mode", "answerable", "hits", "answer", "metrics", "checks", "usage"),
-            *("latency_s", "error"),
+            *("latency_s", "retrieve_s", "error"),
         ]
     ] * 3
     latencies = [row.pop("latency_s") for row in rows]
     assert all(isinstance(latency, float) and latency >= 0 for latency in latencies)
+    # S08-T3: the retrieve stage alone, part of the question's latency.
+    retrieve_times = [row.pop("retrieve_s") for row in rows]
+    assert all(
+        isinstance(t, float) and 0 <= t <= lat
+        for t, lat in zip(retrieve_times, latencies, strict=True)
+    )
     hits = [
         {
             "rank": 1,
@@ -440,6 +453,7 @@ def test_a_run_writes_the_pinned_results_format(
             "rrf_score": None,
             "dense_rank": 1,
             "lexical_rank": None,
+            "rerank_score": None,
         },
         {
             "rank": 2,
@@ -450,6 +464,7 @@ def test_a_run_writes_the_pinned_results_format(
             "rrf_score": None,
             "dense_rank": 2,
             "lexical_rank": None,
+            "rerank_score": None,
         },
         {
             "rank": 3,
@@ -460,6 +475,7 @@ def test_a_run_writes_the_pinned_results_format(
             "rrf_score": None,
             "dense_rank": 3,
             "lexical_rank": None,
+            "rerank_score": None,
         },
     ]
     # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
@@ -539,6 +555,13 @@ def test_a_run_writes_the_pinned_results_format(
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     latency_s_mean = summary.pop("latency_s_mean")
     assert latency_s_mean == pytest.approx(sum(latencies) / 3)
+    # S08-T3: a nearest-rank p95 of 3 values is at sorted index ceil(3 * 0.95) - 1 = 2, the
+    # largest. Cost per question at $4 / $20 per million tokens: q01 and q03 (1,000 * 4 + 300 *
+    # 20) / 1e6 = $0.010; q02, the cut-off answer, (500 * 4 + 16,000 * 20) / 1e6 = $0.322; the
+    # mean, 0.342 / 3 = $0.114.
+    assert summary.pop("latency_s_p95") == max(latencies)
+    assert summary.pop("retrieve_s_p95") == max(retrieve_times)
+    assert summary.pop("cost_usd_mean") == pytest.approx(0.114)
     # Means over q01 and q02. AC2 counts q01 and q03 (the rows with an answer); false refusals
     # count q01 only (q02 has no answer). Tokens: 1000 + 500 + 1000 in, 300 + 16000 + 300 out.
     assert summary == {
@@ -566,10 +589,11 @@ def test_a_run_writes_the_pinned_results_format(
     (run_settings.eval_results_dir / "s04").mkdir()
     (run_settings.eval_results_dir / "s04" / "README.md").write_text("notes", encoding="utf-8")
     table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
-    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run.
+    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4.
     assert table.splitlines()[4:] == [
         f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
-        "| 1.000 | 1.000 | 1.000 | 1.000 |"
+        f"| 1.000 | 1.000 | 1.000 | 1.000 | {max(latencies):.1f} | {max(retrieve_times):.1f} "
+        "| 0.1140 |"
     ]
 
 
@@ -624,6 +648,47 @@ def test_a_smoke_run_runs_only_the_smoke_questions(
     assert embedder.calls == [("query", [Q1, Q2])]
     run_info = json.loads((folder / "run.json").read_text(encoding="utf-8"))
     assert (run_info["smoke"], run_info["questions"]) == (True, 2)
+
+
+# Rerank mode (S08-T2) with a fake reranker. Every question's fused pool holds the 3 texts (see
+# the retrieval-only tests below); the fake scores "b usage" highest, then "a install", "a intro".
+RERANK_SCORES = {"a intro": 0.1, "a install": 0.2, "b usage": 0.9}
+
+
+def test_a_rerank_run_records_the_reranker_and_each_hits_score(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    settings = run_settings.model_copy(update={"retrieval_mode": "rerank"})
+
+    folder = run(
+        conn,
+        FakeEmbedder(),
+        _refusing(),
+        settings,
+        smoke=True,
+        name="rerank",
+        reranker=FakeReranker(RERANK_SCORES),
+        rerank_load_s=3.25,
+        torch_threads=11,
+    )
+
+    run_info = json.loads((folder / "run.json").read_text(encoding="utf-8"))
+    # The settings defaults (ADR-008), and the load time and threads as the caller passed them.
+    assert {key: run_info["settings"][key] for key in run_info["settings"] if "rerank" in key} == {
+        "rerank_model": "BAAI/bge-reranker-base",
+        "rerank_revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+        "rerank_max_length": 512,
+        "rerank_batch_size": 8,
+    }
+    assert (run_info["settings"]["torch_threads"], run_info["rerank_load_s"]) == (11, 3.25)
+    # q01's hits in the fake's order, each with its raw score.
+    hits = _rows(folder)[0]["hits"]
+    assert isinstance(hits, list)
+    assert [(hit["chunk_id"], hit["rerank_score"]) for hit in hits] == [
+        (chunk_ids["b usage"], 0.9),
+        (chunk_ids["a install"], 0.2),
+        (chunk_ids["a intro"], 0.1),
+    ]
 
 
 def test_a_label_matching_nothing_stops_the_run_before_any_call(
@@ -755,6 +820,16 @@ def _store_vectors(settings: Settings, *questions: str) -> Path:
             "Mode: hybrid (candidates 20, k 60, width 100). Answerable questions: 2.\n"
             "Recall@10 1.000  Hit@10 1.000  MRR 1.000  nDCG@10 0.960",
         ),
+        # S08-T2, the fake reranker's order: "b usage", "a install", "a intro" for both. q01's
+        # labels at ranks 1 and 2: MRR 1, nDCG 1. q02's at rank 3: MRR 1/3, nDCG
+        # (1/log2(4)) / 1 = 0.5. Means: MRR 0.666667, nDCG 0.75. The model's revision is
+        # shortened to 7 characters.
+        (
+            "rerank",
+            "Mode: rerank (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, "
+            "max length 512). Answerable questions: 2.\n"
+            "Recall@10 1.000  Hit@10 1.000  MRR 0.667  nDCG@10 0.750",
+        ),
     ],
 )
 def test_retrieval_only_scores_each_mode_and_writes_nothing(
@@ -764,9 +839,12 @@ def test_retrieval_only_scores_each_mode_and_writes_nothing(
     vectors_before = vectors_path.read_bytes()
     settings = run_settings.model_copy(update={"retrieval_mode": mode})
 
-    scores = score_retrieval_only(conn, settings)
+    # Dense and hybrid never call the reranker.
+    scores, retrieve_s = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
 
     assert retrieval_report(settings, scores) == expected
+    assert len(retrieve_s) == 2  # one retrieve time per answerable question (S08-T4)
+    assert all(seconds >= 0 for seconds in retrieve_s)
     assert not settings.eval_results_dir.exists()
     assert vectors_path.read_bytes() == vectors_before
 

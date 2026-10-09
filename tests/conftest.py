@@ -87,6 +87,18 @@ def fake_embedder() -> FakeEmbedder:
     return FakeEmbedder()
 
 
+class FakeReranker:
+    """The `Reranker` protocol with no model: records every call, scores each text from a table."""
+
+    def __init__(self, scores: Mapping[str, float]) -> None:
+        self.scores = scores
+        self.calls: list[tuple[str, list[str]]] = []  # (question, texts) per call
+
+    def score(self, question: str, texts: Sequence[str]) -> list[float]:
+        self.calls.append((question, list(texts)))
+        return [self.scores[text] for text in texts]
+
+
 class FakeGenerator:
     """The `Generator` protocol with no network: records every call, returns a canned output."""
 

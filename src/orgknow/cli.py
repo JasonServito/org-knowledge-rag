@@ -1,9 +1,10 @@
 """The `orgknow` command (S04-T7): `orgknow ask "<question>"` prints the answer as JSON.
 
-One ask embeds the question, retrieves chunk texts in RETRIEVAL_MODE (dense, S04-T5, or hybrid,
-S07-T3), then answers from them with one model call and validates the citations (S04-T6). The
-JSON goes to stdout; "tracing off" and errors go to stderr, one line each. Exit codes: 0 when an
-answer prints (either status), 1 on an error, 2 on bad usage (argparse's own errors exit 2 too).
+One ask embeds the question, retrieves chunk texts in RETRIEVAL_MODE (dense, S04-T5; hybrid,
+S07-T3; or rerank, S08-T2, which first loads the cross-encoder), then answers from them with one
+model call and validates the citations (S04-T6). The JSON goes to stdout; "tracing off" and
+errors go to stderr, one line each. Exit codes: 0 when an answer prints (either status), 1 on an
+error, 2 on bad usage (argparse's own errors exit 2 too).
 
 With both Langfuse keys set, each ask leaves one trace named `ask` (ADR-006 D3). This module is
 the only caller of Langfuse, and it never puts the settings or a key in a trace.
@@ -13,6 +14,7 @@ import argparse
 import sys
 import urllib.error
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import anthropic
 import psycopg
@@ -24,8 +26,12 @@ from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.generation.generator import AnthropicGenerator, GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
+from orgknow.retrieval.rerank import Reranker
 from orgknow.retrieval.retrieve import retrieve
 from orgknow.settings import Settings
+
+if TYPE_CHECKING:  # for the annotation only: importing the module loads torch
+    from orgknow.retrieval.cross_encoder import CrossEncoderReranker
 
 # The failures `ask` reports as one stderr line (exit 1) instead of a traceback:
 # - GenerationError: the model refused, was cut off, or returned output off the schema.
@@ -60,6 +66,20 @@ def langfuse_client(settings: Settings) -> Langfuse | None:
     )
 
 
+def load_reranker(settings: Settings) -> "CrossEncoderReranker | None":
+    """Rerank mode's cross-encoder, loaded once per process; None in the other modes.
+
+    Its module is imported here, not at the top, so dense and hybrid never load torch. A model
+    missing from the Hugging Face cache is downloaded once at the pinned revision; with no
+    connection, loading raises OSError.
+    """
+    if settings.retrieval_mode != "rerank":
+        return None
+    from orgknow.retrieval.cross_encoder import CrossEncoderReranker
+
+    return CrossEncoderReranker(settings)
+
+
 def ask(
     question: str,
     conn: psycopg.Connection[TupleRow],
@@ -67,15 +87,19 @@ def ask(
     generator: Generator,
     settings: Settings,
     langfuse: Langfuse | None,
+    reranker: Reranker | None = None,
 ) -> int:
     """Answer `question`: print the answer JSON on stdout and return 0, or print one error line on
-    stderr and return 1. With `langfuse`, the ask is also recorded as one trace."""
+    stderr and return 1. With `langfuse`, the ask is also recorded as one trace. Rerank mode
+    needs `reranker`."""
     try:
         if langfuse is None:
-            hits = retrieve(question, embedder, conn, settings)
+            hits = retrieve(question, embedder, conn, settings, reranker)
             result = answer(question, hits, generator, settings)
         else:
-            result = _traced_answer(question, conn, embedder, generator, settings, langfuse)
+            result = _traced_answer(
+                question, conn, embedder, generator, settings, langfuse, reranker
+            )
     except ASK_ERRORS as error:
         print(f"error: {_one_line(error)}", file=sys.stderr)
         return 1
@@ -90,6 +114,7 @@ def _traced_answer(
     generator: Generator,
     settings: Settings,
     langfuse: Langfuse,
+    reranker: Reranker | None,
 ) -> Answer:
     """`retrieve`, then `answer`, recorded as one trace named `ask` (the run contract's "Trace"):
     the question in, a `retrieve` span, a `generate` generation, a `validate` span, the final JSON
@@ -106,9 +131,9 @@ def _traced_answer(
                     "model": embedder.model,
                 },
             ) as span:
-                hits = retrieve(question, embedder, conn, settings)
-                # Per hit, why it ranked there (S07-R1 decision 4): a score or rank is None when
-                # the mode doesn't set it or that list didn't hold the text.
+                hits = retrieve(question, embedder, conn, settings, reranker)
+                # Per hit, why it ranked there (S07-R1 decision 4, S08-T2): a score or rank is
+                # None when the mode doesn't set it or that list didn't hold the text.
                 span.update(
                     output=[
                         {
@@ -117,6 +142,7 @@ def _traced_answer(
                             "rrf_score": h.rrf_score,
                             "dense_rank": h.dense_rank,
                             "lexical_rank": h.lexical_rank,
+                            "rerank_score": h.rerank_score,
                         }
                         for h in hits
                     ]
@@ -227,13 +253,18 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         return _key_missing("ANTHROPIC_API_KEY")
     if not voyage_key:  # the question must be embedded
         return _key_missing("VOYAGE_API_KEY")
+    try:
+        reranker = load_reranker(settings)
+    except OSError as error:  # the model isn't cached and Hugging Face can't be reached
+        print(f"error: {_one_line(error)}", file=sys.stderr)
+        return 1
     langfuse = langfuse_client(settings)
     embedder = VoyageEmbedder(settings.voyage_api_url, voyage_key, settings.embedding_model)
     client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
     generator = AnthropicGenerator(client, settings)
     try:
         with psycopg.connect(settings.database_url) as conn:
-            return ask(question, conn, embedder, generator, settings, langfuse)
+            return ask(question, conn, embedder, generator, settings, langfuse, reranker)
     finally:
         if langfuse is not None:
             langfuse.flush()  # before exit, on the error path too (ADR-006 D3)

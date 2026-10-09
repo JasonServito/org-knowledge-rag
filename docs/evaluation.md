@@ -33,8 +33,11 @@ K = 10 (`RETRIEVAL_TOP_K`). Retrieval metrics are per answerable question, then 
 | **AC2** | Every cited chunk id was retrieved for this question | No invented citations |
 | **AC3** | An unanswerable question gets `insufficient_evidence` with a reason | The system says "I don't know" when it should |
 | **False refusal** | An answerable question gets `insufficient_evidence` | The system gives up when it shouldn't |
-| **p95 latency** | 95th percentile (nearest rank) of a question's retrieve + answer time | The slow-question experience |
-| **Cost per question** | Input tokens × $4/M + output tokens × $20/M (ADR-006 D1 prices; output includes reasoning) | What one answer costs |
+| **p95 latency** | 95th percentile (nearest rank: the ⌈0.95 × n⌉-th smallest; the 41st of 43) of a question's retrieve + answer time | The slow-question experience |
+| **Retrieve p95** | The same over the retrieval step alone; n/a for runs before S08-T3, which didn't time it | What retrieval, e.g. a reranker, adds to the wait |
+| **Cost per question** | Input tokens × $4/M + output tokens × $20/M (ADR-006 D1 prices, `GENERATION_PRICE_*`; output includes reasoning), averaged over the questions with a model call | What one answer costs |
+
+The ablation table (`eval/results/ablation.md`) shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns.
 
 ## Reading a result
 
@@ -118,7 +121,7 @@ S07-T4, 2026-10-09 (UTC). Two searches, merged into one list:
 
 - **"At or below the range"** is read as: the hybrid mean is at most the range's top (3 of 36). The stricter readings pass too: every hybrid run is inside 2–3, and the means are equal.
 - **Distinct sections** is a diagnostic, not one of the rule's metrics: 7.14 → 7.11, i.e. 1 section fewer over all 36 questions.
-- **Verdict: pass.** `RETRIEVAL_MODE` now defaults to `hybrid` (decision 6).
+- **Verdict: pass.** `RETRIEVAL_MODE` defaulted to `hybrid` (decision 6) until rerank passed (below).
 - **The gain is about 2 questions' worth** (0.060 ÷ 0.028 = 2.2), on a set the setup was chosen on (see Known limits).
 
 By question type (retrieval only; the dense baseline in brackets; one question moves a row by 0.10–0.14):
@@ -150,12 +153,131 @@ What the runs show:
 - **Input tokens: 241,671 per run, +8,679 (+3.7%) over dense**, identical in all 3 runs. Output was 16,066–16,908 tokens, of which 1,388–1,648 were reasoning.
 - **Each run took 3 min 22 s to 5 min 6 s** and cost $1.29–1.30.
 
+## Rerank
+
+S08-T5, 2026-10-09 (UTC). Hybrid's candidates, reordered by a local model (ADR-008):
+
+- **The pool:** hybrid's 20 dense and 20 lexical candidates, fused with RRF and not cut to 10: about 21 texts per question.
+- **The cross-encoder** (`BAAI/bge-reranker-base`) reads the question next to each text, cut to 512 tokens, and scores the pair. The 10 best scores go to the same Claude call; ties keep hybrid's order.
+- 3 runs of `RETRIEVAL_MODE=rerank make eval` on commit `4b674fb`, 43 questions each, all `git_dirty: false`: `rerank-20261009T083721Z`, `rerank-20261009T084531Z`, `rerank-20261009T085359Z`.
+- First, the free gate: `make eval-retrieval` matched the sitting's prototype exactly (0.516, 0.972, 0.703, 0.489).
+
+| Measure | Rerank | Spread over 3 runs | Hybrid |
+|---|---|---|---|
+| Recall@10 | 0.516 | none | 0.382 |
+| Hit@10 | 0.972 (35 of 36) | none | 0.944 (34 of 36) |
+| MRR | 0.703 | none | 0.675 |
+| nDCG@10 | 0.489 | none | 0.385 |
+| Distinct sections | 7.4 of 10 | none | 7.1 of 10 |
+| AC1 | 100% | 34–35 answered, all pass | 100% |
+| AC2 | 100% (43 of 43) | none | 100% (43 of 43) |
+| AC3 | 100% (7 of 7) | none | 100% (7 of 7) |
+| False refusals | 1.3 of 36 | 1–2 (runs: 2, 1, 1) | 2.3 of 36 (2–3) |
+| p95 latency | 14.2 s | 13.4–15.0 s (runs: 15.0, 14.2, 13.4) | 12.9 s (8.8–20.9 s) |
+| Retrieve p95 | 6.7 s | 6.6–6.9 s | n/a (0.01 s in `make eval-retrieval`) |
+| Cost per question | $0.031 | $0.0307–0.0309 | $0.030 ($0.0300–0.0303) |
+| Errors | 0 | none | 0 |
+
+**The improvement rule** against hybrid, on the 3-run means, with Recall@10 as the target and a p95 ceiling (S08-R1 decision 4). Changes are computed before rounding.
+
+| Condition | Hybrid | Rerank | Change | Result |
+|---|---|---|---|---|
+| Recall@10 rises by ≥ 0.03 | 0.3819 | 0.5156 | +0.1338 | Pass |
+| Hit@10 drops by ≤ 0.03 | 0.9444 | 0.9722 | +0.0278 | Pass |
+| MRR drops by ≤ 0.03 | 0.6745 | 0.7032 | +0.0287 | Pass |
+| nDCG@10 drops by ≤ 0.03 | 0.3853 | 0.4888 | +0.1034 | Pass |
+| AC1, AC2, AC3 at or above hybrid's range (100% in all 3 runs) | 100% | 100% in all 3 runs | 0 | Pass |
+| False refusals at or below hybrid's range (2–3 of 36) | 2.33 | 1.33 (runs: 2, 1, 1) | −1.00 | Pass |
+| Mean p95 latency ≤ 23 s | 12.89 s | 14.20 s | +1.31 s | Pass |
+
+- **Verdict: pass.** `RETRIEVAL_MODE` now defaults to `rerank` (decision 4).
+- **The Recall@10 gain is about 5 questions' worth** (0.134 ÷ 0.028 = 4.8). MRR rose by about 1 (0.029).
+- **Phase 1 thresholds on v0:** Recall@10 (≥ 0.46), MRR (≥ 0.69), nDCG@10 (≥ 0.45) and Hit@10 (≥ 0.944) all pass now. MRR clears its threshold by 0.013, under one question.
+- **Not a clean test.** Recall@10 was chosen as the target after the sitting's prototype was seen (S08-R1 decision 4). v0 was also used to choose the model and the pool (3 models × 3 pool sizes, ~9 setups). Part of the gain may fit v0 only; v1 is the clean test.
+
+By question type (retrieval only; hybrid in brackets; one question moves a row by 0.10–0.14):
+
+| Mode | Questions | Recall@10 | Hit@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|
+| CURRENT | 10 | 0.557 (0.374) | 1.000 (0.900) | 0.588 (0.692) | 0.488 (0.385) |
+| HISTORY | 10 | 0.400 (0.330) | 0.900 (0.900) | 0.577 (0.625) | 0.375 (0.346) |
+| CHANGE | 9 | 0.560 (0.336) | 1.000 (1.000) | 0.944 (0.569) | 0.577 (0.314) |
+| WHY | 7 | 0.564 (0.526) | 1.000 (1.000) | 0.738 (0.857) | 0.538 (0.534) |
+
+What the runs show:
+
+- **Every question got a different top 10.** 164 of the 430 hits (38%) were outside hybrid's top 10, i.e. from the pool's lower ranks.
+  - All 3 runs retrieved the same top 10 on all 43 questions.
+- **Recall@10 rose on 20 of 36 answerable questions and fell on 2:** q04 and q14 (−0.25 each, a labeled source pushed out). 14 are unchanged.
+- **q31 found its first labeled source** (none → rank 1), the only Hit@10 change. Refused in every hybrid run, it was answered in every rerank run.
+- **MRR is nearly flat: up on 10 questions, down on 10.**
+  - CHANGE gains most (0.569 → 0.944): q03, q08, q13, q18 and q45 now have a labeled source at rank 1, from rank 2–6.
+  - 6 questions lost their rank-1 source: q09, q16, q17 and q40 to rank 3–6; q12 and q30 to rank 2. q02 and q21 fell from rank 4 to 10.
+  - So CURRENT MRR drops (0.692 → 0.588) despite q31, as do HISTORY and WHY.
+- **Refusals:**
+  - q43 in every run: no labeled source in its top 10 in any mode.
+  - q14 once (run 1). Runs 2 and 3 answered it from the same hits.
+  - q41, refused once in hybrid, was answered in all 3.
+- **p95 latency 13.4–15.0 s, mean 14.2 s.** The reranker's retrieve time is 5.3–5.6 s at p50 and 6.6–6.9 s at p95.
+  - Hybrid's runs 2 and 3 had 8.8–8.9 s; hybrid's mean (12.9 s) is lifted by run 1's 20.9 s.
+  - Answer time alone (latency minus retrieve, p95): 7.0–8.8 s.
+  - No question took over 16.7 s in any rerank run (hybrid's run 1: 26.2 s).
+  - The model loads once per run (7.2–7.6 s), outside every question's latency.
+- **Input tokens: 253,805 per run, +12,134 (+5.0%) over hybrid**, identical in all 3 runs. Output was 15,222–15,747 tokens, of which 973–1,347 were reasoning.
+- **Each run took 7 min 44 s to 8 min 3 s** and cost $1.32–1.33 ($3.98 for the 3).
+
+## Reranker timing and S15 sizing
+
+S08-T4, 2026-10-09. How long rerank mode's retrieval takes on this laptop and on 2 CPUs, to size S15's server (ADR-008 assumes about 2 vCPUs). Measured with `make eval-retrieval`: free, from the stored question vectors, with no answer call.
+
+- **The machine:** Intel Core Ultra 7 155H under WSL2, 22 logical CPUs (11 cores, 2 threads each), 15 GB RAM, no GPU (torch is the CPU-only build).
+- **Retrieve time:** one question's wall time in retrieval: its stored vector, the dense and lexical searches, fusion, and the reranker scoring ~21 texts.
+  - Dense and hybrid take 0.01 s (p50 and p95), so in rerank mode it is almost all reranking.
+- **p50** is the median (of 36 questions, the mean of the 18th and 19th). **p95** is nearest rank (the 35th of 36).
+- **Reranker load:** once per command, from the local model cache. It includes importing torch and transformers.
+  - A separate check split ~7.4 s into 4.2 s of imports and 3.0–3.3 s of model load (the sitting's "3 s warm").
+- **Peak RAM:** "Maximum resident set size" from `/usr/bin/time -v` around `uv run`: the most RAM the largest single process (Python) held at once. Postgres runs separately and isn't counted.
+- **`taskset -c 0,2`** pins the command to 2 logical CPUs. Torch then uses 2 threads by itself (`torch.get_num_threads()` is 2).
+
+| Setup | Torch threads | Retrieve p50 | Retrieve p95 | Reranker load | Peak RAM | Whole command |
+|---|---|---|---|---|---|---|
+| Default | 11 | 4.91 s | 6.14 s | 7.4 s | 1.63 GiB (1,708,380 KB) | 3 min 29 s |
+| 2 CPUs (`taskset -c 0,2`) | 2 | 11.50 s | 15.36 s | 7.7 s | 1.51 GiB (1,587,180 KB) | 8 min 4 s |
+
+The printed lines (both runs also printed the gate's metrics: Recall@10 0.516, Hit@10 0.972, MRR 0.703, nDCG@10 0.489):
+
+```
+Retrieve time: p50 4.91 s, p95 6.14 s (36 questions). Reranker load 7.4 s.
+Retrieve time: p50 11.50 s, p95 15.36 s (36 questions). Reranker load 7.7 s.
+```
+
+- **2 CPUs are 2.3× slower at p50** (11.50 ÷ 4.91) and 2.5× at p95. The load time doesn't change.
+- **Runs vary by ~0.3 s:** a repeat on the default threads gave p50 4.77 s, p95 6.46 s, load 8.2 s.
+
+What it means for S15 (a projection; S15 decides):
+
+- **Rerank alone on 2 CPUs: ~11.5 s per question at p50, ~15.4 s at p95.** ADR-008 expected 10–15 s.
+- **Projected answer p95 on 2 CPUs: 24.2–36.3 s, mean 28.3 s,** over the 23 s ceiling in all 3 runs.
+  - The sum of hybrid's 3 p95 latencies (8.8, 8.9 and 20.9 s) and the 2-CPU retrieve p95. The answer call runs at Anthropic, so the server's CPUs don't change it.
+  - Adding two p95s overstates it when the slow questions differ. With the p50 instead: 20.3–32.4 s, mean 24.4 s.
+  - The same sum on this laptop: 15.0–27.1 s, mean 19.0 s. T5 measured 13.4–15.0 s, mean 14.2 s (see Rerank).
+  - With T5's answer time alone (p95 7.0–8.8 s) instead of hybrid's latency: 24.2, 23.8 and 22.3 s, over the 23 s ceiling in 2 of 3 runs (mean 23.4 s).
+- **Not counted:** a live `orgknow ask` also embeds the question (one Voyage call), and loads the reranker (~7.5 s) until the API keeps it loaded (S12).
+- **RAM:** ~1.6 GiB for this process alone.
+- **The levers (ADR-008):**
+  - A bigger instance: 11 threads here give ~4.9 s.
+  - The hosted Voyage `rerank-2.5` fallback: no local model, ~$0.0004 per question (not verified).
+  - ONNX quantization: not measured; unquantized ONNX was no faster.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
 - **37 of the 43 questions were checked by Claude only.** The developer spot-checked 6.
-- **Latency leaves out the question embedding.** The vectors are stored, so a live `orgknow ask` adds one Voyage call.
-- **The summary and table don't report p95 latency or cost yet.** The numbers above were computed from each run's `questions.jsonl`.
+- **Latency leaves out the question embedding and the reranker's load.** The vectors are stored, so a live `orgknow ask` adds one Voyage call. It also loads the reranker (~7.5 s) on every ask, until the API keeps it loaded (S12).
+- **Retrieve p95 is n/a for the dense and hybrid runs.** They ran before the retrieval step was timed (S08-T3).
+  - Their p95 latency and cost were added to each `summary.json` from its `questions.jsonl` by `make eval-resummarize`, and match the numbers above.
 - **The dense baseline's run 3 says `git_dirty: true`.** Its only changed tracked file was the ablation table, which run 2 had just rewritten. The code was the same commit.
-  - Since S07 the dirty check ignores `eval/results/`. All 3 hybrid runs say `git_dirty: false`.
-- **v0 isn't a clean test of hybrid.** About 30 retrieval configurations were tried on v0 in the S07 sitting before this one was chosen, so part of the +0.060 MRR may fit v0 only. v1 is the clean test.
+  - Since S07 the dirty check ignores `eval/results/`. All 3 hybrid runs and all 3 rerank runs say `git_dirty: false`.
+- **v0 isn't a clean test of hybrid or rerank.** v1 is the clean test.
+  - Hybrid: about 30 retrieval configurations were tried on v0 in the S07 sitting before this one was chosen, so part of the +0.060 MRR may fit v0 only.
+  - Rerank: ~9 setups (3 models × 3 pool sizes) were tried on v0 in the S08 sitting, and Recall@10 was named the target after they were seen, so part of the +0.134 Recall@10 may fit v0 only.

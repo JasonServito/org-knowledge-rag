@@ -75,3 +75,11 @@ ADR-006 (decided in the S04-R2 sitting) picks the generation client and the trac
 - **`anthropic`** (runtime): the official Python SDK, used for `messages.parse` structured outputs (ADR-006 D2). It adds 4 packages. Rejected: raw HTTP via `urllib`, which would hand-maintain schema conversion, retries and error types.
 - **`httpx2` moves to the runtime dependencies:** `anthropic` 1.x is built on it. It was dev-only (the 2026-09-26 amendment, for FastAPI's `TestClient`).
 - **`langfuse`** (runtime): the Langfuse Python SDK v4, which confirms the Tracing row above (ADR-006 D3). It adds 17 packages, including the OpenTelemetry SDK, protobuf and `httpx`. Rejected: OTLP JSON posted with `urllib` (our own trace builder, replaced by S11's LangGraph integration anyway) and the legacy ingestion API (sunset 2026-11-16).
+
+## Amendment 2026-10-09
+
+ADR-008 (decided in the S08-R1 sitting) picks the reranker and its runtime. Added with the developer's approval:
+
+- **`transformers`** (runtime): loads the pinned `BAAI/bge-reranker-base` and its tokenizer, and runs it as a sequence classifier (ADR-008 D2). Rejected: `sentence-transformers` (one more package on top of the same two) and ONNX Runtime (scores differ from the measured ones by up to 0.29).
+- **`torch`** (runtime), **from the PyTorch CPU package index**, pinned in `pyproject.toml` (`[[tool.uv.index]]`, `explicit = true`, plus a `[tool.uv.sources]` entry). The default PyPI wheel on Linux pulls ~2–3 GB of CUDA libraries; the CPU wheel is ~740 MB installed. There's no GPU on the laptop or in S15's plan.
+- **macOS now needs Apple Silicon** (arm64, macOS 14 or later), narrowing the Dev environment row above. PyTorch publishes no Intel Mac wheel, so `uv sync` fails on Intel Macs. Linux and WSL2, the platforms used (and CI), are unaffected.

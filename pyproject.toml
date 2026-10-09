@@ -15,6 +15,8 @@ dependencies = [
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
     "pyyaml>=6.0.3",
+    "torch>=2.14.1",
+    "transformers>=5.19.0",
 ]
 
 [project.scripts]
@@ -52,7 +54,18 @@ testpaths = ["tests"]
 addopts = ["--strict-markers", "--import-mode=importlib"]
 markers = [
     "integration: needs real Postgres from Docker Compose",
+    "reranker: loads the real reranker model; skipped when it isn't in the Hugging Face cache",
 ]
+
+# torch from the PyTorch CPU index (ADR-008 D2, ADR-004 amendment 2026-10-09): PyPI's Linux wheel
+# pulls ~2-3 GB of CUDA libraries. `explicit`: only torch is looked up there.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 [dependency-groups]
 dev = [

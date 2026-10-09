@@ -22,6 +22,7 @@ Organizational knowledge changes over time. Sources differ in authority, and doc
 ### Prerequisites
 
 - **Windows:** WSL2 with Ubuntu. Run every command below in the Ubuntu shell, not in PowerShell. Native Windows is not supported (ADR-004).
+- **macOS:** Apple Silicon only (macOS 14+). PyTorch, which the reranker needs, has no Intel Mac build (ADR-004).
 - **Docker Desktop** as the only Docker engine, with WSL integration enabled for the Ubuntu distro (Docker Desktop → Settings → Resources → WSL integration). Don't also install Docker Engine inside Ubuntu.
 - **make:** `sudo apt install make` (or `sudo apt install build-essential`).
 - **uv:** `curl -LsSf https://astral.sh/uv/install.sh | sh`. uv also manages Python: `uv sync` installs Python 3.12 (from `.python-version`) if it's missing, so there's no separate Python install.
@@ -64,7 +65,9 @@ Then ask a question. Each ask is paid (one Voyage call and one Claude call) and 
 uv run orgknow ask "What enforces pod security standards in-tree?"
 ```
 
-`RETRIEVAL_MODE` picks the retrieval: `hybrid` (the default: the 20 nearest texts and the 20 best word matches from Postgres full-text search, merged with Reciprocal Rank Fusion, keeping the best 10) or `dense` (the 10 texts whose vectors are nearest the question's). For example, `RETRIEVAL_MODE=dense uv run orgknow ask "..."`. Hybrid became the default when it passed the improvement rule (`docs/evaluation.md`).
+`RETRIEVAL_MODE` picks the retrieval: `rerank` (the default: hybrid's whole merged list, about 21 texts, scored by a local cross-encoder model that reads the question next to each text, keeping the 10 best by that score), `hybrid` (the 20 nearest texts and the 20 best word matches from Postgres full-text search, merged with Reciprocal Rank Fusion, keeping the best 10) or `dense` (the 10 texts whose vectors are nearest the question's). For example, `RETRIEVAL_MODE=hybrid uv run orgknow ask "..."` skips the model. Rerank became the default when it passed the improvement rule against hybrid, and hybrid before it against dense (`docs/evaluation.md`).
+
+`rerank` runs `BAAI/bge-reranker-base` on the CPU with PyTorch (the CPU-only build, pinned in `uv.lock`). The first rerank command downloads the model once (1.1 GB, at the revision pinned in `RERANK_REVISION`) into the Hugging Face cache (`~/.cache/huggingface`), outside this repo; later runs load it from there (about 7.5 s, including importing PyTorch). Each command loads it once, so every `orgknow ask` in rerank mode, the default, pays that load.
 
 It prints one line of JSON: `answered` with citations (each with its release windows and a GitHub link at the snapshot commit), or `insufficient_evidence` with a reason. With `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` set, each ask also leaves one Langfuse trace, whose id is the JSON's `trace_id`. Without them, it prints "tracing off" and still answers. Exit codes: 0 when an answer prints, 1 on an error, 2 on bad usage.
 
@@ -73,13 +76,14 @@ To evaluate the pipeline on the golden set (`EVAL_GOLDEN_PATH`, default `eval/go
 ```bash
 make eval-check             # validate the golden file and count the stored texts each label matches (free)
 make eval-sections DOC=gate:LegacyServiceAccountTokenCleanUp   # a document's sections, as labels write them (free)
-make eval-retrieval         # retrieval scores alone (Recall@10, Hit@10, MRR, nDCG@10) in RETRIEVAL_MODE, from the stored question vectors (free; writes nothing)
+make eval-retrieval         # retrieval scores alone (Recall@10, Hit@10, MRR, nDCG@10) and retrieve time (p50, p95) in RETRIEVAL_MODE, from the stored question vectors (free; writes nothing)
 make eval-smoke             # the smoke questions end to end (paid: one Claude call per question)
 make eval                   # every question (paid; run only when asked)
 make eval-table             # rebuild eval/results/ablation.md from every results folder (free)
+make eval-resummarize       # rebuild every results folder's summary.json from its saved rows (free; then make eval-table)
 ```
 
-A run stops before any paid call if a label matches no stored text. It embeds only the questions with no stored vector (`eval/question_vectors/<model>.json`, one Voyage request; a re-run makes 0), so retrieval is exactly repeatable. Each run writes `eval/results/<name>-<UTC time>/` (`run.json`, one `questions.jsonl` row per question with its hits, answer, metrics and checks, and `summary.json`), then rebuilds the ablation table. A failed ask is a row with its error, not a crash. `uv run python -m orgknow.eval run --name NAME` names the pipeline (default: the retrieval mode, `dense` or `hybrid`; with `--smoke`, `<mode>-smoke`, so smoke runs get their own table row). Compare the modes for free with `RETRIEVAL_MODE=dense make eval-retrieval` and `RETRIEVAL_MODE=hybrid make eval-retrieval` before a paid run.
+A run stops before any paid call if a label matches no stored text. It embeds only the questions with no stored vector (`eval/question_vectors/<model>.json`, one Voyage request; a re-run makes 0), so retrieval is exactly repeatable. Each run writes `eval/results/<name>-<UTC time>/` (`run.json`, one `questions.jsonl` row per question with its hits, answer, metrics and checks, and `summary.json`), then rebuilds the ablation table. A failed ask is a row with its error, not a crash. Besides the metrics, the summary and the table report the p95 latency, the retrieval step's own p95 and the cost per question (at `GENERATION_PRICE_INPUT_USD_PER_MTOK` / `GENERATION_PRICE_OUTPUT_USD_PER_MTOK`). After a new summary field, `make eval-resummarize` refills older folders from their `questions.jsonl` with no paid call. `uv run python -m orgknow.eval run --name NAME` names the pipeline (default: the retrieval mode, `dense`, `hybrid` or `rerank`; with `--smoke`, `<mode>-smoke`, so smoke runs get their own table row). Compare the modes for free with `RETRIEVAL_MODE=dense make eval-retrieval`, `RETRIEVAL_MODE=hybrid make eval-retrieval` and `RETRIEVAL_MODE=rerank make eval-retrieval` before a paid run.
 
 The metrics, the dense baseline and how to read a result are in `docs/evaluation.md`; the ablation table is `eval/results/ablation.md`.
 

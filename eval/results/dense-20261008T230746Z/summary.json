@@ -28,5 +28,8 @@
   },
   "input_tokens": 232992,
   "output_tokens": 16719,
-  "latency_s_mean": 6.187441860465117
+  "latency_s_mean": 6.187441860465117,
+  "latency_s_p95": 11.25,
+  "retrieve_s_p95": null,
+  "cost_usd_mean": 0.029449953488372094
 }

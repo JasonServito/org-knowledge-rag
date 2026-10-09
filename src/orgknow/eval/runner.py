@@ -11,11 +11,19 @@ one golden set retrieves exactly the same hits. A failed ask is a row with its e
 crash. No Langfuse trace: the results folder is the record.
 
 `score_retrieval_only` (S07-T3, `make eval-retrieval`) runs the same label check and retrieval,
-from stored vectors only, and scores the hits with no answer call: free, and it writes nothing.
+from stored vectors only, and scores the hits with no answer call: free, and it writes nothing. It
+also times each question's retrieval (S08-T4), which `timing_line` reports.
+
+In rerank mode (S08-T2), both get the reranker the caller loaded once, before the question loop.
+
+`resummarize` (S08-T3, `make eval-resummarize`) rebuilds a folder's `summary.json` from its saved
+rows, so a summary written before a new summary field gains it with no new run.
 """
 
 import hashlib
 import json
+import math
+import statistics
 import subprocess
 import time
 from collections.abc import Iterable, Mapping, Sequence
@@ -41,6 +49,7 @@ from orgknow.eval.golden import (
 from orgknow.eval.metrics import RetrievalMetrics, score_retrieval
 from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
+from orgknow.retrieval.rerank import Reranker
 from orgknow.retrieval.retrieve import retrieve
 from orgknow.settings import Settings
 
@@ -62,6 +71,12 @@ class RunSettings(BaseModel):
     retrieval_candidates: int | None = None
     rrf_k: int | None = None
     hnsw_ef_search: int | None = None
+    # S08-T2: rerank mode's model and its thread count; None in other modes and older folders.
+    rerank_model: str | None = None
+    rerank_revision: str | None = None
+    rerank_max_length: int | None = None
+    rerank_batch_size: int | None = None
+    torch_threads: int | None = None
     generation_model: str
     generation_effort: str
     generation_max_tokens: int
@@ -80,6 +95,8 @@ class RunInfo(BaseModel):
     smoke: bool
     questions: int
     settings: RunSettings
+    # Seconds to load the reranker, once per run (S08-T2); None in other modes and older folders.
+    rerank_load_s: float | None = None
 
 
 class RankedHit(BaseModel):
@@ -91,9 +108,11 @@ class RankedHit(BaseModel):
     canonical_id: str
     heading_path: list[str]
     distance: float | None  # None when only lexical search found the text
-    rrf_score: float | None  # hybrid only
-    dense_rank: int | None
-    lexical_rank: int | None
+    # Hybrid and rerank only. Absent in the dense baseline's folders (S06), written before S07.
+    rrf_score: float | None = None
+    dense_rank: int | None = None
+    lexical_rank: int | None = None
+    rerank_score: float | None = None  # rerank only (S08-T2); absent in older folders
 
 
 class QuestionRow(BaseModel):
@@ -108,6 +127,7 @@ class QuestionRow(BaseModel):
     checks: AnswerChecks
     usage: TokenUsage | None  # None when the model wasn't called (no hits)
     latency_s: float  # retrieve + answer
+    retrieve_s: float | None = None  # the retrieve stage alone (S08-T3); absent in older folders
     error: str | None  # "<Type>: <message>" when the ask failed
 
 
@@ -150,6 +170,12 @@ class Summary(BaseModel):
     input_tokens: int
     output_tokens: int
     latency_s_mean: float
+    # S08-T3: nearest-rank p95s over the rows that have the value (`retrieve_s_p95` None when no
+    # row has it), and the mean cost of the rows with usage at the settings' prices. None in a
+    # summary written before S08-T3, until `make eval-resummarize` refills it.
+    latency_s_p95: float | None = None
+    retrieve_s_p95: float | None = None
+    cost_usd_mean: float | None = None
 
 
 def question_key(question: str) -> str:
@@ -237,9 +263,13 @@ def run(
     settings: Settings,
     smoke: bool,
     name: str,
+    reranker: Reranker | None = None,
+    rerank_load_s: float | None = None,
+    torch_threads: int | None = None,
 ) -> Path:
     """Run the golden set (only its `smoke: true` questions with `smoke`) and write its results
     folder; return the folder. `embedder` is called only for questions with no stored vector.
+    Rerank mode needs `reranker`; `run.json` records its load time and torch's thread count.
 
     Raises GoldenSetError for an invalid golden file, and EvalError when a label matches no
     stored text, a vector is missing with no embedder, or embedding fails: all before any
@@ -274,11 +304,12 @@ def run(
     stored = StoredVectors(settings.embedding_model, vectors)
     rows = []
     for question in questions:
-        row = _run_question(question, conn, stored, generator, settings)
+        row = _run_question(question, conn, stored, generator, settings, reranker)
         status = row.answer.answer_status if row.answer else row.error
         print(f"{row.id}  {status}  {row.latency_s:.1f} s")
         rows.append(row)
 
+    rerank_mode = settings.retrieval_mode == "rerank"
     run_info = RunInfo(
         name=name,
         started_at=started_at,
@@ -296,12 +327,18 @@ def run(
             retrieval_candidates=settings.retrieval_candidates,
             rrf_k=settings.rrf_k,
             hnsw_ef_search=settings.hnsw_ef_search,
+            rerank_model=settings.rerank_model if rerank_mode else None,
+            rerank_revision=settings.rerank_revision if rerank_mode else None,
+            rerank_max_length=settings.rerank_max_length if rerank_mode else None,
+            rerank_batch_size=settings.rerank_batch_size if rerank_mode else None,
+            torch_threads=torch_threads,
             generation_model=settings.generation_model,
             generation_effort=settings.generation_effort,
             generation_max_tokens=settings.generation_max_tokens,
         ),
+        rerank_load_s=rerank_load_s,
     )
-    summary = summarize(name, golden_sha256, started_at, rows)
+    summary = summarize(name, golden_sha256, started_at, rows, settings)
     (folder / "run.json").write_text(run_info.model_dump_json(indent=2) + "\n", encoding="utf-8")
     (folder / "questions.jsonl").write_text(
         "".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8"
@@ -318,12 +355,14 @@ def _run_question(
     embedder: StoredVectors,
     generator: Generator,
     settings: Settings,
+    reranker: Reranker | None,
 ) -> QuestionRow:
     """Retrieve, answer and score one question. An ask error (`cli.ASK_ERRORS`) becomes the row's
     `error`. Retrieval reads a stored vector, so it makes no network call: its failure is a bug
     or a database failure, and stops the run."""
     start = time.monotonic()
-    hits = retrieve(question.question, embedder, conn, settings)
+    hits = retrieve(question.question, embedder, conn, settings, reranker)
+    retrieve_s = round(time.monotonic() - start, 3)
     result: Answer | None = None
     usage: TokenUsage | None = None
     error: str | None = None
@@ -348,6 +387,7 @@ def _run_question(
                 rrf_score=hit.rrf_score,
                 dense_rank=hit.dense_rank,
                 lexical_rank=hit.lexical_rank,
+                rerank_score=hit.rerank_score,
             )
             for rank, hit in enumerate(hits, start=1)
         ],
@@ -356,19 +396,21 @@ def _run_question(
         checks=check_answer(question, hits, result),
         usage=usage,
         latency_s=round(time.monotonic() - start, 3),
+        retrieve_s=retrieve_s,
         error=error,
     )
 
 
 def score_retrieval_only(
-    conn: psycopg.Connection[TupleRow], settings: Settings
-) -> list[RetrievalMetrics]:
+    conn: psycopg.Connection[TupleRow], settings: Settings, reranker: Reranker | None = None
+) -> tuple[list[RetrievalMetrics], list[float]]:
     """`make eval-retrieval` (S07-R1 decision 5): retrieve, in the settings' mode, for every
     answerable golden question with its stored vector, and score the hits; return the metrics in
-    file order. No Voyage call, no Anthropic call, nothing written.
+    file order, and each question's retrieve time in seconds (S08-T4: the wall time of the
+    `retrieve` call, rerank included). No Voyage call, no Anthropic call, nothing written.
 
     Raises GoldenSetError and EvalError as `run` does, and EvalError when a question has no
-    stored vector: this command never embeds.
+    stored vector: this command never embeds. Rerank mode needs `reranker`.
     """
     golden, _ = check_golden(conn, settings.eval_golden_path)
     questions = [question for question in golden.questions if question.answerable]
@@ -382,22 +424,32 @@ def score_retrieval_only(
         )
     stored = StoredVectors(settings.embedding_model, vectors)
     scores = []
+    retrieve_s = []
     for question in questions:
-        hits = retrieve(question.question, stored, conn, settings)
+        start = time.monotonic()
+        hits = retrieve(question.question, stored, conn, settings, reranker)
+        retrieve_s.append(time.monotonic() - start)
         metrics = score_retrieval(question, hits, settings.retrieval_top_k)
         if metrics is not None:  # always: an answerable question has labels (ADR-007)
             scores.append(metrics)
-    return scores
+    return scores, retrieve_s
 
 
 def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> str:
-    """`make eval-retrieval`'s two lines (S07-R1, pinned format): the mode and its settings, then
-    the metric means over the answerable questions."""
-    if settings.retrieval_mode == "hybrid":
+    """`make eval-retrieval`'s first two lines (S07-R1, S08-R1, pinned formats): the mode and its
+    settings, then the metric means over the answerable questions. `timing_line` is the third."""
+    hybrid = (
+        f"candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
+        f"width {settings.hnsw_ef_search}"
+    )
+    if settings.retrieval_mode == "rerank":
+        # The revision shortened to 7 characters, as git shortens a commit SHA.
         mode = (
-            f"hybrid (candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
-            f"width {settings.hnsw_ef_search})"
+            f"rerank ({hybrid}, model {settings.rerank_model}@{settings.rerank_revision[:7]}, "
+            f"max length {settings.rerank_max_length})"
         )
+    elif settings.retrieval_mode == "hybrid":
+        mode = f"hybrid ({hybrid})"
     else:
         mode = f"dense (width {settings.hnsw_ef_search})"
 
@@ -413,14 +465,38 @@ def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> 
     )
 
 
+def timing_line(retrieve_s: Sequence[float], load_s: float | None) -> str:
+    """`make eval-retrieval`'s third line (S08-R1 decision 5, pinned format): the median (p50; of
+    an even count, the mean of the 2 middle values) and the nearest-rank p95 of the questions'
+    retrieve times, then, in rerank mode, the reranker's load time."""
+
+    def seconds(value: float | None) -> str:
+        return "n/a" if value is None else f"{value:.2f} s"
+
+    p50 = statistics.median(retrieve_s) if retrieve_s else None
+    load = "" if load_s is None else f" Reranker load {load_s:.1f} s."
+    return (
+        f"Retrieve time: p50 {seconds(p50)}, p95 {seconds(_p95(retrieve_s))} "
+        f"({len(retrieve_s)} questions).{load}"
+    )
+
+
 def summarize(
-    name: str, golden_sha256: str, started_at: datetime, rows: Sequence[QuestionRow]
+    name: str,
+    golden_sha256: str,
+    started_at: datetime,
+    rows: Sequence[QuestionRow],
+    settings: Settings,
 ) -> Summary:
-    """The run's totals: metric means over the answerable questions, and for each check how many
-    of the rows it applies to (not None) passed."""
+    """The run's totals: metric means over the answerable questions, for each check how many of
+    the rows it applies to (not None) passed, and the p95 latencies and the mean cost per question
+    at the settings' prices (S08-T3)."""
     metrics = [row.metrics for row in rows if row.metrics is not None]
     refusals = _rate(row.checks.false_refusal for row in rows)
     usages = [row.usage for row in rows if row.usage is not None]
+    # US dollars per million tokens. Output tokens include reasoning (ADR-006).
+    in_price = settings.generation_price_input_usd_per_mtok
+    out_price = settings.generation_price_output_usd_per_mtok
     return Summary(
         name=name,
         golden_sha256=golden_sha256,
@@ -440,7 +516,25 @@ def summarize(
         input_tokens=sum(usage.input_tokens for usage in usages),
         output_tokens=sum(usage.output_tokens for usage in usages),
         latency_s_mean=sum(row.latency_s for row in rows) / len(rows),
+        latency_s_p95=_p95([row.latency_s for row in rows]),
+        retrieve_s_p95=_p95([row.retrieve_s for row in rows if row.retrieve_s is not None]),
+        cost_usd_mean=_mean(
+            [(u.input_tokens * in_price + u.output_tokens * out_price) / 1e6 for u in usages]
+        ),
     )
+
+
+def resummarize(folder: Path, settings: Settings) -> Summary:
+    """`make eval-resummarize` (S08-T3): rebuild the folder's `summary.json` with `summarize` from
+    its `questions.jsonl`, keeping the summary's name, golden hash and start time; write it and
+    return it. Nothing else in the folder changes."""
+    path = folder / "summary.json"
+    old = Summary.model_validate_json(path.read_text(encoding="utf-8"))
+    lines = (folder / "questions.jsonl").read_text(encoding="utf-8").splitlines()
+    rows = [QuestionRow.model_validate_json(line) for line in lines]
+    summary = summarize(old.name, old.golden_sha256, old.started_at, rows, settings)
+    path.write_text(summary.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    return summary
 
 
 def summary_line(summary: Summary) -> str:
@@ -465,6 +559,14 @@ def summary_line(summary: Summary) -> str:
 
 def _mean(values: Sequence[float]) -> float | None:
     return sum(values) / len(values) if values else None
+
+
+def _p95(values: Sequence[float]) -> float | None:
+    """The nearest-rank 95th percentile (S08-R1): the value at sorted index ceil(n * 0.95) - 1,
+    0-based; None for no values."""
+    if not values:
+        return None
+    return sorted(values)[math.ceil(len(values) * 0.95) - 1]
 
 
 def _rate(results: Iterable[bool | None]) -> Rate:

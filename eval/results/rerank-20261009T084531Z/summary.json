@@ -1,0 +1,35 @@
+{
+  "name": "rerank",
+  "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
+  "started_at": "2026-10-09T08:45:31Z",
+  "questions": 43,
+  "answerable": 36,
+  "errors": 0,
+  "recall": 0.5156084656084656,
+  "hit": 0.9722222222222222,
+  "mrr": 0.7032407407407407,
+  "ndcg": 0.48875893083077837,
+  "distinct_sections": 7.361111111111111,
+  "ac1": {
+    "pass": 35,
+    "total": 35
+  },
+  "ac2": {
+    "pass": 43,
+    "total": 43
+  },
+  "ac3": {
+    "pass": 7,
+    "total": 7
+  },
+  "false_refusals": {
+    "count": 1,
+    "total": 36
+  },
+  "input_tokens": 253805,
+  "output_tokens": 15556,
+  "latency_s_mean": 10.161767441860466,
+  "latency_s_p95": 14.223,
+  "retrieve_s_p95": 6.557,
+  "cost_usd_mean": 0.03084511627906977
+}

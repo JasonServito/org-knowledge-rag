@@ -49,7 +49,8 @@ def cli_settings(settings: Settings) -> Settings:
     """The test database and the committed manifest, fake API keys and no Langfuse keys.
 
     No .env file, and the Langfuse keys are passed as None, so neither a local .env nor the
-    shell can turn tracing on.
+    shell can turn tracing on. Hybrid mode, whatever the default mode is, so no test loads the
+    reranker's model.
     """
     return Settings(
         _env_file=None,
@@ -59,6 +60,7 @@ def cli_settings(settings: Settings) -> Settings:
         voyage_api_key=FAKE_VOYAGE_KEY,
         langfuse_public_key=None,
         langfuse_secret_key=None,
+        retrieval_mode="hybrid",
     )
 
 
