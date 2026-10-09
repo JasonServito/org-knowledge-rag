@@ -257,7 +257,7 @@ Tasks:
   - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail against the improvement rule with numbers.
   - Deps: T3.
 
-### 🟨 S08 Reranking *(Stage 5)*
+### ✅ S08 Reranking *(Stage 5)*
 
 - **Outcome:** a local BGE cross-encoder rerank stage, with an ablation row and the CPU p95 latency recorded.
 - **Phase 1 gaps carried from S07** (developer, S07 retro): hybrid is at MRR 0.675 vs ≥ 0.69, and Recall@10 0.382 vs ≥ 0.46.
@@ -284,7 +284,7 @@ Tasks:
   - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail per condition with numbers.
   - Deps: T2, T3.
 
-### ⬜ S09 Temporal and authority-aware retrieval *(Stage 6)*
+### 🟨 S09 Temporal and authority-aware retrieval *(Stage 6)*
 
 - **Outcome:** query modes plus validity filtering plus ADR-003 authority adjustments.
 - **Metrics:** stale-result rate, temporal accuracy, authority-selection accuracy, router accuracy. Plus an ablation row.
@@ -348,7 +348,7 @@ ADRs are decided when their slice starts, not earlier.
 | 005 | Data access approach | S03 (Accepted) |
 | 006 | Generation model, structured output, tracing | S04 (Accepted) |
 | 007 | Golden-set schema and labeling | S06 |
-| 008 | Reranker model and candidate count | S08 |
+| 008 | Reranker model and candidate count | S08 (Accepted) |
 | 009 | Query-mode routing | S09 |
 | 010 | Conflict detection method | S10 |
 | 011 | Deployment topology | S15 |
@@ -379,3 +379,6 @@ ADRs are decided when their slice starts, not earlier.
 - **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)
 - **BM25 ranking for the lexical search (Postgres extension, e.g. pg_search or VectorChord-bm25).** Reason: Postgres `ts_rank`/`ts_rank_cd` have no IDF, so a common word ("kubernetes") weighs as much as a rare one ("PodSecurity"). S07 uses AND matching, which matches 0 texts for 23 of 36 v0 questions; OR matching added noise (Recall@20 0.603 → 0.540). Needs an ADR (new dependency, custom DB image). Try it if S08/S09 show lexical recall is the bottleneck. (S07 sitting, decision 1, 2026-10-08.)
 - **S07 parked test gaps (PR #34).** Reason: 3 small gaps the reviewers parked as beyond the plan. (1) No test that the `retrieve` trace records the mode, RRF score and ranks; it was checked once on a demo trace. (2) No lexical test for a question with flags (`--service-account-issuer`); it was checked by hand. (3) The autocommit width test proves the width doesn't leak, not that it applied during the query. (S07-R1, 2026-10-08.)
+- **CI: cache mypy between runs.** Reason: since torch and transformers (S08), CI's `check` job takes 91 s instead of 33 s, mostly mypy reading both packages from cold. Options: cache `.mypy_cache` in the workflow, or stop mypy following torch's imports. (S08-R1, PR #37 question 2.)
+- **S15: the reranker's 2-CPU numbers.** Reason: pinned to 2 CPUs, rerank takes 11.5 s per question at p50, and the projected answer p95 is 22.3–24.2 s, over the 23 s ceiling in 2 of 3 runs (`docs/evaluation.md`, "Reranker timing and S15 sizing"). The levers: a bigger instance, the hosted Voyage fallback, ONNX quantization (ADR-008). (S08-T4/T5.)
+- **S08 parked items (PR #37).** Reason: gaps the reviewers and Greptile parked as beyond the plan. (1) The prices aren't recorded in `run.json` or `summary.json`, so `make eval-resummarize` after a price change would reprice old runs. (2) The real-model test checks only that the weights file is cached; a partial cache would download the rest instead of skipping. (3) No test that the `retrieve` trace records `rerank_score`, that dense and hybrid never import torch, or that they never call the reranker; each was checked by hand. (4) ADR-008 and the cross-encoder docstring give the model-only load (3 s); a process pays about 7.5 s with imports. (5) 3 comments still say "both modes" (`.env.example`, `settings.py`). (6) The integration `settings` fixture reads `.env`, so a local `RETRIEVAL_MODE` would change the mode of tests that don't pin it. (S08-R1, 2026-10-09.)
