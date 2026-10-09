@@ -1,5 +1,5 @@
-"""The golden-set label check and the section listing (S06-T1), and the eval run (S06-T4),
-against the test database.
+"""The golden-set label check and the section listing (S06-T1), the eval run (S06-T4) and the
+retrieval-only scoring (S07-T3), against the test database.
 
 Every test builds its own rows inside `conn`'s rolled-back transaction; expected counts and
 values are counted or calculated by hand from those rows and the fakes' outputs.
@@ -30,7 +30,13 @@ from orgknow.eval.golden import (
     list_sections,
     load_golden_file,
 )
-from orgknow.eval.runner import EvalError, load_vectors, run
+from orgknow.eval.runner import (
+    EvalError,
+    load_vectors,
+    retrieval_report,
+    run,
+    score_retrieval_only,
+)
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import GenerationError
 from orgknow.generation.schema import Generation, ModelAnswer, TokenUsage
@@ -306,7 +312,8 @@ def chunk_ids(conn: Conn, seeded_releases: None) -> dict[str, int]:
 @pytest.fixture
 def run_settings(settings: Settings, tmp_path: Path) -> Settings:
     """The test database, the golden file above, and results and vectors under tmp_path. No
-    .env file, and the fake embedder's model, so the stored vectors above are searched."""
+    .env file, and the fake embedder's model, so the stored vectors above are searched. Dense
+    mode, which the expected hits below assume, whatever the default mode is."""
     golden_path = tmp_path / "golden.yaml"
     golden_path.write_text(GOLDEN, encoding="utf-8")
     return Settings(
@@ -314,6 +321,7 @@ def run_settings(settings: Settings, tmp_path: Path) -> Settings:
         database_url=settings.database_url,
         corpus_manifest_path=MANIFEST,
         embedding_model=FakeEmbedder.model,
+        retrieval_mode="dense",
         eval_golden_path=golden_path,
         eval_results_dir=tmp_path / "results",
         eval_vectors_dir=tmp_path / "vectors",
@@ -402,6 +410,11 @@ def test_a_run_writes_the_pinned_results_format(
         "settings": {
             "embedding_model": "fake-model",
             "retrieval_top_k": 10,
+            # S07-T3: the retrieval settings, all 4 written in either mode (the defaults).
+            "retrieval_mode": "dense",
+            "retrieval_candidates": 20,
+            "rrf_k": 60,
+            "hnsw_ef_search": 100,
             "generation_model": "claude-opus-5-5",
             "generation_effort": "medium",
             "generation_max_tokens": 16000,
@@ -424,6 +437,9 @@ def test_a_run_writes_the_pinned_results_format(
             "canonical_id": "web:/test/a/",
             "heading_path": [],
             "distance": pytest.approx(0.0, abs=1e-6),
+            "rrf_score": None,
+            "dense_rank": 1,
+            "lexical_rank": None,
         },
         {
             "rank": 2,
@@ -431,6 +447,9 @@ def test_a_run_writes_the_pinned_results_format(
             "canonical_id": "web:/test/a/",
             "heading_path": ["Install"],
             "distance": pytest.approx(0.955806, abs=1e-6),
+            "rrf_score": None,
+            "dense_rank": 2,
+            "lexical_rank": None,
         },
         {
             "rank": 3,
@@ -438,6 +457,9 @@ def test_a_run_writes_the_pinned_results_format(
             "canonical_id": "web:/test/b/",
             "heading_path": ["Usage"],
             "distance": pytest.approx(0.96875, abs=1e-6),
+            "rrf_score": None,
+            "dense_rank": 3,
+            "lexical_rank": None,
         },
     ]
     # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
@@ -696,3 +718,87 @@ def test_a_question_with_no_hits_scores_0_without_a_model_call(
     assert answer["insufficient_evidence_reason"] == "no evidence retrieved"
     assert generator.calls == []
     assert [row["error"] for row in rows] == [None, None, None]
+
+
+# `make eval-retrieval` (S07-T3, decision 5): retrieval scores alone, from the stored vectors, on
+# the answerable questions (q01, q02). The rows are the run tests' above. Called on `conn`, like
+# `run`: the command's own connection couldn't see this test's uncommitted rows. Lexical search,
+# by Postgres's rules (checked with psql): Q1 "How do I install A?" keeps only 'instal', held by
+# "a install"; Q2 "What is A?" is all stop words, so it matches nothing.
+
+
+def _store_vectors(settings: Settings, *questions: str) -> Path:
+    """Write the vector file with the fake embedder's vector for each question; return its path."""
+    path = settings.eval_vectors_dir / f"{FakeEmbedder.model}.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({_key(q): [0.5] * DIMENSIONS for q in questions}), encoding="utf-8")
+    return path
+
+
+@pytest.mark.usefixtures("chunk_ids")
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        # As in the run test: q01 MRR 1/2 and nDCG 0.693426; q02 MRR 1 and nDCG 1.
+        # Means: MRR 0.75, nDCG 0.846713.
+        (
+            "dense",
+            "Mode: dense (width 100). Answerable questions: 2.\n"
+            "Recall@10 1.000  Hit@10 1.000  MRR 0.750  nDCG@10 0.847",
+        ),
+        # q01 fused: "a install" dense 2 + lexical 1 = 1/62 + 1/61 = 0.032522, then "a intro"
+        # 1/61 = 0.016393, then "b usage" 1/63 = 0.015873. Labels at ranks 1 and 3: MRR 1, nDCG
+        # (1 + 1/log2(4)) / (1 + 1/log2(3)) = 1.5 / 1.630930 = 0.919721. q02: no lexical hit, so
+        # the dense order: MRR 1, nDCG 1. Means: MRR 1, nDCG 0.959861.
+        (
+            "hybrid",
+            "Mode: hybrid (candidates 20, k 60, width 100). Answerable questions: 2.\n"
+            "Recall@10 1.000  Hit@10 1.000  MRR 1.000  nDCG@10 0.960",
+        ),
+    ],
+)
+def test_retrieval_only_scores_each_mode_and_writes_nothing(
+    conn: Conn, run_settings: Settings, mode: str, expected: str
+) -> None:
+    vectors_path = _store_vectors(run_settings, Q1, Q2)  # q03 is unanswerable: no vector needed
+    vectors_before = vectors_path.read_bytes()
+    settings = run_settings.model_copy(update={"retrieval_mode": mode})
+
+    scores = score_retrieval_only(conn, settings)
+
+    assert retrieval_report(settings, scores) == expected
+    assert not settings.eval_results_dir.exists()
+    assert vectors_path.read_bytes() == vectors_before
+
+
+@pytest.mark.usefixtures("chunk_ids")
+def test_retrieval_only_with_a_missing_vector_is_an_error(
+    conn: Conn, run_settings: Settings
+) -> None:
+    vectors_path = _store_vectors(run_settings, Q1)  # none for q02
+
+    with pytest.raises(EvalError) as error:
+        score_retrieval_only(conn, run_settings)
+
+    assert str(error.value) == (
+        f"no stored vector for q02 in {vectors_path}: eval-retrieval never calls Voyage "
+        "(`make eval-smoke` or `make eval` embeds missing questions)"
+    )
+
+
+@pytest.mark.usefixtures("chunk_ids")
+def test_retrieval_only_stops_on_a_label_matching_nothing(
+    conn: Conn, run_settings: Settings
+) -> None:
+    run_settings.eval_golden_path.write_text(
+        GOLDEN.replace("'web:/test/b/'", "'web:/test/missing/'"), encoding="utf-8"
+    )
+    _store_vectors(run_settings, Q1, Q2)
+
+    with pytest.raises(EvalError) as error:
+        score_retrieval_only(conn, run_settings)
+
+    assert str(error.value) == (
+        "1 label matches no stored text (see `make eval-check`): "
+        "q01  web:/test/missing/  (whole document)  0 texts"
+    )

@@ -39,7 +39,8 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **False refusal** | The system answers "insufficient evidence" to a question that has an answer in the corpus. The cost of being too cautious; AC3 measures the opposite case. |
 | **Golden set** | A fixed, human-verified set of questions with expected answers and sources, used to evaluate changes. |
 | **Hit@K (hit rate)** | 1 if any relevant item is in the top K results, else 0, averaged over questions. Unlike Recall@K, it asks "was one good source found?", not "how many?". |
-| **HNSW** | Hierarchical Navigable Small World: a graph-based approximate nearest-neighbour index (supported by pgvector). |
+| **HNSW** | Hierarchical Navigable Small World: a graph-based approximate nearest-neighbour index (supported by pgvector). Its search width (`hnsw.ef_search`) is how many candidates a search keeps: wider is slower but closer to an exact scan, and a scan returns at most that many rows. |
+| **Hybrid retrieval** | Running dense and lexical retrieval for the same question and merging their ranked lists (here with RRF), so a text found by meaning or by exact words can rank high. |
 | **Lexical / full-text retrieval** | Matching on words or terms. In Postgres this uses `tsvector`/`tsquery` ranking. This is *not* BM25. |
 | **LLM tracing (observability)** | Recording each step of one request (retrieve, generate, validate) with its inputs, outputs, tokens and latency, so a bad answer can be debugged later. Here: Langfuse, one trace per ask. |
 | **MRR** | Mean Reciprocal Rank: the average of 1 / (rank of the first relevant result). |

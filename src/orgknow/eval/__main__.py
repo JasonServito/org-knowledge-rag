@@ -9,7 +9,12 @@
 - `run [--smoke] [--name NAME]`: run the golden set (with `--smoke`, its `smoke: true`
   questions) through retrieval and one answer call each, write a results folder under
   EVAL_RESULTS_DIR (`runner.py`), then rebuild the ablation table. Paid: one Anthropic call per
-  question with hits, and one Voyage request when a question has no stored vector.
+  question with hits, and one Voyage request when a question has no stored vector. NAME defaults
+  to RETRIEVAL_MODE (`dense` or `hybrid`); with `--smoke`, `<mode>-smoke`, so smoke runs get
+  their own ablation-table row.
+- `retrieval`: retrieve for every answerable golden question with its stored vector, in
+  RETRIEVAL_MODE, and print the retrieval metrics (S07-T3). Free: no Voyage or Anthropic call; a
+  missing vector is an error. Writes nothing.
 - `table`: rebuild the ablation table from every results folder (`table.py`).
 
 Errors go to stderr, one line each. Exit codes: 0 done, 1 an error, 2 bad usage (argparse).
@@ -98,6 +103,22 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
     return table(settings)
 
 
+def retrieval(settings: Settings) -> int:
+    """`make eval-retrieval`: print the mode and the retrieval metrics; 1 on an error."""
+    try:
+        with psycopg.connect(settings.database_url) as conn:
+            scores = runner.score_retrieval_only(conn, settings)
+    except GoldenSetError as error:
+        for line in error.errors:
+            print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
+        return 1
+    except runner.EvalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    print(runner.retrieval_report(settings, scores))
+    return 0
+
+
 def table(settings: Settings) -> int:
     """`make eval-table`: rebuild the ablation table from every results folder."""
     print(f"Ablation table: {write_table(settings.eval_results_dir)}")
@@ -121,7 +142,14 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         "--smoke", action="store_true", help="run only the questions marked smoke: true"
     )
     run_parser.add_argument(
-        "--name", default="dense", help="the pipeline's name in the results (default: dense)"
+        "--name",
+        help=(
+            "the pipeline's name in the results (default: RETRIEVAL_MODE, dense or hybrid; "
+            "with --smoke, RETRIEVAL_MODE-smoke)"
+        ),
+    )
+    commands.add_parser(
+        "retrieval", help="score retrieval alone from the stored question vectors (free)"
     )
     commands.add_parser("table", help="rebuild the ablation table from every results folder")
     args = parser.parse_args(argv)
@@ -133,7 +161,14 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     if args.command == "sections":
         return sections(settings, args.canonical_id)
     if args.command == "run":
-        return run(settings, args.smoke, args.name)
+        # An explicit --name is used as given; otherwise the mode names the row, and a smoke run
+        # gets its own row (S07-T4).
+        name = args.name
+        if name is None:
+            name = f"{settings.retrieval_mode}-smoke" if args.smoke else settings.retrieval_mode
+        return run(settings, args.smoke, name)
+    if args.command == "retrieval":
+        return retrieval(settings)
     return table(settings)
 
 

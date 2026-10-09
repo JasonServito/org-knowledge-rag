@@ -1,6 +1,6 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed \
-	eval-check eval-sections eval-smoke eval eval-table
+	eval-check eval-sections eval-retrieval eval-smoke eval eval-table
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -85,12 +85,21 @@ eval-check:
 eval-sections:
 	uv run python -m orgknow.eval sections "$(DOC)"
 
-# Run the golden set's smoke questions (`smoke: true`) end to end: dense retrieval with each
-# question's stored vector (EVAL_VECTORS_DIR), one answer call, then the metrics and AC1-AC3. Writes
-# a results folder under EVAL_RESULTS_DIR (default eval/results) and rebuilds the ablation table
-# there. PAID: one Anthropic call per question with hits (needs ANTHROPIC_API_KEY), and one Voyage
-# request when a question has no stored vector (needs VOYAGE_API_KEY then; a re-run makes 0). A
-# label matching no stored text stops it before any paid call; a failed ask is a row, not a crash.
+# Score retrieval alone (S07-R1 decision 5): retrieve in RETRIEVAL_MODE for every answerable golden
+# question with its stored vector (EVAL_VECTORS_DIR), then print the mode and Recall@10, Hit@10,
+# MRR and nDCG@10. Free: no Voyage or Anthropic call (a missing vector is an error), and it writes
+# nothing. The check before a paid `make eval`. Needs `make up`.
+# Example: RETRIEVAL_MODE=dense make eval-retrieval (the default mode is hybrid)
+eval-retrieval:
+	uv run python -m orgknow.eval retrieval
+
+# Run the golden set's smoke questions (`smoke: true`) end to end: retrieval in RETRIEVAL_MODE with
+# each question's stored vector (EVAL_VECTORS_DIR), one answer call, then the metrics and AC1-AC3.
+# Writes a results folder (named `<mode>-smoke`, its own table row) under EVAL_RESULTS_DIR (default
+# eval/results) and rebuilds the ablation table there. PAID: one Anthropic call per question with
+# hits (needs ANTHROPIC_API_KEY), and one Voyage request when a question has no stored vector
+# (needs VOYAGE_API_KEY then; a re-run makes 0). A label matching no stored text stops it before
+# any paid call; a failed ask is a row, not a crash.
 eval-smoke:
 	uv run python -m orgknow.eval run --smoke
 

@@ -57,9 +57,9 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 
 | Metric | Dense baseline | Phase 1 threshold |
 |---|---|---|
-| Recall@10 | 0.384 | ≥ 0.46 (baseline + 0.08) |
-| MRR | 0.614 | ≥ 0.69 (baseline + 0.08) |
-| nDCG@10 | 0.369 | ≥ 0.45 (baseline + 0.08) |
+| Recall@10 | 0.384 | ≥ 0.46 (≈ baseline + 0.08) |
+| MRR | 0.614 | ≥ 0.69 (≈ baseline + 0.08) |
+| nDCG@10 | 0.369 | ≥ 0.45 (≈ baseline + 0.08) |
 | Hit@10 | 0.944 (34 of 36) | ≥ 0.944 (a floor: + 0.08 would pass 1.0) |
 | Citation correctness: AC1, AC2 | 100%, 100% | 100% (the hard gates above) |
 | AC3 | 7 of 7 | 100% (the hard gate above) |

@@ -74,3 +74,25 @@ def test_embeddings_have_an_hnsw_cosine_index(settings: Settings) -> None:
         "CREATE INDEX embeddings_embedding_hnsw_idx ON public.embeddings "
         "USING hnsw (embedding vector_cosine_ops)",
     )
+
+
+def test_chunks_have_a_generated_search_vector_with_a_gin_index(settings: Settings) -> None:
+    # Migration 0005 (S07-R1 decision 2): the database computes `search_vector` from `text`, so
+    # ingestion writes nothing new; a GIN index serves the full-text match `@@`. Postgres prints
+    # the expression with its `regconfig` cast.
+    with psycopg.connect(settings.database_url) as conn:
+        column = conn.execute(
+            """
+            SELECT data_type, is_generated, generation_expression
+            FROM information_schema.columns
+            WHERE table_name = 'chunks' AND column_name = 'search_vector'
+            """
+        ).fetchone()
+        index = conn.execute(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'chunks_search_vector_idx'"
+        ).fetchone()
+
+    assert column == ("tsvector", "ALWAYS", "to_tsvector('english'::regconfig, text)")
+    assert index == (
+        "CREATE INDEX chunks_search_vector_idx ON public.chunks USING gin (search_vector)",
+    )

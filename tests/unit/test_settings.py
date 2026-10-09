@@ -148,3 +148,61 @@ def test_bad_generation_settings_are_refused(field: str, value: object) -> None:
     # 21,333 is the SDK's limit for a non-streaming call (anthropic 1.11, checked 2026-10-06).
     with pytest.raises(ValidationError, match=field):
         Settings(_env_file=None, database_url="x", **{field: value})
+
+
+def test_hybrid_retrieval_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("RETRIEVAL_MODE", "RETRIEVAL_CANDIDATES", "RRF_K", "HNSW_EF_SEARCH"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # S07-R1 decision 3; the mode is hybrid since T4's eval passed the improvement rule
+    # (decision 6, docs/evaluation.md).
+    assert settings.retrieval_mode == "hybrid"
+    assert settings.retrieval_candidates == 20
+    assert settings.rrf_k == 60
+    assert settings.hnsw_ef_search == 100
+
+
+def test_a_search_width_below_the_candidates_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An HNSW index scan returns at most hnsw.ef_search rows: 10 can't give 20 candidates.
+    monkeypatch.setenv("HNSW_EF_SEARCH", "10")
+    monkeypatch.delenv("RETRIEVAL_CANDIDATES", raising=False)
+    monkeypatch.delenv("RETRIEVAL_TOP_K", raising=False)
+
+    with pytest.raises(ValidationError, match="hnsw_ef_search"):
+        Settings(_env_file=None, database_url="x")
+
+
+def test_a_search_width_below_the_top_k_is_refused() -> None:
+    with pytest.raises(ValidationError, match="hnsw_ef_search"):
+        Settings(
+            _env_file=None,
+            database_url="x",
+            retrieval_top_k=30,
+            retrieval_candidates=20,
+            hnsw_ef_search=25,
+        )
+
+
+def test_a_search_width_equal_to_the_larger_search_is_accepted() -> None:
+    settings = Settings(
+        _env_file=None, database_url="x", retrieval_candidates=20, hnsw_ef_search=20
+    )
+
+    assert settings.hnsw_ef_search == 20
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("retrieval_mode", "sparse"),
+        ("retrieval_candidates", 0),
+        ("retrieval_candidates", 1001),
+        ("rrf_k", 0),
+        ("hnsw_ef_search", 1001),
+    ],
+)
+def test_bad_hybrid_retrieval_settings_are_refused(field: str, value: object) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: value})

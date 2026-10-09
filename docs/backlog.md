@@ -237,12 +237,25 @@ Tasks:
 ### 🟨 S07 Hybrid retrieval *(Stage 4)*
 
 - **Outcome:** lexical + dense retrieval fused with RRF, and an ablation row showing the delta.
-- **Candidate tasks:**
-  - `search_vector` column + GIN index (migration)
-  - lexical query
-  - RRF as a pure function with unit tests
-  - config for k and candidate counts
-  - eval run
+- **Slice doc:** `docs/slices/S07-hybrid-retrieval.md`
+- **Metric to move:** MRR (≥ +0.03 over the dense baseline, per the product spec's improvement rule).
+
+Tasks:
+
+- [x] **S07-T1 `[core]` Lexical search.**
+  - A migration adds the `search_vector` column + GIN index; a query returns the top N distinct texts by full-text rank.
+  - Done when: integration tests on fixtures: an exact term ranks its text first; a text in several chunks appears once; no match → empty.
+- [x] **S07-T2 `[core]` RRF.**
+  - A pure function: ranked id lists in, one fused ranking with scores out.
+  - Done when: unit tests match hand-calculated scores, including an id in one list only, ties and empty lists.
+- [x] **S07-T3 `[core]` Hybrid retrieval and config.**
+  - Dense N + lexical N → RRF → top K; mode, N, k and the HNSW search width in settings; `ask` and the eval use and record the mode; `make eval-retrieval` scores retrieval for free.
+  - Done when: hybrid on fixtures returns the hand-predicted order; dense mode reproduces the baseline's retrieval scores.
+  - Deps: T1, T2.
+- [x] **S07-T4 `[commodity]` Hybrid eval run.**
+  - Two eval fixes (dirty check, smoke rows), then 3 paid runs of `make eval` in hybrid mode; the row and the write-up.
+  - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail against the improvement rule with numbers.
+  - Deps: T3.
 
 ### ⬜ S08 Reranking *(Stage 5)*
 
@@ -252,6 +265,7 @@ Tasks:
   - reranker module
   - latency benchmark
   - instance-sizing note for S15
+  - p95 latency and cost per question in `summary.json` and the ablation table (moved from Proposed additions in the S07 sitting; S08 must record p95)
 
 ### ⬜ S09 Temporal and authority-aware retrieval *(Stage 6)*
 
@@ -346,6 +360,4 @@ ADRs are decided when their slice starts, not earlier.
 - **Chunker: a test for the HTML-table half of the "never cut" guard.** Reason: removing it fails no test today. (S05-R3, PR #30 parked 4; kept in the S06-R1 sitting.)
 - **Report: remove `counts_by_release`'s unprinted per-type values and 1 duplicate fingerprint test case.** Reason: dead code. (S05-R3, PR #30 parked 9; kept in the S06-R1 sitting.)
 - **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)
-- **Eval: ignore `eval/results/` in the run's `git_dirty` check.** Reason: every run rewrites the tracked `ablation.md`, so the next run is marked dirty on the same code; S06-T6 run 3 was. `git status` with `-- . ':!eval/results'` would fix it. (S06-T6, 2026-10-08.)
-- **Eval: keep smoke runs out of the full run's table row.** Reason: the table groups by (name, golden file hash), so `make eval-smoke` into `eval/results/` with the default name `dense` merges 13-question runs into the 43-question row. Options: default the name to `<name>-smoke`, or add `smoke` to the row key. S06-T6 ran its smoke run in a scratch folder. (S06-T6, 2026-10-08.)
-- **Eval: p95 latency and cost per question in `summary.json` and the ablation table.** Reason: both have Phase 1 thresholds (product spec), and S08 must record p95; S06-T6 computed them from `questions.jsonl` by hand. Changes the pinned results format. (S06-T6, 2026-10-08.)
+- **BM25 ranking for the lexical search (Postgres extension, e.g. pg_search or VectorChord-bm25).** Reason: Postgres `ts_rank`/`ts_rank_cd` have no IDF, so a common word ("kubernetes") weighs as much as a rare one ("PodSecurity"). S07 uses AND matching, which matches 0 texts for 23 of 36 v0 questions; OR matching added noise (Recall@20 0.603 → 0.540). Needs an ADR (new dependency, custom DB image). Try it if S08/S09 show lexical recall is the bottleneck. (S07 sitting, decision 1, 2026-10-08.)
