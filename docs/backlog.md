@@ -245,7 +245,7 @@ Tasks:
 - [x] **S07-T1 `[core]` Lexical search.**
   - A migration adds the `search_vector` column + GIN index; a query returns the top N distinct texts by full-text rank.
   - Done when: integration tests on fixtures: an exact term ranks its text first; a text in several chunks appears once; no match → empty.
-- [ ] **S07-T2 `[core]` RRF.**
+- [x] **S07-T2 `[core]` RRF.**
   - A pure function: ranked id lists in, one fused ranking with scores out.
   - Done when: unit tests match hand-calculated scores, including an id in one list only, ties and empty lists.
 - [ ] **S07-T3 `[core]` Hybrid retrieval and config.**
