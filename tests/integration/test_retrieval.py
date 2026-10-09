@@ -221,9 +221,9 @@ def test_retrieve_embeds_the_question_as_a_query_and_keeps_the_top_k(
     _embed(conn, "nearest", [0.5] * DIMENSIONS, model=fake_embedder.model)
     _embed(conn, "farther", E1, model=fake_embedder.model)
 
-    hits = retrieve(
-        "What is a pod?", fake_embedder, conn, settings.model_copy(update={"retrieval_top_k": 1})
-    )
+    # Hybrid mode, whatever the default is: rerank mode needs a reranker (tested below).
+    hybrid = settings.model_copy(update={"retrieval_top_k": 1, "retrieval_mode": "hybrid"})
+    hits = retrieve("What is a pod?", fake_embedder, conn, hybrid)
 
     assert fake_embedder.calls == [("query", ["What is a pod?"])]
     assert [hit.text for hit in hits] == ["nearest"]

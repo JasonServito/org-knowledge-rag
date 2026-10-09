@@ -90,7 +90,7 @@ eval-sections:
 # MRR and nDCG@10, then the retrieve time's p50 and p95 and, in rerank mode, the reranker's load
 # time (S08-T4). Free: no Voyage or Anthropic call (a missing vector is an error), and it writes
 # nothing. The check before a paid `make eval`. Needs `make up`.
-# Example: RETRIEVAL_MODE=dense make eval-retrieval (the default mode is hybrid)
+# Example: RETRIEVAL_MODE=hybrid make eval-retrieval (the default mode is rerank)
 eval-retrieval:
 	uv run python -m orgknow.eval retrieval
 

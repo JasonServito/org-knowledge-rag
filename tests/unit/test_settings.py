@@ -161,9 +161,9 @@ def test_hybrid_retrieval_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> 
 
     settings = Settings(_env_file=None, database_url="x")
 
-    # S07-R1 decision 3; the mode is hybrid since T4's eval passed the improvement rule
-    # (decision 6, docs/evaluation.md).
-    assert settings.retrieval_mode == "hybrid"
+    # S07-R1 decision 3; the mode is rerank since S08-T5's eval passed the improvement rule and
+    # the p95 ceiling (S08-R1 decision 4, docs/evaluation.md).
+    assert settings.retrieval_mode == "rerank"
     assert settings.retrieval_candidates == 20
     assert settings.rrf_k == 60
     assert settings.hnsw_ef_search == 100

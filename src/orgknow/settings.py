@@ -57,9 +57,9 @@ class Settings(BaseSettings):
     retrieval_top_k: int = Field(default=10, ge=1, le=40)
     # Which retrieval `ask` and the eval use (S07-R1, S08-R1): `dense` (the nearest vectors),
     # `hybrid` (dense and lexical candidates fused with RRF) or `rerank` (hybrid's whole fused
-    # pool, reordered by a cross-encoder). `hybrid` since S07-T4's eval passed the improvement
-    # rule (decision 6, docs/evaluation.md).
-    retrieval_mode: Literal["dense", "hybrid", "rerank"] = "hybrid"
+    # pool, reordered by a cross-encoder). `rerank` since S08-T5's eval passed the improvement
+    # rule and the p95 latency ceiling (S08-R1 decision 4, docs/evaluation.md).
+    retrieval_mode: Literal["dense", "hybrid", "rerank"] = "rerank"
     # Hybrid and rerank: how many texts each search, dense and lexical, returns before fusion
     # (decision 3).
     retrieval_candidates: int = Field(default=20, ge=1, le=1000)

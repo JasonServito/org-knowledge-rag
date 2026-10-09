@@ -279,7 +279,7 @@ Tasks:
   - `make eval-retrieval` prints retrieval p50/p95 and the model's load time; the sizing note covers 11 threads and 2 CPUs, plus peak RAM.
   - Done when: the line prints and the note is in `docs/evaluation.md`.
   - Deps: T2.
-- [ ] **S08-T5 `[commodity]` Rerank eval run.**
+- [x] **S08-T5 `[commodity]` Rerank eval run.**
   - 3 paid runs of `make eval` in rerank mode; the row and the write-up; the default mode set by decision 4.
   - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail per condition with numbers.
   - Deps: T2, T3.

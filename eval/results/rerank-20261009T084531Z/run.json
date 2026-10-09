@@ -1,0 +1,28 @@
+{
+  "name": "rerank",
+  "started_at": "2026-10-09T08:45:31Z",
+  "finished_at": "2026-10-09T08:53:34Z",
+  "git_sha": "4b674fb7a3fc023c175a7d045568b240a748970f",
+  "git_dirty": false,
+  "golden_path": "eval/golden_set/v0.yaml",
+  "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
+  "smoke": false,
+  "questions": 43,
+  "settings": {
+    "embedding_model": "voyage-4-large",
+    "retrieval_top_k": 10,
+    "retrieval_mode": "rerank",
+    "retrieval_candidates": 20,
+    "rrf_k": 60,
+    "hnsw_ef_search": 100,
+    "rerank_model": "BAAI/bge-reranker-base",
+    "rerank_revision": "2cfc18c9415c912f9d8155881c133215df768a70",
+    "rerank_max_length": 512,
+    "rerank_batch_size": 8,
+    "torch_threads": 11,
+    "generation_model": "claude-opus-5-5",
+    "generation_effort": "medium",
+    "generation_max_tokens": 16000
+  },
+  "rerank_load_s": 7.239
+}
