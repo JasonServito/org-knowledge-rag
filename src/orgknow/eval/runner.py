@@ -477,16 +477,20 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(microsecond=0)
 
 
-def _git_state() -> tuple[str, bool]:
+def _git_state(cwd: Path | None = None) -> tuple[str, bool]:
     """The checked-out commit, and whether tracked files differ from it. Untracked files (such
-    as an earlier run's results folder) don't count, as in `git describe --dirty`."""
+    as an earlier run's results folder) don't count, as in `git describe --dirty`. Nor does
+    `eval/results/` (S07-T4): every run rewrites the tracked `ablation.md`, which made the next run
+    say dirty on clean code. `cwd` is the repo to check (a test's); default, the current directory.
+    """
 
     def git(*args: str) -> str:
         return subprocess.run(
-            ["git", *args], capture_output=True, text=True, check=True
+            ["git", *args], capture_output=True, text=True, check=True, cwd=cwd
         ).stdout.strip()
 
-    return git("rev-parse", "HEAD"), bool(git("status", "--porcelain", "--untracked-files=no"))
+    changed = git("status", "--porcelain", "--untracked-files=no", "--", ".", ":!eval/results")
+    return git("rev-parse", "HEAD"), bool(changed)
 
 
 def _one_line(error: Exception) -> str:

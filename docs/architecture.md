@@ -78,7 +78,7 @@ The eval path, `make eval` / `make eval-smoke` (`python -m orgknow.eval run`, `e
      │  an ask error becomes the row's `error`; no Langfuse trace
      ▼
   EVAL_RESULTS_DIR/<name>-<UTC time>/: run.json, questions.jsonl, summary.json
-     │  (name: --name, or RETRIEVAL_MODE by default)
+     │  (name: --name, or RETRIEVAL_MODE by default; RETRIEVAL_MODE-smoke with --smoke)
      ▼
   write_table (eval/table.py): ablation.md, one row per (name, golden_sha256)
 ```
@@ -129,7 +129,7 @@ The eval path, `make eval` / `make eval-smoke` (`python -m orgknow.eval run`, `e
 | `src/orgknow/eval/checks.py` | `check_answer`: AC1 (an `answered` answer has citations, each with a URL, windows and source type), AC2 (every cited chunk was retrieved), AC3 (an unanswerable question got `insufficient_evidence` with a reason) and the false-refusal flag; each true, false or n/a. Pure. |
 | `src/orgknow/eval/runner.py` | `run`: the label check, then one Voyage request for the questions with no stored vector (saved to the vector file), then per question `retrieve` (through `StoredVectors`, an `Embedder` over the file), `answer`, the metrics and checks; writes `run.json`, `questions.jsonl` and `summary.json`. An ask error (`cli.ASK_ERRORS`) is a row with `answer: null` and its error. Each hit row records its distance, RRF score and ranks, and `run.json` records the 4 retrieval settings (null in folders written before S07). `check_golden` is the label check `run` shares with `score_retrieval_only` (`make eval-retrieval`: retrieval from stored vectors only, scored; `retrieval_report` prints it). |
 | `src/orgknow/eval/table.py` | `write_table`: rebuilds `ablation.md` from every folder with a `summary.json`: one row per pipeline name and golden file hash, each value the mean over runs with its range. |
-| `src/orgknow/eval/__main__.py` | `python -m orgknow.eval check \| sections \| run \| retrieval \| table` (the `eval-*` Make targets). `run` needs `ANTHROPIC_API_KEY`, and `VOYAGE_API_KEY` only when a vector is missing; its `--name` defaults to `RETRIEVAL_MODE`. `retrieval` needs no key. Errors print one stderr line and exit 1. |
+| `src/orgknow/eval/__main__.py` | `python -m orgknow.eval check \| sections \| run \| retrieval \| table` (the `eval-*` Make targets). `run` needs `ANTHROPIC_API_KEY`, and `VOYAGE_API_KEY` only when a vector is missing; its `--name` defaults to `RETRIEVAL_MODE` (`<mode>-smoke` with `--smoke`, so smoke runs get their own table row). `retrieval` needs no key. Errors print one stderr line and exit 1. |
 
 Every data-access function takes a `psycopg.Connection` and leaves the transaction to the caller (ADR-005). `src/orgknow/db/` is the only place with SQL, and every query is a fixed string with parameters.
 

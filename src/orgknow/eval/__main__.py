@@ -10,7 +10,8 @@
   questions) through retrieval and one answer call each, write a results folder under
   EVAL_RESULTS_DIR (`runner.py`), then rebuild the ablation table. Paid: one Anthropic call per
   question with hits, and one Voyage request when a question has no stored vector. NAME defaults
-  to RETRIEVAL_MODE (`dense` or `hybrid`).
+  to RETRIEVAL_MODE (`dense` or `hybrid`); with `--smoke`, `<mode>-smoke`, so smoke runs get
+  their own ablation-table row.
 - `retrieval`: retrieve for every answerable golden question with its stored vector, in
   RETRIEVAL_MODE, and print the retrieval metrics (S07-T3). Free: no Voyage or Anthropic call; a
   missing vector is an error. Writes nothing.
@@ -142,7 +143,10 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     )
     run_parser.add_argument(
         "--name",
-        help="the pipeline's name in the results (default: RETRIEVAL_MODE, dense or hybrid)",
+        help=(
+            "the pipeline's name in the results (default: RETRIEVAL_MODE, dense or hybrid; "
+            "with --smoke, RETRIEVAL_MODE-smoke)"
+        ),
     )
     commands.add_parser(
         "retrieval", help="score retrieval alone from the stored question vectors (free)"
@@ -157,8 +161,11 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     if args.command == "sections":
         return sections(settings, args.canonical_id)
     if args.command == "run":
-        # An explicit --name is used as given; otherwise the mode names the row.
-        name = settings.retrieval_mode if args.name is None else args.name
+        # An explicit --name is used as given; otherwise the mode names the row, and a smoke run
+        # gets its own row (S07-T4).
+        name = args.name
+        if name is None:
+            name = f"{settings.retrieval_mode}-smoke" if args.smoke else settings.retrieval_mode
         return run(settings, args.smoke, name)
     if args.command == "retrieval":
         return retrieval(settings)

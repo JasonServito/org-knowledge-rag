@@ -95,10 +95,11 @@ eval-retrieval:
 
 # Run the golden set's smoke questions (`smoke: true`) end to end: retrieval in RETRIEVAL_MODE with
 # each question's stored vector (EVAL_VECTORS_DIR), one answer call, then the metrics and AC1-AC3.
-# Writes a results folder (named after the mode) under EVAL_RESULTS_DIR (default eval/results) and
-# rebuilds the ablation table there. PAID: one Anthropic call per question with hits (needs ANTHROPIC_API_KEY), and one Voyage
-# request when a question has no stored vector (needs VOYAGE_API_KEY then; a re-run makes 0). A
-# label matching no stored text stops it before any paid call; a failed ask is a row, not a crash.
+# Writes a results folder (named `<mode>-smoke`, its own table row) under EVAL_RESULTS_DIR (default
+# eval/results) and rebuilds the ablation table there. PAID: one Anthropic call per question with
+# hits (needs ANTHROPIC_API_KEY), and one Voyage request when a question has no stored vector
+# (needs VOYAGE_API_KEY then; a re-run makes 0). A label matching no stored text stops it before
+# any paid call; a failed ask is a row, not a crash.
 eval-smoke:
 	uv run python -m orgknow.eval run --smoke
 
