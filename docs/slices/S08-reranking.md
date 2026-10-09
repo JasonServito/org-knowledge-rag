@@ -95,7 +95,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S08-R1: reranking
 
-- **Status:** planned
+- **Status:** PR open
 - **Branch:** `s08-r1-reranking`
 - **Tasks, in this order:** S08-T2 (reranker and `rerank` mode) → S08-T3 (p95 and cost in the summary) → S08-T4 (timing line and sizing note) → S08-T5 (rerank eval run). T1 (ADR-008) was done in the sitting.
 - **Closes the slice:** no; `/slice-retro` runs after the developer has read T5's result.
