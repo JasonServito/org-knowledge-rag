@@ -261,12 +261,28 @@ Tasks:
 
 - **Outcome:** a local BGE cross-encoder rerank stage, with an ablation row and the CPU p95 latency recorded.
 - **Phase 1 gaps carried from S07** (developer, S07 retro): hybrid is at MRR 0.675 vs ≥ 0.69, and Recall@10 0.382 vs ≥ 0.46.
-- **Candidate tasks:**
-  - ADR-008: reranker model and candidate count
-  - reranker module
-  - latency benchmark
-  - instance-sizing note for S15
-  - p95 latency and cost per question in `summary.json` and the ablation table (moved from Proposed additions in the S07 sitting; S08 must record p95)
+- **Slice doc:** `docs/slices/S08-reranking.md`
+- **Metric to move:** Recall@10 (≥ +0.03 over hybrid, per the product spec's improvement rule; S08-R1 decision 4), with mean p95 ≤ 23 s.
+
+Tasks:
+
+- [x] **S08-T1 `[core]` ADR-008: reranker model, runtime and candidate count.**
+  - Decided in the S08-R1 sitting (2026-10-09) from a measured prototype; committed as Accepted in the run PR.
+- [ ] **S08-T2 `[core]` Reranker module and `rerank` mode.**
+  - A `Reranker` interface, the local cross-encoder and a fake; `rerank` mode reranks hybrid's whole pool and keeps the top K.
+  - Done when: unit tests give the hand-predicted order; `make eval-retrieval` in rerank mode prints the sitting's numbers; dense and hybrid print theirs.
+  - Deps: T1.
+- [ ] **S08-T3 `[commodity]` p95 latency and cost in the summary and table.**
+  - `summary.json` gains p95 latency, retrieval-only p95 and cost per question; the 6 existing folders are refilled; the table shows them.
+  - Done when: hand-calculated unit tests pass; the table shows dense 10.7 s / $0.029 and hybrid 12.9 s / $0.030.
+- [ ] **S08-T4 `[commodity]` Rerank latency benchmark and S15 sizing note.**
+  - `make eval-retrieval` prints retrieval p50/p95 and the model's load time; the sizing note covers 11 threads and 2 CPUs, plus peak RAM.
+  - Done when: the line prints and the note is in `docs/evaluation.md`.
+  - Deps: T2.
+- [ ] **S08-T5 `[commodity]` Rerank eval run.**
+  - 3 paid runs of `make eval` in rerank mode; the row and the write-up; the default mode set by decision 4.
+  - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail per condition with numbers.
+  - Deps: T2, T3.
 
 ### ⬜ S09 Temporal and authority-aware retrieval *(Stage 6)*
 
