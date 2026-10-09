@@ -159,8 +159,8 @@ In an interactive task, the plan step works as a mini-sitting: the same decision
 - **Decisions stay in the sitting.** Outside a sitting, park the question for the next one unless truly blocked.
 - **Format, one decision at a time:**
   1. "Decision N of M:" the question in plain words
-  2. why it matters (1 line)
-  3. an options table: what each means, its upside, its downside
+  2. the problem and why it matters (1 line), then the one key fact that decides it
+  3. an options table with the columns "In plain words / Good / Bad". Keep SQL and code names out of the table, and use an analogy where it helps (e.g. a book's index)
   4. a recommendation, and what would change it
   5. wait for the answer before the next decision
 - **ADR-level decisions:** a `devils-advocate` subagent (fresh context) argues against the recommendation before the developer decides.
@@ -252,6 +252,7 @@ In a run, these park instead of stopping.
 - adding any dependency, service, or architectural pattern (this needs an ADR)
 - changing the DB schema beyond what the task specifies
 - creating or editing anything in `eval/golden_set/`. Labels are human-owned. You may propose candidates in a separate file.
+  - **Bulk human review:** when a `[human]` task means reviewing many items, offer up front to verify every item yourself while the developer spot-checks a stratified sample (about 1 per class plus 1 random). Build the spot-check sheet from excerpts a script copies from the source, so the developer runs no SQL. Record the sign-off rule in the slice doc.
 - changing retrieval scoring, weights, or thresholds not specified by the task
 - deviating from an ADR or the product spec, or editing files unrelated to the task
 - spending money beyond the task's needs, e.g. embedding the full corpus or running the full eval. Default to fixtures and caches.
