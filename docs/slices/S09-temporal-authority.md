@@ -402,6 +402,8 @@ At most 3 asks; the Langfuse trace links go in the brief.
 - **Branch:** `s09-r2-authority`
 - **Tasks, in this order:** S09-T5 (gate stages) → S09-T6 (tiers per hit) → S09-T7 (`authority` mode and metric) → S09-T8 (the S09 eval run).
 - **Closes the slice:** yes, once the retro (`/slice-retro`) follows.
+- **Parked:** S09-T8: Anthropic credit balance too low. Run 1 of 3 completed (`authority-20261010T112851Z`, $1.36); run 2 (`authority-20261010T113710Z`) returned 400 "credit balance is too low" from q23 (21 error rows, $0.67). Spent $2.03. Both folders and the table line are kept, local only (stash "parked S09-T8").
+- **Parked:** the retro, because exit check 6 (the S09 row, write-up and thresholds) needs T8.
 - **Goal (plain words):**
   - Record each feature gate's stage at each release, as that release's own docs gave it.
   - Give every search result a trust tier (1 = official docs … 6 = blog). A KEP counts as shipped once one of its gates appears in the reference.
