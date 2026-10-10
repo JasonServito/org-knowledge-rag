@@ -12,7 +12,8 @@ crash. No Langfuse trace: the results folder is the record.
 
 `score_retrieval_only` (S07-T3, `make eval-retrieval`) runs the same label check and retrieval,
 from stored vectors only, and scores the hits with no answer call: free, and it writes nothing. It
-also times each question's retrieval (S08-T4), which `timing_line` reports.
+also times each question's retrieval (S08-T4), which `timing_line` reports, and counts the S09 time
+metrics (S09-T3), which `time_line` reports.
 
 In rerank mode (S08-T2), both get the reranker the caller loaded once, before the question loop.
 
@@ -38,6 +39,7 @@ from psycopg.rows import TupleRow
 from pydantic import BaseModel, ConfigDict, Field
 
 from orgknow.cli import ASK_ERRORS
+from orgknow.db.models import Hit
 from orgknow.embeddings.embedder import DIMENSIONS, Embedder, EmbedResult, InputType
 from orgknow.eval.checks import AnswerChecks, check_answer
 from orgknow.eval.golden import (
@@ -49,7 +51,13 @@ from orgknow.eval.golden import (
     check_line,
     load_golden_file,
 )
-from orgknow.eval.metrics import RetrievalMetrics, score_retrieval
+from orgknow.eval.metrics import (
+    GoldenWindow,
+    RetrievalMetrics,
+    score_retrieval,
+    stale_count,
+    temporal_count,
+)
 from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
 from orgknow.retrieval.rerank import Reranker
@@ -117,6 +125,9 @@ class RankedHit(BaseModel):
     dense_rank: int | None = None
     lexical_rank: int | None = None
     rerank_score: float | None = None  # rerank only (S08-T2); absent in older folders
+    # What the S09 time metrics read (S09-T3); absent in older folders.
+    current: bool | None = None
+    release_windows: list[tuple[int, int | None]] | None = None
 
 
 class QuestionRow(BaseModel):
@@ -124,6 +135,9 @@ class QuestionRow(BaseModel):
 
     id: str
     mode: Mode | None
+    # The golden release window as minors, [from, until], None an open end (S09-T3); None when
+    # the question has none, and in older folders.
+    release_window: GoldenWindow | None = None
     answerable: bool
     hits: list[RankedHit]
     answer: Answer | None  # the `ask` JSON; None when the ask failed
@@ -136,7 +150,7 @@ class QuestionRow(BaseModel):
 
 
 class Rate(BaseModel):
-    """How many of the rows a check applies to passed it."""
+    """How many of the rows (or hits) a check applies to passed it."""
 
     # `pass` is a Python keyword: the field is `pass_`, written as "pass".
     model_config = ConfigDict(serialize_by_alias=True, validate_by_name=True)
@@ -146,7 +160,7 @@ class Rate(BaseModel):
 
 
 class Count(BaseModel):
-    """How many of the rows a flag applies to have it."""
+    """How many of the rows (or hits) a flag applies to have it."""
 
     count: int
     total: int
@@ -180,6 +194,26 @@ class Summary(BaseModel):
     latency_s_p95: float | None = None
     retrieve_s_p95: float | None = None
     cost_usd_mean: float | None = None
+    # S09-T3 (S09-R1 decision 1), pooled over hits: the stale hits of the CURRENT questions, the
+    # hits in the golden window of the questions with one, and the routes matching the golden
+    # mode of the answerable questions. None when no row applies, and in a summary of rows
+    # written before S09-T3.
+    stale: Count | None = None
+    temporal: Rate | None = None
+    router: Rate | None = None
+
+
+def golden_window(question: Question) -> GoldenWindow | None:
+    """The question's golden release window as minors, (20, 28) for 1.20 to 1.28, None an open
+    end; None when it has none."""
+    window = question.release_window
+    if window is None:
+        return None
+
+    def minor(release: str | None) -> int | None:
+        return None if release is None else int(release.removeprefix("1."))
+
+    return minor(window.from_), minor(window.until)
 
 
 def question_key(question: str) -> str:
@@ -470,6 +504,7 @@ def _run_question(
     return QuestionRow(
         id=question.id,
         mode=question.mode,
+        release_window=golden_window(question),
         answerable=question.answerable,
         hits=[
             RankedHit(
@@ -482,6 +517,8 @@ def _run_question(
                 dense_rank=hit.dense_rank,
                 lexical_rank=hit.lexical_rank,
                 rerank_score=hit.rerank_score,
+                current=hit.current,
+                release_windows=hit.release_windows,
             )
             for rank, hit in enumerate(hits, start=1)
         ],
@@ -497,11 +534,12 @@ def _run_question(
 
 def score_retrieval_only(
     conn: psycopg.Connection[TupleRow], settings: Settings, reranker: Reranker | None = None
-) -> tuple[list[RetrievalMetrics], list[float]]:
+) -> tuple[list[RetrievalMetrics], list[float], Count | None, Rate | None]:
     """`make eval-retrieval` (S07-R1 decision 5): retrieve, in the settings' mode, for every
     answerable golden question with its stored vector, and score the hits; return the metrics in
-    file order, and each question's retrieve time in seconds (S08-T4: the wall time of the
-    `retrieve` call, rerank included). No Voyage call, no Anthropic call, nothing written.
+    file order, each question's retrieve time in seconds (S08-T4: the wall time of the
+    `retrieve` call, rerank included), and the stale and temporal counts over the top K hits
+    (S09-T3), as `summarize` counts them. No Voyage call, no Anthropic call, nothing written.
 
     Raises GoldenSetError and EvalError as `run` does, and EvalError when a question has no
     stored vector: this command never embeds. Rerank mode needs `reranker`.
@@ -519,6 +557,8 @@ def score_retrieval_only(
     stored = StoredVectors(settings.embedding_model, vectors)
     scores = []
     retrieve_s = []
+    by_mode: list[tuple[Mode | None, list[Hit]]] = []  # for the stale count
+    by_window: list[tuple[GoldenWindow | None, list[Hit]]] = []  # for the temporal count
     for question in questions:
         start = time.monotonic()
         hits = retrieve(question.question, stored, conn, settings, reranker)
@@ -526,7 +566,11 @@ def score_retrieval_only(
         metrics = score_retrieval(question, hits, settings.retrieval_top_k)
         if metrics is not None:  # always: an answerable question has labels (ADR-007)
             scores.append(metrics)
-    return scores, retrieve_s
+        top = hits[: settings.retrieval_top_k]
+        by_mode.append((question.mode, top))
+        by_window.append((golden_window(question), top))
+    stale, temporal = stale_count(by_mode), temporal_count(by_window)
+    return scores, retrieve_s, _count(stale), _rate_of(temporal)
 
 
 def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> str:
@@ -575,6 +619,26 @@ def timing_line(retrieve_s: Sequence[float], load_s: float | None) -> str:
     )
 
 
+def time_line(stale: Count | None, temporal: Rate | None) -> str:
+    """`make eval-retrieval`'s S09 time line (S09-R1, pinned format), between the metrics and the
+    timing line: the stale-result rate and the temporal accuracy, each as a 3-decimal rate with
+    its counts; n/a for one with no hits."""
+    if stale is None:
+        stale_part = "Stale rate n/a (no CURRENT hits)"
+    else:
+        rate = stale.count / stale.total
+        stale_part = f"Stale rate {rate:.3f} ({stale.count} of {stale.total} CURRENT hits)"
+    if temporal is None:
+        temporal_part = "Temporal accuracy n/a (no dated HISTORY hits)"
+    else:
+        rate = temporal.pass_ / temporal.total
+        temporal_part = (
+            f"Temporal accuracy {rate:.3f} ({temporal.pass_} of {temporal.total} dated HISTORY "
+            "hits)"
+        )
+    return f"{stale_part}  {temporal_part}"
+
+
 def summarize(
     name: str,
     golden_sha256: str,
@@ -583,8 +647,8 @@ def summarize(
     settings: Settings,
 ) -> Summary:
     """The run's totals: metric means over the answerable questions, for each check how many of
-    the rows it applies to (not None) passed, and the p95 latencies and the mean cost per question
-    at the settings' prices (S08-T3)."""
+    the rows it applies to (not None) passed, the p95 latencies and the mean cost per question
+    at the settings' prices (S08-T3), and the S09 time counts over the rows' hits (S09-T3)."""
     metrics = [row.metrics for row in rows if row.metrics is not None]
     refusals = _rate(row.checks.false_refusal for row in rows)
     usages = [row.usage for row in rows if row.usage is not None]
@@ -615,6 +679,11 @@ def summarize(
         cost_usd_mean=_mean(
             [(u.input_tokens * in_price + u.output_tokens * out_price) / 1e6 for u in usages]
         ),
+        # A row's hits are its top K, as retrieval returned them.
+        stale=_count(stale_count([(row.mode, row.hits) for row in rows])),
+        temporal=_rate_of(temporal_count([(row.release_window, row.hits) for row in rows])),
+        # No row records a route yet: only temporal mode (S09-T4) will.
+        router=None,
     )
 
 
@@ -667,6 +736,16 @@ def _rate(results: Iterable[bool | None]) -> Rate:
     """Passes and total over the results that aren't None (n/a)."""
     known = [result for result in results if result is not None]
     return Rate(pass_=sum(known), total=len(known))
+
+
+def _count(parts: tuple[int, int] | None) -> Count | None:
+    """A time metric's (count, total) as a `Count`; None stays None."""
+    return None if parts is None else Count(count=parts[0], total=parts[1])
+
+
+def _rate_of(parts: tuple[int, int] | None) -> Rate | None:
+    """A time metric's (passed, total) as a `Rate`; None stays None."""
+    return None if parts is None else Rate(pass_=parts[0], total=parts[1])
 
 
 def _now() -> datetime:

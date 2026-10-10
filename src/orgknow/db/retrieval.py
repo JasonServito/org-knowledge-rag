@@ -25,8 +25,9 @@ def search(
     """Return the `k` chunk texts whose `model` vectors are nearest `question_vector` by cosine
     distance, nearest first, ties by content hash. No vectors: an empty list.
 
-    One hit per text: it cites the chunk in the newest version holding the text and lists the
-    release window of every version holding it. `dense_rank` is the hit's position, from 1.
+    One hit per text: it cites the chunk in the newest version holding the text, lists the
+    release window of every version holding it, and is `current` when one of those versions is
+    (S09-T3). `dense_rank` is the hit's position, from 1.
 
     `ef_search` is the HNSW search width for this query (HNSW_EF_SEARCH, S07-R1 decision 3). An
     HNSW index scan returns at most that many rows, so it must be at least `k` (settings check).
@@ -56,7 +57,7 @@ def search(
             -- The rank is the position in the final order below, from 1.
             SELECT n.content_hash, n.distance,
                    row_number() OVER (ORDER BY n.distance, n.content_hash) AS dense_rank,
-                   cited.*, windows.release_windows
+                   cited.*, windows.release_windows, windows.current
             FROM nearest n
             -- Per text, the chunk to cite: the one in the newest version (latest date window)
             -- holding the text, and the lowest id if that version holds it twice. The order is
@@ -75,11 +76,14 @@ def search(
             ) cited
             -- Per text, one (from, until) release window per version holding it (IN lists a
             -- version once, however many of its chunks hold the text), oldest first. Never
-            -- merged: a text absent from one release must show that gap.
+            -- merged: a text absent from one release must show that gap. And whether any of
+            -- those versions is current, i.e. has an open date window (S09-T3): false when
+            -- later edits replaced the text in every version.
             CROSS JOIN LATERAL (
                 SELECT array_agg(ARRAY[v.valid_from_release, v.valid_until_release]
                                  ORDER BY v.valid_from_release, v.valid_from_date)
-                       AS release_windows
+                       AS release_windows,
+                       bool_or(v.valid_until_date IS NULL) AS current
                 FROM document_versions v
                 WHERE v.id IN (
                     SELECT c.document_version_id FROM chunks c
@@ -125,7 +129,7 @@ def search_lexical(conn: psycopg.Connection[TupleRow], question: str, n: int) ->
             -- order, from 1.
             SELECT m.content_hash, NULL::double precision AS distance,
                    row_number() OVER (ORDER BY m.rank DESC, m.content_hash) AS lexical_rank,
-                   cited.*, windows.release_windows
+                   cited.*, windows.release_windows, windows.current
             FROM matched m
             -- The same two expansions as `search` (see the comments there): the chunk to cite,
             -- in the newest version holding the text ...
@@ -140,11 +144,13 @@ def search_lexical(conn: psycopg.Connection[TupleRow], question: str, n: int) ->
                 ORDER BY v.valid_from_date DESC, c.id
                 LIMIT 1
             ) cited
-            -- ... and one release window per version holding it, oldest first, never merged.
+            -- ... and one release window per version holding it, oldest first, never merged,
+            -- and whether any of those versions is current.
             CROSS JOIN LATERAL (
                 SELECT array_agg(ARRAY[v.valid_from_release, v.valid_until_release]
                                  ORDER BY v.valid_from_release, v.valid_from_date)
-                       AS release_windows
+                       AS release_windows,
+                       bool_or(v.valid_until_date IS NULL) AS current
                 FROM document_versions v
                 WHERE v.id IN (
                     SELECT c.document_version_id FROM chunks c

@@ -130,8 +130,8 @@ def test_a_text_in_two_versions_is_one_hit_citing_the_newest(conn: Conn) -> None
 
     assert len(hits) == 1
     assert hits[0].distance == pytest.approx(0, abs=1e-6)
-    # Two windows, never merged into one span across the 1.25 gap; every other field is the
-    # newest version's.
+    # Two windows, never merged into one span across the 1.25 gap; current, because the [26, open]
+    # version holds it (S09-T3); every other field is the newest version's.
     assert hits[0].model_dump(exclude={"distance"}) == {
         "chunk_id": new_chunk_id,
         "content_hash": _hash("shared"),
@@ -140,6 +140,7 @@ def test_a_text_in_two_versions_is_one_hit_citing_the_newest(conn: Conn) -> None
         "source_type": "docs_page",
         "heading_path": ["Usage"],
         "release_windows": [(24, 24), (26, None)],
+        "current": True,
         "claimed_status": None,
         "claimed_stage": None,
         "snapshot_repo": "website",
@@ -258,6 +259,7 @@ def test_lexical_an_exact_term_ranks_its_text_first(conn: Conn) -> None:
             "source_type": "docs_page",
             "heading_path": [],
             "release_windows": [(24, None)],
+            "current": True,
             "claimed_status": None,
             "claimed_stage": None,
             "snapshot_repo": "website",
@@ -305,9 +307,38 @@ def test_lexical_a_text_in_two_versions_is_one_hit_with_both_windows(conn: Conn)
 
     hits = search_lexical(conn, "LegacyServiceAccountTokenCleanUp", 10)
 
-    assert [(hit.chunk_id, hit.release_windows, hit.lexical_rank) for hit in hits] == [
-        (new_chunk_id, [(24, 24), (26, None)], 1)
+    assert [(hit.chunk_id, hit.release_windows, hit.current, hit.lexical_rank) for hit in hits] == [
+        (new_chunk_id, [(24, 24), (26, None)], True, 1)
     ]
+
+
+def test_a_text_held_only_by_closed_versions_is_not_current_in_either_search(conn: Conn) -> None:
+    # S09-T3: a text is current when some version holding it has an open date window. The page's
+    # 1.24 and 1.25 versions are closed by dates; 1.26 is open. "replaced" is in the first two
+    # only; "kept" is in all three.
+    document_id = create_document(conn, "web:/test/edited/", "docs_page")
+    first = _version(conn, document_id, (24, 24), (D24, D25))
+    second = _version(conn, document_id, (25, 25), (D25, D26))
+    latest = _version(conn, document_id, (26, None), (D26, None))
+    replaced = "The legacy admission webhook replaced text."
+    kept = "The legacy admission webhook kept text."
+    for version_id in (first, second):
+        add_chunks(conn, version_id, [NewChunk(ordinal=0, heading_path=[], text=replaced)])
+    for version_id in (first, second, latest):
+        add_chunks(conn, version_id, [NewChunk(ordinal=1, heading_path=[], text=kept)])
+    _embed(conn, replaced, E1)
+    _embed(conn, kept, E2)
+
+    dense = search(conn, E1, MODEL, 10, WIDTH)
+    lexical = search_lexical(conn, "legacy admission webhook", 10)
+
+    # Dense: "replaced" is nearer (distance 0, against 1). Lexical: both hold the 3 words, in the
+    # same places, so their order is the content hashes': only the pairs are compared.
+    assert [(hit.text, hit.release_windows, hit.current) for hit in dense] == [
+        (replaced, [(24, 24), (25, 25)], False),
+        (kept, [(24, 24), (25, 25), (26, None)], True),
+    ]
+    assert {(hit.text, hit.current) for hit in lexical} == {(replaced, False), (kept, True)}
 
 
 def test_lexical_no_match_and_stop_words_only_give_no_hits(conn: Conn) -> None:

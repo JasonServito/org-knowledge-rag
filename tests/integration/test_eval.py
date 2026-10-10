@@ -36,6 +36,7 @@ from orgknow.eval.runner import (
     retrieval_report,
     run,
     score_retrieval_only,
+    time_line,
 )
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import GenerationError
@@ -220,7 +221,8 @@ def test_sections_are_listed_by_first_appearance_across_versions(conn: Conn) -> 
 # The eval run (S06-T4). Two stored pages, each text with a vector under the fake embedder's
 # model. The fake embeds every question as [0.5] * 1024, so every question gets the same 3 hits,
 # by cosine distance 1 - cos: "a intro" (all ones: the same direction, 0), "a install" (e1 + e2:
-# 1 - 1 / (16√2) = 0.955806) and "b usage" (e1: 1 - 0.5 / 16 = 0.96875).
+# 1 - 1 / (16√2) = 0.955806) and "b usage" (e1: 1 - 0.5 / 16 = 0.96875). Every page is current
+# since 1.24, so q02's golden window (1.20 to 1.23, S09-T3) holds none of them.
 
 MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
 SHA = "2222222222222222222222222222222222222222"
@@ -244,6 +246,7 @@ questions:
     mode: CURRENT
     answerable: true
     expected_answer: See the intro.
+    release_window: {{from: '1.20', until: '1.23'}}
     smoke: true
     labels:
       - {{document: 'web:/test/a/', section: ''}}
@@ -431,8 +434,8 @@ def test_a_run_writes_the_pinned_results_format(
     rows = _rows(folder)
     assert [list(row) for row in rows] == [
         [
-            *("id", "mode", "answerable", "hits", "answer", "metrics", "checks", "usage"),
-            *("latency_s", "retrieve_s", "error"),
+            *("id", "mode", "release_window", "answerable", "hits", "answer", "metrics"),
+            *("checks", "usage", "latency_s", "retrieve_s", "error"),
         ]
     ] * 3
     latencies = [row.pop("latency_s") for row in rows]
@@ -454,6 +457,9 @@ def test_a_run_writes_the_pinned_results_format(
             "dense_rank": 1,
             "lexical_rank": None,
             "rerank_score": None,
+            # S09-T3: the page's one version is open, since 1.24.
+            "current": True,
+            "release_windows": [[24, None]],
         },
         {
             "rank": 2,
@@ -465,6 +471,9 @@ def test_a_run_writes_the_pinned_results_format(
             "dense_rank": 2,
             "lexical_rank": None,
             "rerank_score": None,
+            # S09-T3: the page's one version is open, since 1.24.
+            "current": True,
+            "release_windows": [[24, None]],
         },
         {
             "rank": 3,
@@ -476,6 +485,9 @@ def test_a_run_writes_the_pinned_results_format(
             "dense_rank": 3,
             "lexical_rank": None,
             "rerank_score": None,
+            # S09-T3: the page's one version is open, since 1.24.
+            "current": True,
+            "release_windows": [[24, None]],
         },
     ]
     # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
@@ -483,6 +495,7 @@ def test_a_run_writes_the_pinned_results_format(
     assert rows[0] == {
         "id": "q01",
         "mode": "CURRENT",
+        "release_window": None,  # the golden file gives none
         "answerable": True,
         "hits": hits,
         "answer": {
@@ -523,6 +536,7 @@ def test_a_run_writes_the_pinned_results_format(
     assert rows[1] == {
         "id": "q02",
         "mode": "CURRENT",
+        "release_window": [20, 23],  # the golden window as minors
         "answerable": True,
         "hits": hits,
         "answer": None,
@@ -535,6 +549,7 @@ def test_a_run_writes_the_pinned_results_format(
     assert rows[2] == {
         "id": "q03",
         "mode": None,
+        "release_window": None,
         "answerable": False,
         "hits": hits,
         "answer": {
@@ -564,6 +579,8 @@ def test_a_run_writes_the_pinned_results_format(
     assert summary.pop("cost_usd_mean") == pytest.approx(0.114)
     # Means over q01 and q02. AC2 counts q01 and q03 (the rows with an answer); false refusals
     # count q01 only (q02 has no answer). Tokens: 1000 + 500 + 1000 in, 300 + 16000 + 300 out.
+    # S09-T3: q01 and q02 are CURRENT, 3 hits each, none stale: 0 of 6. q02's golden window
+    # (20 to 23) holds none of its 3 hits, all from 24 on: 0 of 3. No routes outside temporal mode.
     assert summary == {
         "name": "dense",
         "golden_sha256": golden_sha256,
@@ -582,6 +599,9 @@ def test_a_run_writes_the_pinned_results_format(
         "false_refusals": {"count": 0, "total": 1},
         "input_tokens": 2500,
         "output_tokens": 16600,
+        "stale": {"count": 0, "total": 6},
+        "temporal": {"pass": 0, "total": 3},
+        "router": None,
     }
     assert len(generator.calls) == 3
 
@@ -589,11 +609,12 @@ def test_a_run_writes_the_pinned_results_format(
     (run_settings.eval_results_dir / "s04").mkdir()
     (run_settings.eval_results_dir / "s04" / "README.md").write_text("notes", encoding="utf-8")
     table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
-    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4.
+    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4;
+    # stale 0 / 6 and temporal 0 / 3, both 0.000; router n/a.
     assert table.splitlines()[4:] == [
         f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
         f"| 1.000 | 1.000 | 1.000 | 1.000 | {max(latencies):.1f} | {max(retrieve_times):.1f} "
-        "| 0.1140 |"
+        "| 0.1140 | 0.000 | 0.000 | n/a |"
     ]
 
 
@@ -840,9 +861,17 @@ def test_retrieval_only_scores_each_mode_and_writes_nothing(
     settings = run_settings.model_copy(update={"retrieval_mode": mode})
 
     # Dense and hybrid never call the reranker.
-    scores, retrieve_s = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
+    scores, retrieve_s, stale, temporal = score_retrieval_only(
+        conn, settings, FakeReranker(RERANK_SCORES)
+    )
 
     assert retrieval_report(settings, scores) == expected
+    # S09-T3: q01 and q02 are CURRENT, with 3 hits each in every mode, all held by an open
+    # version since 1.24; q02's golden window, 1.20 to 1.23, holds none of its 3.
+    assert time_line(stale, temporal) == (
+        "Stale rate 0.000 (0 of 6 CURRENT hits)  "
+        "Temporal accuracy 0.000 (0 of 3 dated HISTORY hits)"
+    )
     assert len(retrieve_s) == 2  # one retrieve time per answerable question (S08-T4)
     assert all(seconds >= 0 for seconds in retrieve_s)
     assert not settings.eval_results_dir.exists()

@@ -21,6 +21,7 @@ def _hit(position: int, rrf_score: float = 0.01) -> Hit:
         source_type="docs_page",
         heading_path=[],
         release_windows=[(30, None)],
+        current=True,
         claimed_status=None,
         claimed_stage=None,
         snapshot_repo="website",

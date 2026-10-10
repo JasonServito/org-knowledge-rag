@@ -132,9 +132,9 @@ class Hit(BaseModel):
 
     Many chunks can hold one text (one per version where a section didn't change). The hit cites
     the chunk in the newest version holding it, and lists the release window of every version
-    holding it, so a gap between releases stays visible. Every other field is the cited chunk's
-    or its version's, except the score and ranks, which say why it ranked where it did (S07-R1
-    decision 4).
+    holding it, so a gap between releases stays visible. `current` also reads every version
+    holding it (S09-T3). Every other field is the cited chunk's or its version's, except the
+    score and ranks, which say why it ranked where it did (S07-R1 decision 4).
     """
 
     chunk_id: int  # what a citation points to
@@ -148,6 +148,9 @@ class Hit(BaseModel):
     heading_path: list[str]
     # (valid_from_release, valid_until_release) per version, by from-release; None is open.
     release_windows: list[tuple[int, int | None]]
+    # Whether some version holding the text is current (an open date window): False when later
+    # edits replaced the text everywhere, i.e. a stale hit (S09-R1 decision 1).
+    current: bool
     claimed_status: str | None
     claimed_stage: str | None
     snapshot_repo: str

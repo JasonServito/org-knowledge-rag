@@ -298,7 +298,7 @@ Tasks:
   - The `Router` interface, the Claude router and a fake; time scope → window through the `releases` table; stored routes and `make eval-routes`.
   - Done when: hand-worked unit tests pass; temporal-mode `make eval-retrieval` prints router accuracy ≥ 34 of 36 and 7 of 9 windows.
   - Deps: T1.
-- [ ] **S09-T3 `[core]` S09 metrics in the eval.**
+- [x] **S09-T3 `[core]` S09 metrics in the eval.**
   - Stale-result rate, temporal accuracy, router accuracy: printed, stored in the summary, in the table.
   - Done when: hand-computed unit tests pass; dense, hybrid and rerank print the sitting's baselines.
 - [ ] **S09-T4 `[core]` Temporal retrieval mode.**

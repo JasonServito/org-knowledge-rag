@@ -87,8 +87,9 @@ eval-sections:
 
 # Score retrieval alone (S07-R1 decision 5): retrieve in RETRIEVAL_MODE for every answerable golden
 # question with its stored vector (EVAL_VECTORS_DIR), then print the mode and Recall@10, Hit@10,
-# MRR and nDCG@10, then the retrieve time's p50 and p95 and, in rerank mode, the reranker's load
-# time (S08-T4). Free: no Voyage or Anthropic call (a missing vector is an error), and it writes
+# MRR and nDCG@10, then the stale-result rate and temporal accuracy (S09-T3), then the retrieve
+# time's p50 and p95 and, in rerank mode, the reranker's load time (S08-T4). Free: no Voyage or
+# Anthropic call (a missing vector is an error), and it writes
 # nothing. The check before a paid `make eval`. Needs `make up`.
 # Example: RETRIEVAL_MODE=hybrid make eval-retrieval (the default mode is rerank)
 eval-retrieval:

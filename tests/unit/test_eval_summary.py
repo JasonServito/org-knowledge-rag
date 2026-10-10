@@ -1,9 +1,10 @@
-"""The summary's p95 latencies and cost per question (S08-T3), and `make eval-resummarize`, from
-hand-built rows; and `make eval-retrieval`'s timing line (S08-T4), from hand-written times.
+"""The summary's p95 latencies and cost per question (S08-T3), its stale and temporal counts
+(S09-T3), and `make eval-resummarize`, from hand-built rows; and `make eval-retrieval`'s timing
+line (S08-T4) and time line (S09-T3), from hand-written values.
 
 Every expected value is by hand: a nearest-rank p95 is the value at sorted index
-ceil(n * 0.95) - 1 (0-based), a median of an even count is the mean of the 2 middle values, and a
-question's cost is (input * $4 + output * $20) / 1,000,000.
+ceil(n * 0.95) - 1 (0-based), a median of an even count is the mean of the 2 middle values, a
+question's cost is (input * $4 + output * $20) / 1,000,000, and a rate is count / total.
 """
 
 import json
@@ -14,7 +15,17 @@ import pytest
 
 from orgknow.eval import __main__ as eval_main
 from orgknow.eval.checks import AnswerChecks
-from orgknow.eval.runner import QuestionRow, Summary, summarize, timing_line
+from orgknow.eval.golden import Mode
+from orgknow.eval.runner import (
+    Count,
+    QuestionRow,
+    RankedHit,
+    Rate,
+    Summary,
+    summarize,
+    time_line,
+    timing_line,
+)
 from orgknow.generation.schema import TokenUsage
 from orgknow.settings import Settings
 
@@ -38,14 +49,19 @@ def _row(
     retrieve_s: float | None = None,
     usage: tuple[int, int] | None = None,
     error: str | None = None,
+    mode: Mode | None = None,
+    release_window: tuple[int | None, int | None] | None = None,
+    hits: list[RankedHit] | None = None,
 ) -> QuestionRow:
-    """An unanswerable question's row; `usage` is (input, output) tokens. It passes AC3 unless
-    the ask failed. The fields the new summary values don't read are filler."""
+    """An unanswerable question's row unless `mode` is given (no hits by default); `usage` is
+    (input, output) tokens. It passes AC3 unless the ask failed. The fields the new summary
+    values don't read are filler."""
     return QuestionRow(
         id="q01",
-        mode=None,
+        mode=mode,
+        release_window=release_window,
         answerable=False,
-        hits=[],
+        hits=[] if hits is None else hits,
         answer=None,
         metrics=None,
         checks=AnswerChecks(ac1=None, ac2=None, ac3=error is None, false_refusal=None),
@@ -121,10 +137,12 @@ def test_a_summary_without_the_new_fields_still_loads() -> None:
     summary = Summary.model_validate_json(OLD_SUMMARY_JSON)
 
     assert (summary.latency_s_p95, summary.retrieve_s_p95, summary.cost_usd_mean) == (None,) * 3
+    assert (summary.stale, summary.temporal, summary.router) == (None,) * 3
 
 
 def test_a_row_written_before_s07_still_loads() -> None:
-    # The dense baseline's rows (S06): hits with only a distance, and no `retrieve_s`.
+    # The dense baseline's rows (S06): hits with only a distance, and no `retrieve_s` or
+    # `release_window`.
     hit = {
         "rank": 1,
         "chunk_id": 7,
@@ -132,13 +150,61 @@ def test_a_row_written_before_s07_still_loads() -> None:
         "heading_path": [],
         "distance": 0.4,
     }
-    row = json.loads(_row(5.0).model_dump_json(exclude={"retrieve_s"}))
+    row = json.loads(_row(5.0).model_dump_json(exclude={"retrieve_s", "release_window"}))
 
     loaded = QuestionRow.model_validate({**row, "hits": [hit]})
 
-    assert loaded.retrieve_s is None
+    assert (loaded.retrieve_s, loaded.release_window) == (None, None)
     assert (loaded.hits[0].rrf_score, loaded.hits[0].dense_rank) == (None, None)
     assert loaded.hits[0].lexical_rank is None
+    assert (loaded.hits[0].current, loaded.hits[0].release_windows) == (None, None)
+
+
+def _ranked(current: bool | None, windows: list[tuple[int, int | None]] | None = None) -> RankedHit:
+    """A hit as the results file stores it; the time counts read only `current` and the
+    release windows (None in a file written before S09-T3)."""
+    return RankedHit(
+        rank=1,
+        chunk_id=7,
+        canonical_id="web:/docs/a/",
+        heading_path=[],
+        current=current,
+        release_windows=windows,
+        distance=0.4,
+    )
+
+
+def test_the_summary_counts_stale_current_hits_and_hits_in_the_golden_window() -> None:
+    rows = [
+        # CURRENT: 1 stale of 3.
+        _row(5.0, mode="CURRENT", hits=[_ranked(True), _ranked(False), _ranked(True)]),
+        # HISTORY "until 1.20": [20, 22] overlaps it, [24, open] doesn't: 1 of 2. Its stale hit
+        # isn't counted as stale: the question isn't CURRENT.
+        _row(
+            5.0,
+            mode="HISTORY",
+            release_window=(None, 20),
+            hits=[_ranked(False, [(20, 22)]), _ranked(True, [(24, None)])],
+        ),
+        # HISTORY with no golden window: in neither count.
+        _row(5.0, mode="HISTORY", hits=[_ranked(False, [(20, 20)])]),
+        _row(5.0),  # unanswerable, no hits
+    ]
+
+    summary = _summary(rows)
+
+    assert summary.stale == Count(count=1, total=3)
+    assert summary.temporal == Rate(pass_=1, total=2)
+    assert summary.router is None  # no row has a route
+
+
+def test_the_time_counts_are_none_for_rows_written_before_s09_t3() -> None:
+    # The hits have no `current` and no release windows; the row has no golden window.
+    rows = [_row(5.0, mode="CURRENT", hits=[_ranked(None), _ranked(None)])]
+
+    summary = _summary(rows)
+
+    assert (summary.stale, summary.temporal, summary.router) == (None, None, None)
 
 
 # A summary as S06 and S07 wrote it, before S08-T3, for the rows `_old_rows` builds: 2 questions,
@@ -168,9 +234,11 @@ OLD_SUMMARY_JSON = json.dumps(OLD_SUMMARY, indent=2) + "\n"
 
 
 def _old_rows() -> str:
-    """The 2 rows as `questions.jsonl` lines, without `retrieve_s`, as before S08-T3."""
+    """The 2 rows as `questions.jsonl` lines, without `retrieve_s` (S08-T3) or `release_window`
+    (S09-T3), as before S08-T3."""
     rows = [_row(2.0, usage=(1000, 100)), _row(4.0, error="APIConnectionError: Connection error.")]
-    return "".join(row.model_dump_json(exclude={"retrieve_s"}) + "\n" for row in rows)
+    old = {"retrieve_s", "release_window"}
+    return "".join(row.model_dump_json(exclude=old) + "\n" for row in rows)
 
 
 def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
@@ -191,7 +259,15 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     cost = summary.pop("cost_usd_mean")
     assert cost == pytest.approx(0.006)
-    assert summary == {**OLD_SUMMARY, "latency_s_p95": 4.0, "retrieve_s_p95": None}
+    # No hits, so no stale or temporal count; no routes.
+    assert summary == {
+        **OLD_SUMMARY,
+        "latency_s_p95": 4.0,
+        "retrieve_s_p95": None,
+        "stale": None,
+        "temporal": None,
+        "router": None,
+    }
     # Only the summary is written: the rows are unchanged, and there is no table.
     assert (folder / "questions.jsonl").read_text(encoding="utf-8") == _old_rows()
     assert sorted(path.name for path in tmp_path.iterdir()) == ["dense-20261008T100000Z", "s04"]
@@ -226,3 +302,32 @@ def test_the_retrieve_time_line(
     retrieve_s: list[float], load_s: float | None, expected: str
 ) -> None:
     assert timing_line(retrieve_s, load_s) == expected
+
+
+@pytest.mark.parametrize(
+    ("stale", "temporal", "expected"),
+    [
+        # The sitting's dense baseline: 39 / 100 = 0.390; 31 / 90 = 0.3444 -> 0.344.
+        (
+            Count(count=39, total=100),
+            Rate(pass_=31, total=90),
+            "Stale rate 0.390 (39 of 100 CURRENT hits)  "
+            "Temporal accuracy 0.344 (31 of 90 dated HISTORY hits)",
+        ),
+        # 3 / 10 = 0.300; no question with a golden window.
+        (
+            Count(count=3, total=10),
+            None,
+            "Stale rate 0.300 (3 of 10 CURRENT hits)  "
+            "Temporal accuracy n/a (no dated HISTORY hits)",
+        ),
+        # 2 / 3 = 0.6667 -> 0.667; no CURRENT question.
+        (
+            None,
+            Rate(pass_=2, total=3),
+            "Stale rate n/a (no CURRENT hits)  Temporal accuracy 0.667 (2 of 3 dated HISTORY hits)",
+        ),
+    ],
+)
+def test_the_time_line(stale: Count | None, temporal: Rate | None, expected: str) -> None:
+    assert time_line(stale, temporal) == expected

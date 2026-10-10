@@ -13,9 +13,10 @@
   to RETRIEVAL_MODE (`dense`, `hybrid` or `rerank`); with `--smoke`, `<mode>-smoke`, so smoke
   runs get their own ablation-table row.
 - `retrieval`: retrieve for every answerable golden question with its stored vector, in
-  RETRIEVAL_MODE, and print the retrieval metrics (S07-T3), then the retrieve time's p50 and p95
-  and, in rerank mode, the reranker's load time (S08-T4). Free: no Voyage or Anthropic call; a
-  missing vector is an error. Writes nothing.
+  RETRIEVAL_MODE, and print the retrieval metrics (S07-T3), the stale-result rate and temporal
+  accuracy (S09-T3), then the retrieve time's p50 and p95 and, in rerank mode, the reranker's
+  load time (S08-T4). Free: no Voyage or Anthropic call; a missing vector is an error. Writes
+  nothing.
 
 In rerank mode, `run` and `retrieval` load the cross-encoder once, before the question loop, and
 time the load (S08-T2).
@@ -141,15 +142,17 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
 
 
 def retrieval(settings: Settings) -> int:
-    """`make eval-retrieval`: print the mode, the retrieval metrics and the retrieve time; 1 on
-    an error."""
+    """`make eval-retrieval`: print the mode, the retrieval metrics, the time metrics and the
+    retrieve time; 1 on an error."""
     try:
         reranker, load_s = _load_reranker(settings)
     except OSError as error:
         return _load_failed(error)
     try:
         with psycopg.connect(settings.database_url) as conn:
-            scores, retrieve_s = runner.score_retrieval_only(conn, settings, reranker)
+            scores, retrieve_s, stale, temporal = runner.score_retrieval_only(
+                conn, settings, reranker
+            )
     except GoldenSetError as error:
         for line in error.errors:
             print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
@@ -158,6 +161,7 @@ def retrieval(settings: Settings) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(runner.retrieval_report(settings, scores))
+    print(runner.time_line(stale, temporal))
     print(runner.timing_line(retrieve_s, load_s))
     return 0
 

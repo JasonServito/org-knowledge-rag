@@ -22,6 +22,8 @@ How the pipeline is measured: a fixed golden set, one results folder per run, an
 
 K = 10 (`RETRIEVAL_TOP_K`). Retrieval metrics are per answerable question, then averaged over the 36. Each label is credited once, at its first matching hit, so a second copy of a found section adds nothing (ADR-007 D3).
 
+The 3 time metrics (S09) are pooled over hits instead, by each question's golden mode or window (S09-R1 decision 1).
+
 | Metric | Definition | What it tells you |
 |---|---|---|
 | **Recall@10** | Labels found in the top 10 ÷ labels | How many of a question's primary sources were retrieved |
@@ -29,6 +31,9 @@ K = 10 (`RETRIEVAL_TOP_K`). Retrieval metrics are per answerable question, then 
 | **MRR** | 1 ÷ the rank of the first labeled hit; 0 if none | How high the first good source ranks |
 | **nDCG@10** | Σ gainᵢ / log₂(i + 1), divided by the best possible sum for min(labels, 10) sources; gainᵢ = 1 if hit i finds a new label | Recall that rewards finding the sources early |
 | **Distinct sections** | Distinct (document, heading path) pairs in the top 10 | A diagnostic, not a target: how many slots repeat a section |
+| **Stale-result rate** | Stale hits ÷ hits, over the CURRENT questions' top 10. A hit is stale when no current version (open date window) holds its text | How often a "now" question gets text a later edit replaced; lower is better |
+| **Temporal accuracy** | Hits with a release window overlapping the exact golden `release_window` ÷ hits, over the questions with one. An open end is open | How often a dated question gets text from the releases it asks about |
+| **Router accuracy** | Answerable questions routed to their golden mode ÷ answerable questions | Whether the router (ADR-009) picks the right kind of question |
 | **AC1** | An `answered` answer cites ≥ 1 chunk, each with a source URL, release windows and source type | Citations are present and resolvable |
 | **AC2** | Every cited chunk id was retrieved for this question | No invented citations |
 | **AC3** | An unanswerable question gets `insufficient_evidence` with a reason | The system says "I don't know" when it should |
@@ -37,7 +42,10 @@ K = 10 (`RETRIEVAL_TOP_K`). Retrieval metrics are per answerable question, then 
 | **Retrieve p95** | The same over the retrieval step alone; n/a for runs before S08-T3, which didn't time it | What retrieval, e.g. a reranker, adds to the wait |
 | **Cost per question** | Input tokens × $4/M + output tokens × $20/M (ADR-006 D1 prices, `GENERATION_PRICE_*`; output includes reasoning), averaged over the questions with a model call | What one answer costs |
 
-The ablation table (`eval/results/ablation.md`) shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns.
+The ablation table (`eval/results/ablation.md`) shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns, and the 3 time metrics as `Stale rate`, `Temporal acc.` and `Router acc.`.
+
+- **Stale means replaced, not "not valid at 1.37".** A CHANGELOG section is valid only at its own release, but isn't stale until an edit replaces it. On v0's 105 CURRENT, CHANGE and WHY labels, "replaced" flags 2 correct labels; "not valid at 1.37" would flag 26.
+- **Temporal accuracy uses the exact golden window,** not one widened by 1 release. The planned HISTORY filter keeps texts within ±1 release (S09-R1 decision 2), so a widened window would read 100% by construction.
 
 ## Reading a result
 
@@ -276,6 +284,7 @@ What it means for S15 (a projection; S15 decides):
 - **Latency leaves out the question embedding and the reranker's load.** The vectors are stored, so a live `orgknow ask` adds one Voyage call. It also loads the reranker (~7.5 s) on every ask, until the API keeps it loaded (S12).
 - **Retrieve p95 is n/a for the dense and hybrid runs.** They ran before the retrieval step was timed (S08-T3).
   - Their p95 latency and cost were added to each `summary.json` from its `questions.jsonl` by `make eval-resummarize`, and match the numbers above.
+- **The time metrics are n/a for the dense, hybrid and rerank runs.** Their hits don't record whether they're current or their release windows (S09-T3). `make eval-retrieval` scores both for any mode, free.
 - **The dense baseline's run 3 says `git_dirty: true`.** Its only changed tracked file was the ablation table, which run 2 had just rewritten. The code was the same commit.
   - Since S07 the dirty check ignores `eval/results/`. All 3 hybrid runs and all 3 rerank runs say `git_dirty: false`.
 - **v0 isn't a clean test of hybrid or rerank.** v1 is the clean test.
