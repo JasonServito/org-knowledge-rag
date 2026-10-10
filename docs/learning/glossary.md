@@ -12,6 +12,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Claim mismatch** | A conflict where the claimed status disagrees with the observed stage. Surfaced, never silently resolved. |
 | **Content hash** | A hash of normalized document content. The same hash means no new version (ADR-002 D2). |
 | **Effective stage** | Observed stage if known, otherwise claimed stage with low confidence, otherwise unknown (ADR-003 D2). |
+| **Feature gate** | A named on/off switch for a Kubernetes feature, with a lifecycle stage per release (alpha, beta, stable, deprecated). The feature-gate reference lists each gate's stage ranges; `observed_lifecycle` keeps the stage each release's own reference gives (S09). |
 | **KEP** | Kubernetes Enhancement Proposal: a design + decision + tracking document per feature or process change. |
 | **Manifest** | `config/corpus_manifest.yaml`. It defines which repos, paths and releases are in the corpus. |
 | **Normalization** | Stripping meaning-free differences (whitespace, reviewer lists) before hashing. |

@@ -305,7 +305,7 @@ Tasks:
   - Route, resolve, then ADR-003 D4's filters inside both searches, on top of rerank.
   - Done when: fixture integration tests pass; temporal-mode `make eval-retrieval` prints the sitting's prototype numbers.
   - Deps: T2.
-- [ ] **S09-T5 `[core]` `observed_lifecycle` from the feature-gate reference.**
+- [x] **S09-T5 `[core]` `observed_lifecycle` from the feature-gate reference.**
   - Per gate × release, from that release's own snapshot; `make lifecycle`, also run by `make ingest`.
   - Done when: hand-worked unit tests pass; the sitting's 3,295 rows; a re-run stores identical rows.
 - [ ] **S09-T6 `[core]` `effective_stage` and authority tier per hit.**

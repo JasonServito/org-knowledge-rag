@@ -48,7 +48,8 @@ To load the corpus scope (the whole S05 manifest: the docs pages of SIG Auth, Ne
 make seed                   # load the releases from the corpus manifest (safe to re-run)
 # reset-corpus is needed after any chunker change (a stored version keeps its old chunks) or any change to how versions are dated (a re-ingest reports a history mismatch); otherwise it's optional, to rebuild from empty
 make reset-corpus           # empty the dev database's documents, versions and chunks (ids restart at 1); keeps releases and vectors
-make ingest                 # read the scope at the locked SHAs, store one version per content change, chunk new versions (safe to re-run); ends with the ingestion report
+make ingest                 # read the scope at the locked SHAs, store one version per content change, chunk new versions, rebuild the observed lifecycle (safe to re-run); ends with the ingestion report
+make lifecycle              # rebuild only the observed lifecycle: each feature gate's stage at each release, from that release's own feature-gate reference (free; a re-run stores the same rows)
 make ingest-report          # print the report's database part alone: counts per source type and per release, chunk ids, and a fingerprint of every stored corpus value except generated ids (equal fingerprints = identical data)
 make embed                  # embed each chunk text with no vector yet; paid, needs VOYAGE_API_KEY (a re-run sends 0 requests)
 ```

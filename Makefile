@@ -1,5 +1,5 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed \
+.PHONY: fmt check test-int up down migrate seed ingest lifecycle ingest-report reset-corpus embed \
 	eval-check eval-sections eval-retrieval eval-routes eval-smoke eval eval-table eval-resummarize
 
 # Integration tests use their own database in the same container, so data ingested into the dev
@@ -45,13 +45,22 @@ seed:
 	uv run python -m orgknow.ingestion.seed
 
 # Read the scope's files (INGEST_SCOPE, default full) at the locked SHAs and store their versions,
-# then chunk every version that has no chunks yet. Free and local; safe to re-run (a re-run adds
-# 0 versions and 0 chunks). Needs `make up`, `make migrate`, `make seed`: it only reads `releases`,
-# and stops before reading git if a manifest release is missing there or has other dates.
-# It ends with the ingestion report: this run's counts, skipped and failed files, then the
-# database part (see ingest-report).
+# then chunk every version that has no chunks yet, then rebuild the observed lifecycle (see
+# lifecycle). Free and local; safe to re-run (a re-run adds 0 versions and 0 chunks). Needs
+# `make up`, `make migrate`, `make seed`: it only reads `releases`, and stops before reading git if
+# a manifest release is missing there or has other dates. It ends with the ingestion report: this
+# run's counts and the lifecycle line, skipped and failed files, then the database part (see
+# ingest-report).
 ingest:
 	uv run python -m orgknow.ingestion.ingest
+
+# Rebuild `observed_lifecycle` (S09-T5, ADR-003 D2): each feature gate's stage at each stored
+# release, as that release's own feature-gate reference gives it (to 1.28 the table pages, re-read
+# from the website clone; from 1.29 the stored gate files). Replaces every row in one transaction,
+# so a re-run stores the same rows; `make ingest` runs the same step after chunking. Prints one
+# line: rows, releases, and rows by confidence. Free and local. Needs `make migrate`, `make ingest`.
+lifecycle:
+	uv run python -m orgknow.ingestion.lifecycle
 
 # Print the database part of the ingestion report, without reading git: counts per source type
 # and per release, the chunk id range, and the fingerprint of every stored value except generated
