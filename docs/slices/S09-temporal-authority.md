@@ -118,7 +118,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S09-R1: route and filter by time
 
-- **Status:** planned
+- **Status:** PR open
 - **Branch:** `s09-r1-temporal`
 - **Tasks, in this order:** S09-T2 (router and windows) → S09-T3 (S09 metrics) → S09-T4 (`temporal` mode). T1 (ADR-009) was done in the sitting.
 - **Closes the slice:** no; R2 (authority) follows.
