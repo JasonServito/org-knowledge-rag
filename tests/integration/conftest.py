@@ -31,12 +31,13 @@ def settings() -> Settings:
     """Settings pointed at the test database, never the dev database (S04-R1 decision 1).
 
     `make test-int` sets TEST_DATABASE_URL after migrating that database. There is no fallback:
-    running against the dev database would collide with its ingested rows.
+    running against the dev database would collide with its ingested rows. No .env file, so a
+    local value (a RETRIEVAL_MODE, say) can't change what a test runs (S08 parked #6).
     """
     test_database_url = os.environ.get("TEST_DATABASE_URL")
     if not test_database_url:
         pytest.fail("TEST_DATABASE_URL is unset: run the integration tests with `make test-int`")
-    return Settings(database_url=test_database_url)
+    return Settings(_env_file=None, database_url=test_database_url)
 
 
 @pytest.fixture

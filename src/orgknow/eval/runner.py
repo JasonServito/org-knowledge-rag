@@ -12,12 +12,20 @@ crash. No Langfuse trace: the results folder is the record.
 
 `score_retrieval_only` (S07-T3, `make eval-retrieval`) runs the same label check and retrieval,
 from stored vectors only, and scores the hits with no answer call: free, and it writes nothing. It
-also times each question's retrieval (S08-T4), which `timing_line` reports.
+also times each question's retrieval (S08-T4), which `timing_line` reports, and counts the S09 time
+metrics (S09-T3), which `time_line` reports.
 
-In rerank mode (S08-T2), both get the reranker the caller loaded once, before the question loop.
+In rerank and temporal modes (S08-T2, S09-T4), both get the reranker the caller loaded once, before
+the question loop.
 
 `resummarize` (S08-T3, `make eval-resummarize`) rebuilds a folder's `summary.json` from its saved
 rows, so a summary written before a new summary field gains it with no new run.
+
+The question routes (S09-T2, ADR-009 D3) are stored like the vectors, one file per router model,
+keyed the same way: `route_missing` (`make eval-routes`) routes only questions with no route. In
+temporal mode (S09-T4), `run` fills the missing routes too, and both `run` and
+`score_retrieval_only` give each question its stored route to `retrieve`; `router_line` reports
+the routes against the golden modes and windows.
 """
 
 import hashlib
@@ -35,6 +43,7 @@ from psycopg.rows import TupleRow
 from pydantic import BaseModel, ConfigDict, Field
 
 from orgknow.cli import ASK_ERRORS
+from orgknow.db.models import Hit, TemporalFilter
 from orgknow.embeddings.embedder import DIMENSIONS, Embedder, EmbedResult, InputType
 from orgknow.eval.checks import AnswerChecks, check_answer
 from orgknow.eval.golden import (
@@ -46,11 +55,20 @@ from orgknow.eval.golden import (
     check_line,
     load_golden_file,
 )
-from orgknow.eval.metrics import RetrievalMetrics, score_retrieval
+from orgknow.eval.metrics import (
+    GoldenWindow,
+    RetrievalMetrics,
+    router_count,
+    score_retrieval,
+    stale_count,
+    temporal_count,
+)
 from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
 from orgknow.retrieval.rerank import Reranker
-from orgknow.retrieval.retrieve import retrieve
+from orgknow.retrieval.retrieve import retrieve, temporal_plan
+from orgknow.retrieval.router import SYSTEM_PROMPT, Route, Router, TimeScope
+from orgknow.retrieval.temporal import Window
 from orgknow.settings import Settings
 
 
@@ -71,12 +89,17 @@ class RunSettings(BaseModel):
     retrieval_candidates: int | None = None
     rrf_k: int | None = None
     hnsw_ef_search: int | None = None
-    # S08-T2: rerank mode's model and its thread count; None in other modes and older folders.
+    # S08-T2: the reranker's model and its thread count, in rerank and temporal modes; None in
+    # other modes and older folders.
     rerank_model: str | None = None
     rerank_revision: str | None = None
     rerank_max_length: int | None = None
     rerank_batch_size: int | None = None
     torch_threads: int | None = None
+    # S09-T4: temporal mode's router and slack; None in other modes and older folders.
+    router_model: str | None = None
+    router_effort: str | None = None
+    history_window_slack: int | None = None
     generation_model: str
     generation_effort: str
     generation_max_tokens: int
@@ -113,6 +136,20 @@ class RankedHit(BaseModel):
     dense_rank: int | None = None
     lexical_rank: int | None = None
     rerank_score: float | None = None  # rerank only (S08-T2); absent in older folders
+    # What the S09 time metrics read (S09-T3); absent in older folders.
+    current: bool | None = None
+    release_windows: list[tuple[int, int | None]] | None = None
+
+
+class RouteRecord(BaseModel):
+    """A question's route in temporal mode (S09-T4): the router's mode and time scope, the release
+    window that scope resolved to (before slack; None when it names none), and the filter both
+    searches applied (None: no filter)."""
+
+    mode: Mode
+    time_scope: TimeScope
+    window: Window | None
+    filter: TemporalFilter | None
 
 
 class QuestionRow(BaseModel):
@@ -120,6 +157,11 @@ class QuestionRow(BaseModel):
 
     id: str
     mode: Mode | None
+    # The golden release window as minors, [from, until], None an open end (S09-T3); None when
+    # the question has none, and in older folders.
+    release_window: GoldenWindow | None = None
+    # Temporal mode only (S09-T4); None in other modes and older folders.
+    route: RouteRecord | None = None
     answerable: bool
     hits: list[RankedHit]
     answer: Answer | None  # the `ask` JSON; None when the ask failed
@@ -132,7 +174,7 @@ class QuestionRow(BaseModel):
 
 
 class Rate(BaseModel):
-    """How many of the rows a check applies to passed it."""
+    """How many of the rows (or hits) a check applies to passed it."""
 
     # `pass` is a Python keyword: the field is `pass_`, written as "pass".
     model_config = ConfigDict(serialize_by_alias=True, validate_by_name=True)
@@ -142,10 +184,23 @@ class Rate(BaseModel):
 
 
 class Count(BaseModel):
-    """How many of the rows a flag applies to have it."""
+    """How many of the rows (or hits) a flag applies to have it."""
 
     count: int
     total: int
+
+
+class RouterStats(BaseModel):
+    """The routes of the answerable questions against their golden modes and windows (S09-T4),
+    for `router_line`."""
+
+    router: Rate | None  # routes whose mode is the golden mode; None with no golden mode
+    windows: int  # resolved windows (before slack) equal to the golden one
+    golden_windows: int  # questions with a golden window
+    extra: int  # windows resolved for questions with no golden window
+    current_only: int  # questions per plan: CURRENT's filter
+    windowed: int  # HISTORY with a window
+    unfiltered: int  # no filter
 
 
 class Summary(BaseModel):
@@ -176,6 +231,26 @@ class Summary(BaseModel):
     latency_s_p95: float | None = None
     retrieve_s_p95: float | None = None
     cost_usd_mean: float | None = None
+    # S09-T3 (S09-R1 decision 1), pooled over hits: the stale hits of the CURRENT questions, the
+    # hits in the golden window of the questions with one, and the routes matching the golden
+    # mode of the answerable questions. None when no row applies, and in a summary of rows
+    # written before S09-T3.
+    stale: Count | None = None
+    temporal: Rate | None = None
+    router: Rate | None = None
+
+
+def golden_window(question: Question) -> GoldenWindow | None:
+    """The question's golden release window as minors, (20, 28) for 1.20 to 1.28, None an open
+    end; None when it has none."""
+    window = question.release_window
+    if window is None:
+        return None
+
+    def minor(release: str | None) -> int | None:
+        return None if release is None else int(release.removeprefix("1."))
+
+    return minor(window.from_), minor(window.until)
 
 
 def question_key(question: str) -> str:
@@ -227,6 +302,96 @@ def embed_missing(
     return len(missing)
 
 
+class StoredRoutes(BaseModel):
+    """The route file: the router prompt's hash, and each question's route by its key."""
+
+    prompt_sha256: str
+    routes: dict[str, Route]
+
+
+# The hash the route file records: a file made with another prompt is an error (ADR-009 D3).
+ROUTER_PROMPT_SHA256 = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+
+
+def load_routes(path: Path) -> dict[str, Route]:
+    """The stored question routes by key. A missing or empty file holds none; a file made with a
+    different router prompt is an EvalError."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    if not text.strip():
+        return {}
+    stored = StoredRoutes.model_validate_json(text)
+    if stored.prompt_sha256 != ROUTER_PROMPT_SHA256:
+        raise EvalError(
+            f"{path}: made with a different router prompt: delete it and run `make eval-routes`"
+        )
+    return stored.routes
+
+
+def save_routes(path: Path, routes: Mapping[str, Route]) -> None:
+    """Write the route file with the prompt's hash, keys sorted, so the same routes always write
+    the same bytes. Indented, so a reviewer can read each route."""
+    stored = StoredRoutes(prompt_sha256=ROUTER_PROMPT_SHA256, routes=dict(routes))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(stored.model_dump(mode="json"), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def route_missing(
+    questions: Sequence[str], routes: dict[str, Route], router: Router | None, path: Path
+) -> list[float]:
+    """Route, one call each in the questions' order, each question with no route in `routes`;
+    add each new route to `routes` and save the file at `path` after each one, so a failure
+    midway keeps the routes already paid for. Returns each call's time in seconds: an empty list
+    means no call. With no router (no Anthropic key), a missing route is an EvalError; so is a
+    failed call."""
+    missing = {question_key(q): q for q in questions if question_key(q) not in routes}
+    if not missing:
+        return []
+    if router is None:
+        raise EvalError(
+            f"{len(missing)} questions have no stored route and ANTHROPIC_API_KEY is not set: add "
+            "the key to .env (see .env.example)."
+        )
+    times = []
+    for key, question in missing.items():
+        start = time.monotonic()
+        try:
+            routes[key] = router.route(question)
+        except ASK_ERRORS as error:  # RouterError included
+            raise EvalError(f"routing {question!r} failed: {_one_line(error)}") from error
+        times.append(time.monotonic() - start)
+        save_routes(path, routes)
+    return times
+
+
+def routes_line(
+    settings: Settings,
+    times: Sequence[float],
+    stored: int,
+    input_tokens: int,
+    output_tokens: int,
+) -> str:
+    """`make eval-routes`'s line (S09-R1, pinned format): how many questions were routed and how
+    many already had a stored route; when any was routed, the median and the nearest-rank p95 of
+    this command's route times, and its cost at the ROUTER_PRICE_* prices."""
+    line = f"Routed {len(times)} questions with {settings.router_model} ({stored} already stored)."
+    if not times:
+        return line
+    cost = (
+        input_tokens * settings.router_price_input_usd_per_mtok
+        + output_tokens * settings.router_price_output_usd_per_mtok
+    ) / 1e6
+    return (
+        f"{line} Route time: p50 {statistics.median(times):.2f} s, p95 {_p95(times):.2f} s. "
+        f"Cost ${cost:.2f}."
+    )
+
+
 class StoredVectors:
     """The `Embedder` protocol over the stored question vectors: `retrieve` gets each question's
     vector from the file instead of from Voyage. They were embedded as queries."""
@@ -266,14 +431,17 @@ def run(
     reranker: Reranker | None = None,
     rerank_load_s: float | None = None,
     torch_threads: int | None = None,
+    router: Router | None = None,
 ) -> Path:
     """Run the golden set (only its `smoke: true` questions with `smoke`) and write its results
     folder; return the folder. `embedder` is called only for questions with no stored vector.
-    Rerank mode needs `reranker`; `run.json` records its load time and torch's thread count.
+    Rerank and temporal modes need `reranker`; `run.json` records its load time and torch's
+    thread count. Temporal mode (S09-T4) routes, with `router`, each question with no stored
+    route, saving each, then retrieves each question with its route.
 
     Raises GoldenSetError for an invalid golden file, and EvalError when a label matches no
-    stored text, a vector is missing with no embedder, or embedding fails: all before any
-    Anthropic call.
+    stored text, a vector is missing with no embedder, embedding fails, or a route is missing
+    with no router or routing fails: all before any answer call.
     """
     started_at = _now()
     git_sha, git_dirty = _git_state()  # the code the run starts on
@@ -297,6 +465,13 @@ def run(
         f"Question vectors ({vectors_path}): {embedded} of {len(questions)} embedded. "
         f"Voyage requests: {1 if embedded else 0}."
     )
+    temporal_mode = settings.retrieval_mode == "temporal"
+    routes: dict[str, Route] = {}  # none outside temporal mode
+    if temporal_mode:
+        routes_path = _routes_path(settings)
+        routes = load_routes(routes_path)
+        routed = route_missing([q.question for q in questions], routes, router, routes_path)
+        print(f"Question routes ({routes_path}): {len(routed)} of {len(questions)} routed.")
 
     # Created before the first ask, so a name clash stops the run before it costs anything.
     folder = settings.eval_results_dir / f"{name}-{started_at:%Y%m%dT%H%M%SZ}"
@@ -304,12 +479,13 @@ def run(
     stored = StoredVectors(settings.embedding_model, vectors)
     rows = []
     for question in questions:
-        row = _run_question(question, conn, stored, generator, settings, reranker)
+        route = routes.get(question_key(question.question))
+        row = _run_question(question, conn, stored, generator, settings, reranker, route)
         status = row.answer.answer_status if row.answer else row.error
         print(f"{row.id}  {status}  {row.latency_s:.1f} s")
         rows.append(row)
 
-    rerank_mode = settings.retrieval_mode == "rerank"
+    rerank_mode = settings.retrieval_mode in ("rerank", "temporal")  # both load the reranker
     run_info = RunInfo(
         name=name,
         started_at=started_at,
@@ -332,6 +508,9 @@ def run(
             rerank_max_length=settings.rerank_max_length if rerank_mode else None,
             rerank_batch_size=settings.rerank_batch_size if rerank_mode else None,
             torch_threads=torch_threads,
+            router_model=settings.router_model if temporal_mode else None,
+            router_effort=settings.router_effort if temporal_mode else None,
+            history_window_slack=settings.history_window_slack if temporal_mode else None,
             generation_model=settings.generation_model,
             generation_effort=settings.generation_effort,
             generation_max_tokens=settings.generation_max_tokens,
@@ -356,12 +535,15 @@ def _run_question(
     generator: Generator,
     settings: Settings,
     reranker: Reranker | None,
+    route: Route | None,
 ) -> QuestionRow:
-    """Retrieve, answer and score one question. An ask error (`cli.ASK_ERRORS`) becomes the row's
-    `error`. Retrieval reads a stored vector, so it makes no network call: its failure is a bug
-    or a database failure, and stops the run."""
+    """Retrieve (with `route`, in temporal mode), answer and score one question. An ask error
+    (`cli.ASK_ERRORS`) becomes the row's `error`. Retrieval reads a stored vector and a stored
+    route, so it makes no network call: its failure is a bug or a database failure, and stops
+    the run."""
+    record = None if route is None else _route_record(conn, route, settings)
     start = time.monotonic()
-    hits = retrieve(question.question, embedder, conn, settings, reranker)
+    hits = retrieve(question.question, embedder, conn, settings, reranker, route)
     retrieve_s = round(time.monotonic() - start, 3)
     result: Answer | None = None
     usage: TokenUsage | None = None
@@ -376,6 +558,8 @@ def _run_question(
     return QuestionRow(
         id=question.id,
         mode=question.mode,
+        release_window=golden_window(question),
+        route=record,
         answerable=question.answerable,
         hits=[
             RankedHit(
@@ -388,6 +572,8 @@ def _run_question(
                 dense_rank=hit.dense_rank,
                 lexical_rank=hit.lexical_rank,
                 rerank_score=hit.rerank_score,
+                current=hit.current,
+                release_windows=hit.release_windows,
             )
             for rank, hit in enumerate(hits, start=1)
         ],
@@ -403,14 +589,18 @@ def _run_question(
 
 def score_retrieval_only(
     conn: psycopg.Connection[TupleRow], settings: Settings, reranker: Reranker | None = None
-) -> tuple[list[RetrievalMetrics], list[float]]:
+) -> tuple[list[RetrievalMetrics], list[float], Count | None, Rate | None, RouterStats | None]:
     """`make eval-retrieval` (S07-R1 decision 5): retrieve, in the settings' mode, for every
     answerable golden question with its stored vector, and score the hits; return the metrics in
-    file order, and each question's retrieve time in seconds (S08-T4: the wall time of the
-    `retrieve` call, rerank included). No Voyage call, no Anthropic call, nothing written.
+    file order, each question's retrieve time in seconds (S08-T4: the wall time of the
+    `retrieve` call, rerank included), the stale and temporal counts over the top K hits
+    (S09-T3), as `summarize` counts them, and in temporal mode the routes' counts for
+    `router_line` (S09-T4; None in other modes). No Voyage call, no Anthropic call, nothing
+    written.
 
     Raises GoldenSetError and EvalError as `run` does, and EvalError when a question has no
-    stored vector: this command never embeds. Rerank mode needs `reranker`.
+    stored vector, or in temporal mode no stored route: this command never embeds or routes.
+    Rerank and temporal modes need `reranker`.
     """
     golden, _ = check_golden(conn, settings.eval_golden_path)
     questions = [question for question in golden.questions if question.answerable]
@@ -422,32 +612,96 @@ def score_retrieval_only(
             f"no stored vector for {', '.join(missing)} in {vectors_path}: eval-retrieval never "
             "calls Voyage (`make eval-smoke` or `make eval` embeds missing questions)"
         )
+    routes: dict[str, Route] = {}  # none outside temporal mode
+    if settings.retrieval_mode == "temporal":
+        routes_path = _routes_path(settings)
+        routes = load_routes(routes_path)
+        unrouted = [q.id for q in questions if question_key(q.question) not in routes]
+        if unrouted:
+            raise EvalError(
+                f"no stored route for {', '.join(unrouted)} in {routes_path}: eval-retrieval "
+                "never calls the router (`make eval-routes` routes missing questions)"
+            )
     stored = StoredVectors(settings.embedding_model, vectors)
     scores = []
     retrieve_s = []
+    by_mode: list[tuple[Mode | None, list[Hit]]] = []  # for the stale count
+    by_window: list[tuple[GoldenWindow | None, list[Hit]]] = []  # for the temporal count
+    records: list[tuple[Question, RouteRecord]] = []  # for the router line
     for question in questions:
+        route = routes.get(question_key(question.question))
+        if route is not None:
+            records.append((question, _route_record(conn, route, settings)))
         start = time.monotonic()
-        hits = retrieve(question.question, stored, conn, settings, reranker)
+        hits = retrieve(question.question, stored, conn, settings, reranker, route)
         retrieve_s.append(time.monotonic() - start)
         metrics = score_retrieval(question, hits, settings.retrieval_top_k)
         if metrics is not None:  # always: an answerable question has labels (ADR-007)
             scores.append(metrics)
-    return scores, retrieve_s
+        top = hits[: settings.retrieval_top_k]
+        by_mode.append((question.mode, top))
+        by_window.append((golden_window(question), top))
+    stale, temporal = stale_count(by_mode), temporal_count(by_window)
+    routed = router_stats(records) if records else None
+    return scores, retrieve_s, _count(stale), _rate_of(temporal), routed
+
+
+def _routes_path(settings: Settings) -> Path:
+    """The route file of ROUTER_MODEL (ADR-009 D3)."""
+    return settings.eval_routes_dir / f"{settings.router_model}.json"
+
+
+def _route_record(
+    conn: psycopg.Connection[TupleRow], route: Route, settings: Settings
+) -> RouteRecord:
+    """What a row records of its route: the route, and the window and filter `retrieve` derives
+    from it (the same function)."""
+    window, temporal = temporal_plan(conn, route, settings)
+    return RouteRecord(mode=route.mode, time_scope=route.time_scope, window=window, filter=temporal)
+
+
+def router_stats(records: Sequence[tuple[Question, RouteRecord]]) -> RouterStats:
+    """Count the routes of the answerable questions, each given with its question: router
+    accuracy (`router_count`), the resolved windows against the golden ones, and the plans."""
+    windows = [
+        (
+            golden_window(q),
+            None if r.window is None else (r.window.from_release, r.window.until_release),
+        )
+        for q, r in records
+    ]
+    filters = [r.filter for _, r in records]
+    return RouterStats(
+        router=_rate_of(router_count([(q.mode, r.mode) for q, r in records if q.mode is not None])),
+        windows=sum(1 for golden, window in windows if golden is not None and window == golden),
+        golden_windows=sum(1 for golden, _ in windows if golden is not None),
+        extra=sum(1 for golden, window in windows if golden is None and window is not None),
+        current_only=sum(1 for f in filters if f is not None and f.current_only),
+        windowed=sum(1 for f in filters if f is not None and not f.current_only),
+        unfiltered=sum(1 for f in filters if f is None),
+    )
 
 
 def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> str:
-    """`make eval-retrieval`'s first two lines (S07-R1, S08-R1, pinned formats): the mode and its
-    settings, then the metric means over the answerable questions. `timing_line` is the third."""
+    """`make eval-retrieval`'s first two lines (S07-R1, S08-R1, S09-R1, pinned formats): the mode
+    and its settings, then the metric means over the answerable questions. `time_line`,
+    `router_line` (temporal mode only) and `timing_line` follow."""
     hybrid = (
         f"candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
         f"width {settings.hnsw_ef_search}"
     )
-    if settings.retrieval_mode == "rerank":
-        # The revision shortened to 7 characters, as git shortens a commit SHA.
+    # The revision shortened to 7 characters, as git shortens a commit SHA.
+    reranked = (
+        f"{hybrid}, model {settings.rerank_model}@{settings.rerank_revision[:7]}, "
+        f"max length {settings.rerank_max_length}"
+    )
+    if settings.retrieval_mode == "temporal":
         mode = (
-            f"rerank ({hybrid}, model {settings.rerank_model}@{settings.rerank_revision[:7]}, "
-            f"max length {settings.rerank_max_length})"
+            f"temporal ({reranked}, router {settings.router_model}, "
+            f"slack {settings.history_window_slack})"
         )
+    elif settings.retrieval_mode == "rerank":
+        mode = f"rerank ({reranked})"
     elif settings.retrieval_mode == "hybrid":
         mode = f"hybrid ({hybrid})"
     else:
@@ -468,7 +722,7 @@ def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> 
 def timing_line(retrieve_s: Sequence[float], load_s: float | None) -> str:
     """`make eval-retrieval`'s third line (S08-R1 decision 5, pinned format): the median (p50; of
     an even count, the mean of the 2 middle values) and the nearest-rank p95 of the questions'
-    retrieve times, then, in rerank mode, the reranker's load time."""
+    retrieve times, then, in rerank and temporal modes, the reranker's load time."""
 
     def seconds(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.2f} s"
@@ -481,6 +735,43 @@ def timing_line(retrieve_s: Sequence[float], load_s: float | None) -> str:
     )
 
 
+def time_line(stale: Count | None, temporal: Rate | None) -> str:
+    """`make eval-retrieval`'s S09 time line (S09-R1, pinned format), between the metrics and the
+    timing line: the stale-result rate and the temporal accuracy, each as a 3-decimal rate with
+    its counts; n/a for one with no hits."""
+    if stale is None:
+        stale_part = "Stale rate n/a (no CURRENT hits)"
+    else:
+        rate = stale.count / stale.total
+        stale_part = f"Stale rate {rate:.3f} ({stale.count} of {stale.total} CURRENT hits)"
+    if temporal is None:
+        temporal_part = "Temporal accuracy n/a (no dated HISTORY hits)"
+    else:
+        rate = temporal.pass_ / temporal.total
+        temporal_part = (
+            f"Temporal accuracy {rate:.3f} ({temporal.pass_} of {temporal.total} dated HISTORY "
+            "hits)"
+        )
+    return f"{stale_part}  {temporal_part}"
+
+
+def router_line(stats: RouterStats) -> str:
+    """`make eval-retrieval`'s router line in temporal mode (S09-R1, pinned format), between the
+    time line and the timing line: router accuracy as a 3-decimal rate with its counts, the
+    resolved windows equal to the golden ones, of the golden windows, with the windows resolved
+    where golden has none, then how many questions got each plan."""
+    if stats.router is None:
+        accuracy = "n/a"
+    else:
+        rate = stats.router.pass_ / stats.router.total
+        accuracy = f"{rate:.3f} ({stats.router.pass_} of {stats.router.total})"
+    return (
+        f"Router accuracy {accuracy}  Windows {stats.windows} of {stats.golden_windows} "
+        f"({stats.extra} extra)  Plans: {stats.current_only} current-only, "
+        f"{stats.windowed} windowed, {stats.unfiltered} unfiltered"
+    )
+
+
 def summarize(
     name: str,
     golden_sha256: str,
@@ -489,8 +780,9 @@ def summarize(
     settings: Settings,
 ) -> Summary:
     """The run's totals: metric means over the answerable questions, for each check how many of
-    the rows it applies to (not None) passed, and the p95 latencies and the mean cost per question
-    at the settings' prices (S08-T3)."""
+    the rows it applies to (not None) passed, the p95 latencies and the mean cost per question
+    at the settings' prices (S08-T3), the S09 time counts over the rows' hits (S09-T3), and router
+    accuracy over the answerable rows with a route (S09-T4)."""
     metrics = [row.metrics for row in rows if row.metrics is not None]
     refusals = _rate(row.checks.false_refusal for row in rows)
     usages = [row.usage for row in rows if row.usage is not None]
@@ -520,6 +812,19 @@ def summarize(
         retrieve_s_p95=_p95([row.retrieve_s for row in rows if row.retrieve_s is not None]),
         cost_usd_mean=_mean(
             [(u.input_tokens * in_price + u.output_tokens * out_price) / 1e6 for u in usages]
+        ),
+        # A row's hits are its top K, as retrieval returned them.
+        stale=_count(stale_count([(row.mode, row.hits) for row in rows])),
+        temporal=_rate_of(temporal_count([(row.release_window, row.hits) for row in rows])),
+        # Temporal mode's rows record a route (S09-T4); no other mode's do, so None there.
+        router=_rate_of(
+            router_count(
+                [
+                    (row.mode, row.route.mode)
+                    for row in rows
+                    if row.answerable and row.mode is not None and row.route is not None
+                ]
+            )
         ),
     )
 
@@ -573,6 +878,16 @@ def _rate(results: Iterable[bool | None]) -> Rate:
     """Passes and total over the results that aren't None (n/a)."""
     known = [result for result in results if result is not None]
     return Rate(pass_=sum(known), total=len(known))
+
+
+def _count(parts: tuple[int, int] | None) -> Count | None:
+    """A time metric's (count, total) as a `Count`; None stays None."""
+    return None if parts is None else Count(count=parts[0], total=parts[1])
+
+
+def _rate_of(parts: tuple[int, int] | None) -> Rate | None:
+    """A time metric's (passed, total) as a `Rate`; None stays None."""
+    return None if parts is None else Rate(pass_=parts[0], total=parts[1])
 
 
 def _now() -> datetime:

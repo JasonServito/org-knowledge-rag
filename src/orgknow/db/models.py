@@ -132,9 +132,9 @@ class Hit(BaseModel):
 
     Many chunks can hold one text (one per version where a section didn't change). The hit cites
     the chunk in the newest version holding it, and lists the release window of every version
-    holding it, so a gap between releases stays visible. Every other field is the cited chunk's
-    or its version's, except the score and ranks, which say why it ranked where it did (S07-R1
-    decision 4).
+    holding it, so a gap between releases stays visible. `current` also reads every version
+    holding it (S09-T3). Every other field is the cited chunk's or its version's, except the
+    score and ranks, which say why it ranked where it did (S07-R1 decision 4).
     """
 
     chunk_id: int  # what a citation points to
@@ -148,13 +148,27 @@ class Hit(BaseModel):
     heading_path: list[str]
     # (valid_from_release, valid_until_release) per version, by from-release; None is open.
     release_windows: list[tuple[int, int | None]]
+    # Whether some version holding the text is current (an open date window): False when later
+    # edits replaced the text everywhere, i.e. a stale hit (S09-R1 decision 1).
+    current: bool
     claimed_status: str | None
     claimed_stage: str | None
     snapshot_repo: str
     snapshot_sha: str
     source_path: str
     metadata: dict[str, Any]  # the version's front matter, including `title`
-    rrf_score: float | None = None  # the fused score, in hybrid and rerank modes only
+    rrf_score: float | None = None  # the fused score, in hybrid, rerank and temporal modes only
     dense_rank: int | None = None  # position in the dense list, from 1; None if not in it
     lexical_rank: int | None = None  # position in the lexical list, from 1; None if not in it
-    rerank_score: float | None = None  # the cross-encoder's raw score, in rerank mode only
+    rerank_score: float | None = None  # the cross-encoder's raw score (rerank and temporal modes)
+
+
+class TemporalFilter(BaseModel):
+    """Which texts both searches keep for one question (S09-R1 decisions 2-4): a text is kept when
+    some version holding it passes. `current_only`: the version is still current (no
+    `valid_until_date`). `from_release` / `until_release`: the version's release window overlaps
+    them, inclusive; None is an open end."""
+
+    current_only: bool
+    from_release: int | None
+    until_release: int | None

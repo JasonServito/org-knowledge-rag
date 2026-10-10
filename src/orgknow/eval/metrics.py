@@ -1,15 +1,17 @@
-"""Retrieval metrics: score one question's ranked hits against its labels (ADR-007 D3).
+"""Retrieval metrics: score one question's ranked hits against its labels (ADR-007 D3); and the
+S09 time metrics, pooled over many questions' hits (S09-T3).
 
-Pure: a question and its hits in, a record out. No database, no network; K is passed in.
+Pure: questions and their hits in, scores out. No database, no network; K is passed in.
 """
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from typing import Protocol
 
 from pydantic import BaseModel
 
 from orgknow.db.models import Hit
-from orgknow.eval.golden import Label, Question, label_matches
+from orgknow.eval.golden import Label, Mode, Question, label_matches
 
 
 class RetrievalMetrics(BaseModel):
@@ -62,3 +64,78 @@ def score_retrieval(question: Question, hits: Sequence[Hit], k: int) -> Retrieva
         ndcg=dcg / idcg,
         distinct_sections=len({(hit.canonical_id, tuple(hit.heading_path)) for hit in top}),
     )
+
+
+# The S09 time metrics (S09-T3, S09-R1 decision 1). Each pools hits over questions, by the
+# question's golden mode or window, and returns (count, total) for the caller's `Count` or `Rate`;
+# None when no hit applies. Each question's hits are its top K, as retrieval returned them.
+
+
+class TimedHit(Protocol):
+    """The 2 fields the time metrics read from a hit. Both a `Hit` and a results file's hit have
+    them; a results file written before S09-T3 has neither (None)."""
+
+    @property
+    def current(self) -> bool | None: ...
+
+    @property
+    def release_windows(self) -> Sequence[tuple[int, int | None]] | None: ...
+
+
+# A golden release window as minors, (from, until), both inclusive; None is an open end.
+GoldenWindow = tuple[int | None, int | None]
+
+
+def stale_count(
+    questions: Iterable[tuple[Mode | None, Sequence[TimedHit]]],
+) -> tuple[int, int] | None:
+    """Stale-result rate's (stale hits, hits) over the hits of the questions whose golden mode is
+    CURRENT, given as (golden mode, hits). A hit is stale when no current version (an open date
+    window) holds its text: `current` is False. So a CHANGELOG section, valid only at its own
+    release, isn't stale until an edit replaces it. None when no CURRENT question has a hit, or
+    one of its hits has no `current` (a results file written before S09-T3)."""
+    hits = [hit for mode, hits in questions if mode == "CURRENT" for hit in hits]
+    if not hits or any(hit.current is None for hit in hits):
+        return None
+    return sum(1 for hit in hits if not hit.current), len(hits)
+
+
+def in_window(windows: Sequence[tuple[int, int | None]], window: GoldenWindow) -> bool:
+    """Whether any of a hit's release windows overlaps the golden `window`, ends inclusive, an
+    open end (None) on either side open: a version from 20 to 22 is in "until 20", one from 21
+    on isn't."""
+    start, end = window
+    return any(
+        (end is None or valid_from <= end)
+        and (start is None or valid_until is None or valid_until >= start)
+        for valid_from, valid_until in windows
+    )
+
+
+def temporal_count(
+    questions: Iterable[tuple[GoldenWindow | None, Sequence[TimedHit]]],
+) -> tuple[int, int] | None:
+    """Temporal accuracy's (hits in the window, hits) over the hits of the questions with a
+    golden release window, given as (golden window, hits): a hit is in it when one of its
+    release windows overlaps the exact golden window (`in_window`; no slack). None when no such
+    question has a hit, or one of its hits has no release windows (a results file written before
+    S09-T3)."""
+    pairs = [(window, hit) for window, hits in questions if window is not None for hit in hits]
+    if not pairs:
+        return None
+    passed = 0
+    for window, hit in pairs:
+        if hit.release_windows is None:
+            return None
+        if in_window(hit.release_windows, window):
+            passed += 1
+    return passed, len(pairs)
+
+
+def router_count(modes: Iterable[tuple[Mode, Mode]]) -> tuple[int, int] | None:
+    """Router accuracy's (routes matching the golden mode, questions), given (golden mode, routed
+    mode) for each answerable question. None for no questions."""
+    pairs = list(modes)
+    if not pairs:
+        return None
+    return sum(1 for golden, routed in pairs if golden == routed), len(pairs)

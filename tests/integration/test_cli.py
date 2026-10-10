@@ -16,7 +16,7 @@ import httpx2
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
-from tests.conftest import FakeEmbedder, FakeGenerator
+from tests.conftest import FakeEmbedder, FakeGenerator, FakeReranker, FakeRouter
 
 from orgknow.cli import ask, langfuse_client, main
 from orgknow.db.chunks import add_chunks, add_embedding
@@ -25,6 +25,7 @@ from orgknow.db.models import NewChunk, NewVersion
 from orgknow.db.versions import insert_version
 from orgknow.embeddings.embedder import DIMENSIONS, EmbedResult, InputType
 from orgknow.generation.schema import Answer, Generation, ModelAnswer
+from orgknow.retrieval.router import Route, RouterError
 from orgknow.settings import Settings
 
 Conn = psycopg.Connection[TupleRow]
@@ -237,6 +238,146 @@ def test_an_error_is_one_stderr_line_and_exit_1(
     assert out == ""
     # "tracing off", then the error on one line: no traceback.
     assert err.splitlines() == [TRACING_OFF, expected]
+
+
+# Temporal mode (S09-T4): `ask` routes the question live (here with a fake router), prints the
+# route line on stderr, then retrieves with the route's filter. The stored chunk is the PSA page's,
+# current since 1.30.
+
+
+def _temporal(settings: Settings) -> Settings:
+    return settings.model_copy(update={"retrieval_mode": "temporal"})
+
+
+def _route(mode: str, kind: str = "none", start: str | None = None) -> Route:
+    return Route.model_validate(
+        {"mode": mode, "time_scope": {"kind": kind, "start": start, "end": None}}
+    )
+
+
+def test_a_temporal_ask_prints_the_route_line_then_answers_from_the_filtered_texts(
+    conn: Conn,
+    cli_settings: Settings,
+    fake_embedder: FakeEmbedder,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    chunk_id = _store_one_chunk(conn)
+    generator = _answered(chunk_id)
+    router = FakeRouter({QUESTION: _route("CURRENT")})
+    settings = _temporal(cli_settings)
+
+    code = ask(
+        QUESTION,
+        conn,
+        fake_embedder,
+        generator,
+        settings,
+        langfuse_client(settings),
+        FakeReranker({TEXT: 0.5}),
+        router,
+    )
+
+    out, err = capsys.readouterr()
+    assert code == 0
+    assert router.calls == [QUESTION]
+    # The route line goes to stderr, so stdout stays one line of JSON.
+    assert err.splitlines() == [TRACING_OFF, "Route: CURRENT, current text only"]
+    assert [e["chunk_id"] for e in json.loads(out)["evidence"]] == [chunk_id]
+    assert len(generator.calls) == 1
+
+
+def test_a_temporal_ask_whose_filter_keeps_nothing_is_insufficient_evidence_without_a_call(
+    conn: Conn,
+    cli_settings: Settings,
+    fake_embedder: FakeEmbedder,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # "before 1.28": until 1.27, searched until 1.28 (slack 1). The page is valid from 1.30 only.
+    _store_one_chunk(conn)
+    generator, reranker = _answered(0), FakeReranker({TEXT: 0.5})
+    router = FakeRouter({QUESTION: _route("HISTORY", "before", "1.28")})
+    settings = _temporal(cli_settings)
+
+    code = ask(
+        QUESTION,
+        conn,
+        fake_embedder,
+        generator,
+        settings,
+        langfuse_client(settings),
+        reranker,
+        router,
+    )
+
+    out, err = capsys.readouterr()
+    assert code == 0
+    assert err.splitlines() == [
+        TRACING_OFF,
+        "Route: HISTORY, releases until 1.27 (searched until 1.28)",
+    ]
+    answer = json.loads(out)
+    assert (answer["answer_status"], answer["insufficient_evidence_reason"]) == (
+        "insufficient_evidence",
+        "no evidence retrieved",
+    )
+    assert (generator.calls, reranker.calls) == ([], [])
+
+
+class RaisingRouter:
+    """A `Router` whose call fails the way the Claude router can."""
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def route(self, question: str) -> Route:
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            RouterError("no route from the model (stop reason: refusal)"),
+            "error: no route from the model (stop reason: refusal)",
+        ),
+        (
+            anthropic.APIConnectionError(
+                request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+            ),
+            "error: Connection error.",
+        ),
+    ],
+    ids=["router-error", "anthropic-api-error"],
+)
+def test_a_router_failure_is_one_stderr_line_and_exit_1(
+    conn: Conn,
+    cli_settings: Settings,
+    fake_embedder: FakeEmbedder,
+    error: Exception,
+    expected: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _store_one_chunk(conn)
+    generator = _answered(0)
+    settings = _temporal(cli_settings)
+
+    code = ask(
+        QUESTION,
+        conn,
+        fake_embedder,
+        generator,
+        settings,
+        langfuse_client(settings),
+        FakeReranker({TEXT: 0.5}),
+        RaisingRouter(error),
+    )
+
+    out, err = capsys.readouterr()
+    assert code == 1
+    assert out == ""
+    assert err.splitlines() == [TRACING_OFF, expected]
+    # It stops before the question is embedded or answered.
+    assert (fake_embedder.calls, generator.calls) == ([], [])
 
 
 @pytest.mark.parametrize("question", ["", "   "])

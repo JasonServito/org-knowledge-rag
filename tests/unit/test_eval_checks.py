@@ -25,6 +25,7 @@ def _hit(chunk_id: int) -> Hit:
         source_type="docs_page",
         heading_path=["Install"],
         release_windows=[(30, None)],
+        current=True,
         claimed_status=None,
         claimed_stage=None,
         snapshot_repo="website",

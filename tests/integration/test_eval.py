@@ -14,7 +14,7 @@ from pathlib import Path
 import psycopg
 import pytest
 from psycopg.rows import TupleRow
-from tests.conftest import FakeEmbedder, FakeGenerator, FakeReranker
+from tests.conftest import FakeEmbedder, FakeGenerator, FakeReranker, FakeRouter
 
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import add_alias, create_document
@@ -34,12 +34,16 @@ from orgknow.eval.runner import (
     EvalError,
     load_vectors,
     retrieval_report,
+    router_line,
     run,
+    save_routes,
     score_retrieval_only,
+    time_line,
 )
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import GenerationError
 from orgknow.generation.schema import Generation, ModelAnswer, TokenUsage
+from orgknow.retrieval.router import Mode, Route
 from orgknow.settings import Settings
 
 Conn = psycopg.Connection[TupleRow]
@@ -220,7 +224,8 @@ def test_sections_are_listed_by_first_appearance_across_versions(conn: Conn) -> 
 # The eval run (S06-T4). Two stored pages, each text with a vector under the fake embedder's
 # model. The fake embeds every question as [0.5] * 1024, so every question gets the same 3 hits,
 # by cosine distance 1 - cos: "a intro" (all ones: the same direction, 0), "a install" (e1 + e2:
-# 1 - 1 / (16√2) = 0.955806) and "b usage" (e1: 1 - 0.5 / 16 = 0.96875).
+# 1 - 1 / (16√2) = 0.955806) and "b usage" (e1: 1 - 0.5 / 16 = 0.96875). Every page is current
+# since 1.24, so q02's golden window (1.20 to 1.23, S09-T3) holds none of them.
 
 MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
 SHA = "2222222222222222222222222222222222222222"
@@ -244,6 +249,7 @@ questions:
     mode: CURRENT
     answerable: true
     expected_answer: See the intro.
+    release_window: {{from: '1.20', until: '1.23'}}
     smoke: true
     labels:
       - {{document: 'web:/test/a/', section: ''}}
@@ -325,6 +331,7 @@ def run_settings(settings: Settings, tmp_path: Path) -> Settings:
         eval_golden_path=golden_path,
         eval_results_dir=tmp_path / "results",
         eval_vectors_dir=tmp_path / "vectors",
+        eval_routes_dir=tmp_path / "routes",
     )
 
 
@@ -421,6 +428,10 @@ def test_a_run_writes_the_pinned_results_format(
             "rerank_max_length": None,
             "rerank_batch_size": None,
             "torch_threads": None,
+            # S09-T4: the router's fields are null outside temporal mode.
+            "router_model": None,
+            "router_effort": None,
+            "history_window_slack": None,
             "generation_model": "claude-opus-5-5",
             "generation_effort": "medium",
             "generation_max_tokens": 16000,
@@ -431,8 +442,8 @@ def test_a_run_writes_the_pinned_results_format(
     rows = _rows(folder)
     assert [list(row) for row in rows] == [
         [
-            *("id", "mode", "answerable", "hits", "answer", "metrics", "checks", "usage"),
-            *("latency_s", "retrieve_s", "error"),
+            *("id", "mode", "release_window", "route", "answerable", "hits", "answer"),
+            *("metrics", "checks", "usage", "latency_s", "retrieve_s", "error"),
         ]
     ] * 3
     latencies = [row.pop("latency_s") for row in rows]
@@ -454,6 +465,9 @@ def test_a_run_writes_the_pinned_results_format(
             "dense_rank": 1,
             "lexical_rank": None,
             "rerank_score": None,
+            # S09-T3: the page's one version is open, since 1.24.
+            "current": True,
+            "release_windows": [[24, None]],
         },
         {
             "rank": 2,
@@ -465,6 +479,9 @@ def test_a_run_writes_the_pinned_results_format(
             "dense_rank": 2,
             "lexical_rank": None,
             "rerank_score": None,
+            # S09-T3: the page's one version is open, since 1.24.
+            "current": True,
+            "release_windows": [[24, None]],
         },
         {
             "rank": 3,
@@ -476,6 +493,9 @@ def test_a_run_writes_the_pinned_results_format(
             "dense_rank": 3,
             "lexical_rank": None,
             "rerank_score": None,
+            # S09-T3: the page's one version is open, since 1.24.
+            "current": True,
+            "release_windows": [[24, None]],
         },
     ]
     # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
@@ -483,6 +503,8 @@ def test_a_run_writes_the_pinned_results_format(
     assert rows[0] == {
         "id": "q01",
         "mode": "CURRENT",
+        "release_window": None,  # the golden file gives none
+        "route": None,  # routes are temporal mode's only (S09-T4)
         "answerable": True,
         "hits": hits,
         "answer": {
@@ -523,6 +545,8 @@ def test_a_run_writes_the_pinned_results_format(
     assert rows[1] == {
         "id": "q02",
         "mode": "CURRENT",
+        "release_window": [20, 23],  # the golden window as minors
+        "route": None,
         "answerable": True,
         "hits": hits,
         "answer": None,
@@ -535,6 +559,8 @@ def test_a_run_writes_the_pinned_results_format(
     assert rows[2] == {
         "id": "q03",
         "mode": None,
+        "release_window": None,
+        "route": None,
         "answerable": False,
         "hits": hits,
         "answer": {
@@ -564,6 +590,8 @@ def test_a_run_writes_the_pinned_results_format(
     assert summary.pop("cost_usd_mean") == pytest.approx(0.114)
     # Means over q01 and q02. AC2 counts q01 and q03 (the rows with an answer); false refusals
     # count q01 only (q02 has no answer). Tokens: 1000 + 500 + 1000 in, 300 + 16000 + 300 out.
+    # S09-T3: q01 and q02 are CURRENT, 3 hits each, none stale: 0 of 6. q02's golden window
+    # (20 to 23) holds none of its 3 hits, all from 24 on: 0 of 3. No routes outside temporal mode.
     assert summary == {
         "name": "dense",
         "golden_sha256": golden_sha256,
@@ -582,6 +610,9 @@ def test_a_run_writes_the_pinned_results_format(
         "false_refusals": {"count": 0, "total": 1},
         "input_tokens": 2500,
         "output_tokens": 16600,
+        "stale": {"count": 0, "total": 6},
+        "temporal": {"pass": 0, "total": 3},
+        "router": None,
     }
     assert len(generator.calls) == 3
 
@@ -589,11 +620,12 @@ def test_a_run_writes_the_pinned_results_format(
     (run_settings.eval_results_dir / "s04").mkdir()
     (run_settings.eval_results_dir / "s04" / "README.md").write_text("notes", encoding="utf-8")
     table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
-    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4.
+    # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4;
+    # stale 0 / 6 and temporal 0 / 3, both 0.000; router n/a.
     assert table.splitlines()[4:] == [
         f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
         f"| 1.000 | 1.000 | 1.000 | 1.000 | {max(latencies):.1f} | {max(retrieve_times):.1f} "
-        "| 0.1140 |"
+        "| 0.1140 | 0.000 | 0.000 | n/a |"
     ]
 
 
@@ -689,6 +721,155 @@ def test_a_rerank_run_records_the_reranker_and_each_hits_score(
         (chunk_ids["a install"], 0.2),
         (chunk_ids["a intro"], 0.1),
     ]
+
+
+# Temporal mode (S09-T4) with the fake reranker and stored or fake routes. The 3 pages are current
+# since 1.24, so a CURRENT filter keeps them all; HISTORY "before 1.22" (until 21, searched until
+# 22 with slack 1) keeps none.
+
+
+def _route(mode: Mode, kind: str = "none", start: str | None = None) -> Route:
+    return Route.model_validate(
+        {"mode": mode, "time_scope": {"kind": kind, "start": start, "end": None}}
+    )
+
+
+def _routes_path(settings: Settings) -> Path:
+    return settings.eval_routes_dir / "claude-opus-5-5.json"  # the default ROUTER_MODEL
+
+
+def test_a_temporal_run_fills_the_missing_routes_and_retrieves_with_each(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    settings = run_settings.model_copy(update={"retrieval_mode": "temporal"})
+    save_routes(_routes_path(settings), {_key(Q1): _route("CURRENT")})  # q01's is stored
+    router = FakeRouter({Q2: _route("HISTORY", "before", "1.22"), Q3: _route("WHY")})
+    generator = _refusing()
+
+    folder = run(
+        conn,
+        FakeEmbedder(),
+        generator,
+        settings,
+        smoke=False,
+        name="temporal",
+        reranker=FakeReranker(RERANK_SCORES),
+        router=router,
+    )
+
+    # Only the 2 questions with no stored route were routed, in file order, and saved.
+    assert router.calls == [Q2, Q3]
+    stored = json.loads(_routes_path(settings).read_text(encoding="utf-8"))["routes"]
+    assert set(stored) == {_key(Q1), _key(Q2), _key(Q3)}
+    rows = _rows(folder)
+    no_scope = {"kind": "none", "start": None, "end": None}
+    assert [row["route"] for row in rows] == [
+        {
+            "mode": "CURRENT",
+            "time_scope": no_scope,
+            "window": None,
+            "filter": {"current_only": True, "from_release": None, "until_release": None},
+        },
+        {
+            "mode": "HISTORY",
+            "time_scope": {"kind": "before", "start": "1.22", "end": None},
+            "window": {"from_release": None, "until_release": 21},
+            "filter": {"current_only": False, "from_release": None, "until_release": 22},
+        },
+        {"mode": "WHY", "time_scope": no_scope, "window": None, "filter": None},
+    ]
+    # Each route reached retrieval: q02's filter kept no text, so no hits and no answer call.
+    assert [len(row["hits"]) for row in rows] == [3, 0, 3]
+    assert len(generator.calls) == 2
+    run_info = json.loads((folder / "run.json").read_text(encoding="utf-8"))
+    assert {
+        key: run_info["settings"][key]
+        for key in ("rerank_model", "router_model", "router_effort", "history_window_slack")
+    } == {
+        "rerank_model": "BAAI/bge-reranker-base",  # temporal mode reranks too
+        "router_model": "claude-opus-5-5",
+        "router_effort": "low",
+        "history_window_slack": 1,
+    }
+    # q01 (CURRENT) routed CURRENT; q02 (CURRENT) routed HISTORY; q03 is unanswerable: 1 of 2.
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    assert summary["router"] == {"pass": 1, "total": 2}
+
+    # A second run routes nothing: every route is stored.
+    second = FakeRouter({})
+    run(
+        conn,
+        FakeEmbedder(),
+        _refusing(),
+        settings,
+        smoke=False,
+        name="temporal-2",
+        reranker=FakeReranker(RERANK_SCORES),
+        router=second,
+    )
+    assert second.calls == []
+
+
+def test_retrieval_only_in_temporal_mode_reads_the_stored_routes(
+    conn: Conn, chunk_ids: dict[str, int], run_settings: Settings
+) -> None:
+    _store_vectors(run_settings, Q1, Q2)
+    settings = run_settings.model_copy(update={"retrieval_mode": "temporal"})
+    # q01 (CURRENT, no golden window) routed CURRENT "in 1.30": the mode matches, and its window
+    # (30 to 30) is one golden has none for. q02 (CURRENT, golden 1.20 to 1.23) routed HISTORY
+    # "between 1.20 and 1.23": the mode misses, the window (20 to 23) equals golden's. Its filter,
+    # 19 to 24, keeps the 3 pages (current since 1.24), so retrieval is rerank's.
+    save_routes(
+        _routes_path(settings),
+        {
+            _key(Q1): _route("CURRENT", "in", "1.30"),
+            _key(Q2): Route.model_validate(
+                {
+                    "mode": "HISTORY",
+                    "time_scope": {"kind": "between", "start": "1.20", "end": "1.23"},
+                }
+            ),
+        },
+    )
+
+    scores, _, stale, temporal, routed = score_retrieval_only(
+        conn, settings, FakeReranker(RERANK_SCORES)
+    )
+
+    # As rerank's line in the parametrized test above, plus the router and the slack.
+    assert retrieval_report(settings, scores) == (
+        "Mode: temporal (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, "
+        "max length 512, router claude-opus-5-5, slack 1). Answerable questions: 2.\n"
+        "Recall@10 1.000  Hit@10 1.000  MRR 0.667  nDCG@10 0.750"
+    )
+    assert time_line(stale, temporal) == (
+        "Stale rate 0.000 (0 of 6 CURRENT hits)  "
+        "Temporal accuracy 0.000 (0 of 3 dated HISTORY hits)"
+    )
+    assert routed is not None
+    assert router_line(routed) == (
+        "Router accuracy 0.500 (1 of 2)  Windows 1 of 1 (1 extra)  "
+        "Plans: 1 current-only, 1 windowed, 0 unfiltered"
+    )
+
+
+@pytest.mark.usefixtures("chunk_ids")
+def test_retrieval_only_in_temporal_mode_with_a_missing_route_is_an_error(
+    conn: Conn, run_settings: Settings
+) -> None:
+    _store_vectors(run_settings, Q1, Q2)
+    settings = run_settings.model_copy(update={"retrieval_mode": "temporal"})
+    save_routes(_routes_path(settings), {_key(Q1): _route("CURRENT")})  # none for q02
+    reranker = FakeReranker(RERANK_SCORES)
+
+    with pytest.raises(EvalError) as error:
+        score_retrieval_only(conn, settings, reranker)
+
+    assert str(error.value) == (
+        f"no stored route for q02 in {_routes_path(settings)}: eval-retrieval never calls the "
+        "router (`make eval-routes` routes missing questions)"
+    )
+    assert reranker.calls == []  # it stops before any retrieval
 
 
 def test_a_label_matching_nothing_stops_the_run_before_any_call(
@@ -840,9 +1021,18 @@ def test_retrieval_only_scores_each_mode_and_writes_nothing(
     settings = run_settings.model_copy(update={"retrieval_mode": mode})
 
     # Dense and hybrid never call the reranker.
-    scores, retrieve_s = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
+    scores, retrieve_s, stale, temporal, routed = score_retrieval_only(
+        conn, settings, FakeReranker(RERANK_SCORES)
+    )
 
     assert retrieval_report(settings, scores) == expected
+    assert routed is None  # no router line outside temporal mode (S09-T4)
+    # S09-T3: q01 and q02 are CURRENT, with 3 hits each in every mode, all held by an open
+    # version since 1.24; q02's golden window, 1.20 to 1.23, holds none of its 3.
+    assert time_line(stale, temporal) == (
+        "Stale rate 0.000 (0 of 6 CURRENT hits)  "
+        "Temporal accuracy 0.000 (0 of 3 dated HISTORY hits)"
+    )
     assert len(retrieve_s) == 2  # one retrieve time per answerable question (S08-T4)
     assert all(seconds >= 0 for seconds in retrieve_s)
     assert not settings.eval_results_dir.exists()

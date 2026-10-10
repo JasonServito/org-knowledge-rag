@@ -9,6 +9,7 @@ import pytest
 
 from orgknow.embeddings.embedder import DIMENSIONS, EmbedResult, InputType
 from orgknow.generation.schema import Generation, ModelAnswer, TokenUsage
+from orgknow.retrieval.router import Route
 
 
 class GitRepo:
@@ -112,3 +113,16 @@ class FakeGenerator:
     def generate(self, system: str, prompt: str) -> Generation:
         self.calls.append((system, prompt))
         return Generation(output=self.output, stop_reason=self.stop_reason, usage=self.usage)
+
+
+class FakeRouter:
+    """The `Router` protocol with no network: records every call, routes each question from a
+    table."""
+
+    def __init__(self, routes: Mapping[str, Route]) -> None:
+        self.routes = routes
+        self.calls: list[str] = []  # the question per call
+
+    def route(self, question: str) -> Route:
+        self.calls.append(question)
+        return self.routes[question]

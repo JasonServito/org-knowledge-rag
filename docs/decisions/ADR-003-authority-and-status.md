@@ -1,6 +1,6 @@
 # ADR-003: Source types, authority tiers, and status taxonomy
 
-- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence. See "Changes from the S02 spike". The tiers and weights are still hypotheses, to be tuned against the golden set (S09).
+- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S09-R1 sitting (2026-10-09). See the two "Changes" tables at the end. The tiers and weights are still hypotheses, to be tuned against the golden set (S09).
 - **Date:** 2026-09-22
 - **Blueprint refs:** §15, §16; readiness gap #4
 - **Builds on:** validation gate §5.3 (first-draft tiers), ADR-002
@@ -64,7 +64,7 @@ The table shows starting multipliers applied after RRF, to be tuned (up = boost,
 |---|---|---|---|
 | CURRENT | Tiers 1–2; latest release | Blog, superseded versions | Prefer versions valid at the latest release; keep superseded ones only as conflict evidence |
 | HISTORY | — (validity matters more than tier) | Versions outside the requested window | Hard filter on the validity window, with a small slack of ±1 release |
-| CHANGE | Versions at both ends of the window; `release_record` | — | Retrieve per window end, then merge |
+| CHANGE | Versions at both ends of the window; `release_record` | — | Retrieve per window end, then merge. Deferred: no filter until a golden question names a window (S09-R1) |
 | WHY | `kep` Motivation/Alternatives sections, blog, governance | `feature_gate_reference` | No temporal filter by default |
 | UNANSWERABLE | (detected by the evidence grader, not by routing) | — | — |
 
@@ -114,3 +114,11 @@ Each change was decided by the developer in S02-T6.
 | D5 synonyms | "normalized from typos" | `GA` → `stable` only; other unknown values flagged | KEP-1611's `GA` at 7 snapshots; the feature-gate tables use `GA` (spike §6 N, §7 R) |
 | D5 `lifecycle_stage` | per feature × release | per feature × minor release; patch changes flagged | `EventedPLEG`, `DisableNodeKubeProxyVersion` (spike §6 N–O) |
 | Open question 1 | open | answered | spike §6 |
+
+## Changes from the S09-R1 sitting (2026-10-09)
+
+Decided by the developer in the S09-R1 sitting; the evidence is in `docs/slices/S09-temporal-authority.md`, run S09-R1.
+
+| Where | Was | Now | Evidence |
+|---|---|---|---|
+| D4 CHANGE filter | Retrieve per window end, then merge | The same, deferred: CHANGE gets no filter until a golden question names a window (a proposed addition) | None of v0's 9 CHANGE questions names a release or year, so the plan can't be measured |

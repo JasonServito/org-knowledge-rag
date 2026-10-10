@@ -287,14 +287,28 @@ Tasks:
 ### 🟨 S09 Temporal and authority-aware retrieval *(Stage 6)*
 
 - **Outcome:** query modes plus validity filtering plus ADR-003 authority adjustments.
-- **Metrics:** stale-result rate, temporal accuracy, authority-selection accuracy, router accuracy. Plus an ablation row.
-- **Candidate tasks:**
-  - ADR-009: routing approach (rules first vs. LLM)
-  - time expression → release window resolver
-  - `observed_lifecycle` ingestion from CHANGELOG and the feature-gates page
-  - `effective_stage`
-  - authority multipliers in config
-  - mode-specific retrieval plans
+- **Slice doc:** `docs/slices/S09-temporal-authority.md`
+- **Metrics to move:** stale-result rate and temporal accuracy (temporal stage), authority-selection accuracy (authority stage); router accuracy ≥ 0.90 (ADR-009). Plus an ablation row.
+
+Tasks:
+
+- [x] **S09-T1 `[core]` ADR-009: query-mode routing.**
+  - Decided in the S09-R1 sitting (2026-10-09): an LLM router; committed as Accepted in the run PR.
+- [x] **S09-T2 `[core]` Router and time scope → release window.**
+  - The `Router` interface, the Claude router and a fake; time scope → window through the `releases` table; stored routes and `make eval-routes`.
+  - Done when: hand-worked unit tests pass; temporal-mode `make eval-retrieval` prints router accuracy ≥ 34 of 36 and 7 of 9 windows.
+  - Deps: T1.
+- [x] **S09-T3 `[core]` S09 metrics in the eval.**
+  - Stale-result rate, temporal accuracy, router accuracy: printed, stored in the summary, in the table.
+  - Done when: hand-computed unit tests pass; dense, hybrid and rerank print the sitting's baselines.
+- [x] **S09-T4 `[core]` Temporal retrieval mode.**
+  - Route, resolve, then ADR-003 D4's filters inside both searches, on top of rerank.
+  - Done when: fixture integration tests pass; temporal-mode `make eval-retrieval` prints the sitting's prototype numbers.
+  - Deps: T2.
+- [ ] **S09-T5 `[core]` `observed_lifecycle` from the feature-gate reference.** Details in the R2 sitting.
+- [ ] **S09-T6 `[core]` `effective_stage` and authority tier per hit.** Deps: T5.
+- [ ] **S09-T7 `[core]` Authority multipliers and authority-selection accuracy.** Deps: T4, T6.
+- [ ] **S09-T8 `[commodity]` S09 eval run.** 3 paid runs, the row, the write-up, the S09 metric thresholds. Deps: T7.
 
 ### ⬜ S10 Conflict detection *(Stage 7)*
 
@@ -349,7 +363,7 @@ ADRs are decided when their slice starts, not earlier.
 | 006 | Generation model, structured output, tracing | S04 (Accepted) |
 | 007 | Golden-set schema and labeling | S06 |
 | 008 | Reranker model and candidate count | S08 (Accepted) |
-| 009 | Query-mode routing | S09 |
+| 009 | Query-mode routing | S09 (Accepted) |
 | 010 | Conflict detection method | S10 |
 | 011 | Deployment topology | S15 |
 
@@ -359,7 +373,7 @@ ADRs are decided when their slice starts, not earlier.
 
 - **Evaluate Jev (TypeSafe) as a query-mode router (ADR-009) and evidence grader (S11); candidate only.** Reason: a fast typed-decision model might beat rules at mode routing and an LLM at sufficiency grading. Adopt only on ablation evidence. (Researched 2026-09-27; Jev is early access, v1.13.)
   - **S06 prerequisites:** met in the S06-R1 sitting: ADR-007's `mode` is the human-labeled expected mode, and the harness records the false-refusal rate.
-  - **S09:** ADR-009 compares rules / LLM / Jev. Build rules first; try Jev only if rules miss the router-accuracy threshold.
+  - **S09:** done without Jev. The S09-R1 sitting chose an LLM router (ADR-009): rules scored 12 of 36 on a blind rewording, Opus 35 of 36.
   - **S11:** compare an LLM grader with a Jev Noul grader on AC3 and false-refusal rate.
   - **If adopted:** new ADR (dependency); small interface + test fake; pinned version (never `jev-latest`); threshold in config.
   - **Out of bounds:** citation validation (AC2 stays deterministic), date/release resolution, "needs retrieval?" routing.
@@ -369,7 +383,7 @@ ADRs are decided when their slice starts, not earlier.
 - **Cloud runs test (`claude --cloud`).** Reason: lets the laptop stay off on run nights. Check Docker Postgres, the corpus cache, and that the merge gate still holds. Trigger: keeping the laptop on becomes a burden. (Workflow review 2026-10-04.)
 - **Make R3 race-free before a second writer exists (S14 at the latest).** Reason: R3's cross-table part (no alias equals a `canonical_id`) is a check-then-insert in `create_document` and `add_alias`. Two concurrent writers can each miss the other's uncommitted row and both commit the same identifier. Options: a transaction-level advisory lock in both functions, or one shared identifiers table with a single UNIQUE. Safe today: one writer. Same class: two `make embed` runs at once both pay for the same texts, and the second aborts on the primary key. Also: `make ingest-report` reads in several queries, so a report taken during an ingest could mix moments; a REPEATABLE READ read-only snapshot in its two entry points fixes it (Greptile on PR #30). (Found by Greptile on PRs #19, #20 and #22.)
 - **S14: keep past `head` SHAs in the lock.** (Moved from S05 in the S05 sitting, 2026-10-07: it matters only when the lock is refreshed; S05 keeps the 2026-09-30 lock.) Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.) The 18 CHANGELOG versions too: a lock refresh re-dates them and gives a history mismatch (S05-R2, PR #29 parked 17).
-- **S09: near-duplicate crowding in the top 10.** Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)
+- **S09: near-duplicate crowding in the top 10.** (Kept in the S09-R1 sitting: T4's brief reports distinct sections in temporal mode.) Reason: versions of one section that differ by a line each take a slot; seeds #6 and #8 had 6 distinct sections in 10 hits, and #8 missed the docs chunk stating "stable since v1.25" (a hypothesis: only the top 10 is stored). Candidates: the release filter, or one hit per section. (S04-T8, PR #25.)
 - **Link the 25 old single-file KEPs to their later KEP folders by exact title (S10 sitting at the latest, before S06 labels if wanted sooner).** Reason: 24 of 25 match a 1.21 folder's `kep.yaml` title exactly (e.g. `0014-dynamic-audit-configuration.md` → `600-dynamic-audit-configuration/`), so one history per KEP is possible. Needs an ADR-002 amendment (the known limit) and a one-time link rule. No relabel is needed if the link stores each old id as an alias: ADR-007 D2 resolves labels through aliases (S06-R1 sitting, decision 2). (S05-R2 sitting, decision 3, option C.)
 - **S10: check KEP Implementation History dates against the `releases` table.** Reason: seed #8 repeated KEP-2579's "2021-11-03: v1.23 Beta version released" as fact; 1.23 shipped 2021-12-07. The model never sees release dates. (S04-T8, PR #25; Appendix A conflict case.)
 - **Golden set v1: "any of" label groups (ADR-007 amendment).** Reason: v0's A-primary rule leaves equally good copies (CHANGELOG pre-release sections, passing mentions) unlabeled, so a hit on one scores 0, while labeling them all would fill Recall's denominator with duplicates. A group credited once when any member is hit fixes both. Needs an ADR-007 amendment, loader and metric changes, and a relabel into v1 (re-baselined). (S06-T5 decision 2, 2026-10-08.)
@@ -381,4 +395,6 @@ ADRs are decided when their slice starts, not earlier.
 - **S07 parked test gaps (PR #34).** Reason: 3 small gaps the reviewers parked as beyond the plan. (1) No test that the `retrieve` trace records the mode, RRF score and ranks; it was checked once on a demo trace. (2) No lexical test for a question with flags (`--service-account-issuer`); it was checked by hand. (3) The autocommit width test proves the width doesn't leak, not that it applied during the query. (S07-R1, 2026-10-08.)
 - **CI: cache mypy between runs.** Reason: since torch and transformers (S08), CI's `check` job takes 91 s instead of 33 s, mostly mypy reading both packages from cold. Options: cache `.mypy_cache` in the workflow, or stop mypy following torch's imports. (S08-R1, PR #37 question 2.)
 - **S15: the reranker's 2-CPU numbers.** Reason: pinned to 2 CPUs, rerank takes 11.5 s per question at p50, and the projected answer p95 is 22.3–24.2 s, over the 23 s ceiling in 2 of 3 runs (`docs/evaluation.md`, "Reranker timing and S15 sizing"). The levers: a bigger instance, the hosted Voyage fallback, ONNX quantization (ADR-008). (S08-T4/T5.)
-- **S08 parked items (PR #37).** Reason: gaps the reviewers and Greptile parked as beyond the plan. (1) The prices aren't recorded in `run.json` or `summary.json`, so `make eval-resummarize` after a price change would reprice old runs. (2) The real-model test checks only that the weights file is cached; a partial cache would download the rest instead of skipping. (3) No test that the `retrieve` trace records `rerank_score`, that dense and hybrid never import torch, or that they never call the reranker; each was checked by hand. (4) ADR-008 and the cross-encoder docstring give the model-only load (3 s); a process pays about 7.5 s with imports. (5) 3 comments still say "both modes" (`.env.example`, `settings.py`). (6) The integration `settings` fixture reads `.env`, so a local `RETRIEVAL_MODE` would change the mode of tests that don't pin it. (S08-R1, 2026-10-09.)
+- **S08 parked items (PR #37).** Reason: gaps the reviewers and Greptile parked as beyond the plan. (1) The prices aren't recorded in `run.json` or `summary.json`, so `make eval-resummarize` after a price change would reprice old runs. (2) The real-model test checks only that the weights file is cached; a partial cache would download the rest instead of skipping. (3) No test that the `retrieve` trace records `rerank_score`, that dense and hybrid never import torch, or that they never call the reranker; each was checked by hand. (4) ADR-008 and the cross-encoder docstring give the model-only load (3 s); a process pays about 7.5 s with imports. (5) 3 comments still say "both modes" (`.env.example`, `settings.py`). (6) The integration `settings` fixture reads `.env`, so a local `RETRIEVAL_MODE` would change the mode of tests that don't pin it. (S08-R1, 2026-10-09.) **(5) and (6) moved into S09-T4 in the S09-R1 sitting.**
+- **Dated CHANGE questions: retrieve per window end, then merge (ADR-003 D4, deferred).** Reason: none of v0's 9 CHANGE questions names a release or year, so the plan can't be measured; CHANGE gets no filter until a golden question needs it. (S09-R1 sitting, decision 3.)
+- **Golden set v1: a router check set.** Reason: the S09-R1 sitting's blind rewording of v0's 36 answerable questions (Slack style, same meaning) exposed fitted router rules (36/36 → 12/36); it's in `eval/candidates/router-rewording-v0.yaml`. A reworded set, spot-checked by the developer, would test the router and retrieval on wording the system wasn't tuned on. (S09-R1 sitting, 2026-10-09.)

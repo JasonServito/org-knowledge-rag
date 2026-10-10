@@ -9,16 +9,23 @@
 - `run [--smoke] [--name NAME]`: run the golden set (with `--smoke`, its `smoke: true`
   questions) through retrieval and one answer call each, write a results folder under
   EVAL_RESULTS_DIR (`runner.py`), then rebuild the ablation table. Paid: one Anthropic call per
-  question with hits, and one Voyage request when a question has no stored vector. NAME defaults
-  to RETRIEVAL_MODE (`dense`, `hybrid` or `rerank`); with `--smoke`, `<mode>-smoke`, so smoke
-  runs get their own ablation-table row.
-- `retrieval`: retrieve for every answerable golden question with its stored vector, in
-  RETRIEVAL_MODE, and print the retrieval metrics (S07-T3), then the retrieve time's p50 and p95
-  and, in rerank mode, the reranker's load time (S08-T4). Free: no Voyage or Anthropic call; a
-  missing vector is an error. Writes nothing.
+  question with hits, one Voyage request when a question has no stored vector, and in temporal
+  mode one ROUTER_MODEL call per question with no stored route. NAME defaults to RETRIEVAL_MODE
+  (`dense`, `hybrid`, `rerank` or `temporal`); with `--smoke`, `<mode>-smoke`, so smoke runs get
+  their own ablation-table row.
+- `retrieval`: retrieve for every answerable golden question with its stored vector (and in
+  temporal mode its stored route), in RETRIEVAL_MODE, and print the retrieval metrics (S07-T3),
+  the stale-result rate and temporal accuracy (S09-T3), in temporal mode the router line
+  (S09-T4), then the retrieve time's p50 and p95 and, in rerank and temporal modes, the
+  reranker's load time (S08-T4). Free: no Voyage or Anthropic call; a missing vector or route is
+  an error. Writes nothing.
 
-In rerank mode, `run` and `retrieval` load the cross-encoder once, before the question loop, and
-time the load (S08-T2).
+In rerank and temporal modes, `run` and `retrieval` load the cross-encoder once, before the
+question loop, and time the load (S08-T2).
+- `routes`: route every golden question (all of them, answerable or not) with no stored route in
+  EVAL_ROUTES_DIR/<ROUTER_MODEL>.json, saving each route as it comes (S09-T2, ADR-009 D3), then
+  print how many, the route time's p50 and p95, and the cost. Paid: one ROUTER_MODEL call per
+  missing route; the Anthropic key is needed only then.
 - `table`: rebuild the ablation table from every results folder (`table.py`).
 - `resummarize`: rebuild the `summary.json` of every results folder that has one and a
   `questions.jsonl`, from its saved rows (S08-T3), so an older folder gains the newer summary
@@ -50,6 +57,7 @@ from orgknow.eval.golden import (
 )
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import AnthropicGenerator
+from orgknow.retrieval.router import ClaudeRouter
 from orgknow.settings import Settings
 
 if TYPE_CHECKING:  # for the annotation only: importing the module loads torch
@@ -88,8 +96,8 @@ def sections(settings: Settings, document: str) -> int:
 
 
 def _load_reranker(settings: Settings) -> tuple["CrossEncoderReranker | None", float | None]:
-    """`load_reranker` and its load time in seconds; (None, None) outside rerank mode. Raises
-    OSError when the model isn't cached and Hugging Face can't be reached."""
+    """`load_reranker` and its load time in seconds; (None, None) outside rerank and temporal
+    modes. Raises OSError when the model isn't cached and Hugging Face can't be reached."""
     start = time.monotonic()
     reranker = load_reranker(settings)
     return reranker, None if reranker is None else round(time.monotonic() - start, 3)
@@ -117,6 +125,8 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
         embedder = VoyageEmbedder(settings.voyage_api_url, voyage_key, settings.embedding_model)
     client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
     generator = AnthropicGenerator(client, settings)
+    # Temporal mode routes the questions with no stored route (ADR-009 D3); the key is set.
+    router = ClaudeRouter(client, settings) if settings.retrieval_mode == "temporal" else None
     try:
         reranker, load_s = _load_reranker(settings)
     except OSError as error:
@@ -124,7 +134,9 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
     threads = None if reranker is None else reranker.threads
     try:
         with psycopg.connect(settings.database_url) as conn:
-            runner.run(conn, embedder, generator, settings, smoke, name, reranker, load_s, threads)
+            runner.run(
+                conn, embedder, generator, settings, smoke, name, reranker, load_s, threads, router
+            )
     except GoldenSetError as error:
         for line in error.errors:
             print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
@@ -136,15 +148,17 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
 
 
 def retrieval(settings: Settings) -> int:
-    """`make eval-retrieval`: print the mode, the retrieval metrics and the retrieve time; 1 on
-    an error."""
+    """`make eval-retrieval`: print the mode, the retrieval metrics, the time metrics, in temporal
+    mode the router line, and the retrieve time; 1 on an error."""
     try:
         reranker, load_s = _load_reranker(settings)
     except OSError as error:
         return _load_failed(error)
     try:
         with psycopg.connect(settings.database_url) as conn:
-            scores, retrieve_s = runner.score_retrieval_only(conn, settings, reranker)
+            scores, retrieve_s, stale, temporal, routed = runner.score_retrieval_only(
+                conn, settings, reranker
+            )
     except GoldenSetError as error:
         for line in error.errors:
             print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
@@ -153,7 +167,39 @@ def retrieval(settings: Settings) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(runner.retrieval_report(settings, scores))
+    print(runner.time_line(stale, temporal))
+    if routed is not None:  # temporal mode
+        print(runner.router_line(routed))
     print(runner.timing_line(retrieve_s, load_s))
+    return 0
+
+
+def routes(settings: Settings) -> int:
+    """`make eval-routes`: route each golden question with no stored route, then print the routes
+    line; 1 on an error. Routes made before an error stay saved."""
+    golden_path = settings.eval_golden_path
+    try:
+        golden = load_golden_file(golden_path)
+    except GoldenSetError as error:
+        for line in error.errors:
+            print(f"error: {golden_path}: {line}", file=sys.stderr)
+        return 1
+    # The key is needed only when a route is missing: the runner says so if one is.
+    router = None
+    if settings.anthropic_api_key:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
+        router = ClaudeRouter(client, settings)
+    path = settings.eval_routes_dir / f"{settings.router_model}.json"
+    questions = [question.question for question in golden.questions]
+    try:
+        stored = runner.load_routes(path)
+        already = sum(runner.question_key(question) in stored for question in questions)
+        times = runner.route_missing(questions, stored, router, path)
+    except runner.EvalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    tokens = (0, 0) if router is None else (router.input_tokens, router.output_tokens)
+    print(runner.routes_line(settings, times, already, *tokens))
     return 0
 
 
@@ -202,13 +248,14 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     run_parser.add_argument(
         "--name",
         help=(
-            "the pipeline's name in the results (default: RETRIEVAL_MODE, dense, hybrid or "
-            "rerank; with --smoke, RETRIEVAL_MODE-smoke)"
+            "the pipeline's name in the results (default: RETRIEVAL_MODE, dense, hybrid, "
+            "rerank or temporal; with --smoke, RETRIEVAL_MODE-smoke)"
         ),
     )
     commands.add_parser(
         "retrieval", help="score retrieval alone from the stored question vectors (free)"
     )
+    commands.add_parser("routes", help="route every golden question with no stored route (paid)")
     commands.add_parser("table", help="rebuild the ablation table from every results folder")
     commands.add_parser(
         "resummarize", help="rebuild every results folder's summary.json from its saved rows"
@@ -232,6 +279,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         return retrieval(settings)
     if args.command == "resummarize":
         return resummarize(settings)
+    if args.command == "routes":
+        return routes(settings)
     return table(settings)
 
 
