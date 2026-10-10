@@ -11,6 +11,7 @@
     { "path": "docs/decisions/ADR-006-generation-and-tracing.md", "description": "ADR-006: generation model, structured output and tracing" },
     { "path": "docs/decisions/ADR-007-golden-set-and-labeling.md", "description": "ADR-007: golden-set schema, label matching and metric counting" },
     { "path": "docs/decisions/ADR-008-reranker.md", "description": "ADR-008: reranker model, runtime and candidate count" },
+    { "path": "docs/decisions/ADR-009-query-mode-routing.md", "description": "ADR-009: query-mode routing (LLM router, time scope to release window)" },
     { "path": "docs/domain-model.md", "description": "Domain model: tables, rules R1-R15 and data-access functions" }
   ]
 }
