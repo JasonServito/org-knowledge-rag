@@ -1,6 +1,6 @@
 # ADR-003: Source types, authority tiers, and status taxonomy
 
-- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S09-R1 sitting (2026-10-09). See the two "Changes" tables at the end. The tiers and weights are still hypotheses, to be tuned against the golden set (S09).
+- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S09-R1 (2026-10-09) and S09-R2 (2026-10-10) sittings. See the three "Changes" tables at the end. The weights were set on golden set v0 (S09-R2); v1 is their clean test.
 - **Date:** 2026-09-22
 - **Blueprint refs:** §15, §16; readiness gap #4
 - **Builds on:** validation gate §5.3 (first-draft tiers), ADR-002
@@ -122,3 +122,18 @@ Decided by the developer in the S09-R1 sitting; the evidence is in `docs/slices/
 | Where | Was | Now | Evidence |
 |---|---|---|---|
 | D4 CHANGE filter | Retrieve per window end, then merge | The same, deferred: CHANGE gets no filter until a golden question names a window (a proposed addition) | None of v0's 9 CHANGE questions names a release or year, so the plan can't be measured |
+
+## Changes from the S09-R2 sitting (2026-10-10)
+
+Decided by the developer in the S09-R2 sitting; the evidence is in `docs/slices/S09-temporal-authority.md`, run S09-R2. Three devil's-advocate reviews argued against the recommendations first.
+
+| Where | Was | Now | Evidence |
+|---|---|---|---|
+| D2 observation | "`observed_stage` for the release in question (from the CHANGELOG or the feature-gate reference, read from that release's own snapshot)" | From the feature-gate reference only, in an `observed_lifecycle` table: one row per gate × minor release, from that release's own snapshot, named as that release names the gate. No range covers the release → no row. 2+ stages, or an unparseable bound → no stage, `status_confidence = low`. One value outside the vocabulary → kept as written, low | 3,295 rows over 1.20–1.37, 35 of them low |
+| D2 CHANGELOG, and a claimed `disabled` | S09 decides how the release notes become `observed_stage`, and how `disabled` compares | Deferred to S10: its conflict check adds the CHANGELOG (e.g. the `EventedPLEG` revert) and the `disabled` comparison | The reference covers every gate at every release (spike §6 N); release notes are free text |
+| D2 effective stage | Observed, else claimed (low), else unknown | The same, for a KEP through its `kep.yaml` gates: observed only when all its gates' rows at the release are high and give one stage; otherwise the claim, low | Gates disagree in 25 of 1,918 KEP × release pairs |
+| D3 tiers 1–2 | Tier 1 "valid for the target release"; tier 2 "for the target release" | Tier by source type: docs page and feature-gate reference 1, release record 2, governance doc 4, blog 6. Validity stays separate: the filters (D4), and D4's CURRENT boost needs "valid at the latest release" | Same ranking on v0 as tiers that depend on validity; every citation gets a tier (AC1) |
+| D3 KEP tiers | Tier 3: "`effective_stage` has shipped, or status is implemented and consistent"; tier 5 otherwise | Tier 3 when one of its gates has an observation at any release up to the target release, or its status is implemented; tier 5 otherwise. Withdrawn, rejected or replaced: no tier, "superseded proposal" | 42 of 65 gated KEPs have no observation at 1.37 (gates removed after GA), so "observed at the target" would demote shipped KEPs. With only the reference observed, "consistent" can't fail when nothing is observed |
+| D4 placement | Multipliers "applied after RRF" | After the reranker, on its probability: sort by sigmoid(score) × multiplier, ties in the reranker's order; a separate `authority` retrieval mode (temporal + multipliers) | The reranker re-sorts the whole fused pool, so multipliers after RRF do nothing; its raw scores can be negative |
+| D4 values | "Starting multipliers, to be tuned" (no numbers) | Boost ×1.25, demote ×0.8, in config. Rows used: CURRENT (boost tiers 1–2 valid at the latest release; demote blogs), CHANGE (boost release records), WHY (boost KEP Motivation/Alternatives sections, blogs, governance; demote the feature-gate reference); HISTORY none | v0 prototype: MRR 0.759 → 0.813, Recall@10 0.560 → 0.552; ×1.5 gives the same; +2 on the raw score gives MRR 0.783. Devil's advocate: strong (66 of 228 reorderings jump more than 2 logits) and set on v0 |
+| Consequences: `authority_selection_accuracy` | Named | Over the golden CURRENT questions whose labeled documents span 2+ tiers, the share whose first labeled top-10 hit has the best label tier; CURRENT-question MRR is reported beside it, because the same tier code drives the weights and the metric | Flipped tiers lift the metric 3 → 6 of 9 but lower CURRENT MRR (0.637 → 0.628); real tiers: 5 → 9 of 9, 0.783 |
