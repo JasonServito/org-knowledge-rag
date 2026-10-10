@@ -193,7 +193,8 @@ def _traced_answer(
             ) as span:
                 hits = retrieve(question, embedder, conn, settings, reranker, route)
                 # Per hit, why it ranked there (S07-R1 decision 4, S08-T2): a score or rank is
-                # None when the mode doesn't set it or that list didn't hold the text.
+                # None when the mode doesn't set it or that list didn't hold the text. And its
+                # tier (S09-T6; None for a superseded proposal).
                 span.update(
                     output=[
                         {
@@ -203,6 +204,7 @@ def _traced_answer(
                             "dense_rank": h.dense_rank,
                             "lexical_rank": h.lexical_rank,
                             "rerank_score": h.rerank_score,
+                            "tier": None if h.authority is None else h.authority.tier,
                         }
                         for h in hits
                     ]

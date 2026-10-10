@@ -261,6 +261,8 @@ questions:
     labels: []
 """
 USAGE = {"input_tokens": 1000, "output_tokens": 300, "thinking_tokens": 200}  # FakeGenerator's
+# S09-T6: a docs page's authority with no route: tier 1 at the latest release (1.37), no stage.
+DOCS_AT_37 = {"target_release": 37, "tier": 1, "effective_stage": None, "stage_confidence": None}
 # A cut-off answer: the API reported its tokens, so the error row keeps them.
 CUT_OFF = GenerationError(
     "no usable answer from the model (stop reason: max_tokens)",
@@ -468,6 +470,7 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T3: the page's one version is open, since 1.24.
             "current": True,
             "release_windows": [[24, None]],
+            "authority": DOCS_AT_37,
         },
         {
             "rank": 2,
@@ -482,6 +485,7 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T3: the page's one version is open, since 1.24.
             "current": True,
             "release_windows": [[24, None]],
+            "authority": DOCS_AT_37,
         },
         {
             "rank": 3,
@@ -496,6 +500,7 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T3: the page's one version is open, since 1.24.
             "current": True,
             "release_windows": [[24, None]],
+            "authority": DOCS_AT_37,
         },
     ]
     # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
@@ -521,6 +526,10 @@ def test_a_run_writes_the_pinned_results_format(
                     "release_windows": [["1.24", None]],
                     "claimed_status": None,
                     "claimed_stage": None,
+                    "tier": 1,
+                    "superseded_proposal": False,
+                    "effective_stage": None,
+                    "stage_confidence": None,
                     "source_url": "https://github.com/kubernetes/website/blob/"
                     f"{SHA}/content/en/docs/test/page.md",
                 }

@@ -1,5 +1,5 @@
 """Dense retrieval (S04-T5), lexical search (S07-T1) and hybrid retrieval (S07-T3) against the
-test database: `search`, `search_lexical` and `retrieve`.
+test database: `search`, `search_lexical` and `retrieve` (with each hit's authority, S09-T6).
 
 Expected distances are hand arithmetic: the cosine distance of two unit vectors is 1 - cos θ.
 Expected lexical results come from the hand-written texts and Postgres's full-text rules.
@@ -18,7 +18,8 @@ from tests.conftest import FakeEmbedder, FakeReranker
 
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import create_document
-from orgknow.db.models import NewChunk, NewVersion, TemporalFilter
+from orgknow.db.lifecycle import replace_observations
+from orgknow.db.models import Authority, NewChunk, NewVersion, Observation, TemporalFilter
 from orgknow.db.retrieval import search, search_lexical
 from orgknow.db.versions import insert_version
 from orgknow.embeddings.embedder import DIMENSIONS
@@ -153,6 +154,7 @@ def test_a_text_in_two_versions_is_one_hit_citing_the_newest(conn: Conn) -> None
         "dense_rank": 1,
         "lexical_rank": None,
         "rerank_score": None,
+        "authority": None,  # `retrieve` attaches it, not the search (S09-T6)
     }
 
 
@@ -271,6 +273,7 @@ def test_lexical_an_exact_term_ranks_its_text_first(conn: Conn) -> None:
             "dense_rank": None,
             "lexical_rank": 1,
             "rerank_score": None,
+            "authority": None,  # `retrieve` attaches it, not the search (S09-T6)
         }
     ]
 
@@ -722,3 +725,99 @@ def test_temporal_mode_without_a_reranker_raises(
         retrieve(
             SKEW_QUESTION, fake_embedder, conn, _temporal_settings(settings), None, _route("WHY")
         )
+
+
+# Authority per hit (S09-T6), through `retrieve` in every mode. A KEP like KEP-2579 (claims
+# implemented/stable, names the PodSecurity gate) and a docs page, each current since 1.20 with one
+# text holding the question's 3 words. PodSecurity's rows are the dev table's: alpha at 1.22 and
+# stable at 1.25 (both high), none at 1.37. Expected values from the T6 rules, by hand.
+
+PSA_QUESTION = "pod security admission"
+KEP_SUMMARY = "Pod security admission replaces PodSecurityPolicy."
+PSA_PAGE = "Pod security admission enforces the pod security standards."
+
+
+def _authority_rows(conn: Conn, model: str) -> None:
+    kep_version = insert_version(
+        conn,
+        NewVersion(
+            document_id=create_document(conn, "kep:2579", "kep"),
+            content_hash=VERSION_HASH,
+            source_path="keps/sig-auth/2579-psp-replacement/README.md",
+            snapshot_repo="enhancements",
+            snapshot_ref="master",
+            snapshot_sha=SHA_NEW,
+            valid_from_release=20,
+            valid_from_date=D20,
+            claimed_status="implemented",
+            claimed_stage="stable",
+            metadata={
+                "title": "PSP Replacement Policy",
+                "feature-gates": [{"name": "PodSecurity", "components": ["kube-apiserver"]}],
+            },
+        ),
+    )
+    add_chunks(conn, kep_version, [NewChunk(ordinal=0, heading_path=[], text=KEP_SUMMARY)])
+    page = create_document(conn, "web:/test/psa/", "docs_page")
+    page_version = _version(conn, page, (20, None), (D20, None))
+    add_chunks(conn, page_version, [NewChunk(ordinal=0, heading_path=[], text=PSA_PAGE)])
+    _embed(conn, KEP_SUMMARY, E1, model)
+    _embed(conn, PSA_PAGE, E2, model)
+    replace_observations(
+        conn,
+        [
+            Observation(gate="PodSecurity", release=22, stage="alpha", status_confidence="high"),
+            Observation(gate="PodSecurity", release=25, stage="stable", status_confidence="high"),
+        ],
+    )
+
+
+AT_37 = {
+    # No row at 1.37: the claim, low; shipped (a row at 1.22, up to 1.37): tier 3.
+    "kep:2579": Authority(
+        target_release=37, tier=3, effective_stage="stable", stage_confidence="low"
+    ),
+    "web:/test/psa/": Authority(
+        target_release=37, tier=1, effective_stage=None, stage_confidence=None
+    ),
+}
+AT_22 = {
+    "kep:2579": Authority(
+        target_release=22, tier=3, effective_stage="alpha", stage_confidence="high"
+    ),
+    "web:/test/psa/": Authority(
+        target_release=22, tier=1, effective_stage=None, stage_confidence=None
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("mode", "route", "expected"),
+    [
+        # No route: the latest release.
+        ("dense", None, AT_37),
+        ("hybrid", None, AT_37),
+        ("rerank", None, AT_37),
+        # A route given outside temporal mode is ignored.
+        ("rerank", _route("HISTORY", "in", "1.22"), AT_37),
+        # Temporal: CURRENT → the latest; HISTORY "in 1.22" → its until, 1.22.
+        ("temporal", _route("CURRENT"), AT_37),
+        ("temporal", _route("HISTORY", "in", "1.22"), AT_22),
+    ],
+    ids=["dense", "hybrid", "rerank", "rerank-ignores-route", "temporal-current", "temporal-1.22"],
+)
+def test_every_mode_attaches_each_hits_authority_at_the_target_release(
+    conn: Conn,
+    settings: Settings,
+    fake_embedder: FakeEmbedder,
+    mode: str,
+    route: Route | None,
+    expected: dict[str, Authority],
+) -> None:
+    _authority_rows(conn, fake_embedder.model)
+    reranker = FakeReranker({KEP_SUMMARY: 0.9, PSA_PAGE: 0.1})
+    settings = _temporal_settings(settings).model_copy(update={"retrieval_mode": mode})
+
+    hits = retrieve(PSA_QUESTION, fake_embedder, conn, settings, reranker, route)
+
+    assert {hit.canonical_id: hit.authority for hit in hits} == expected

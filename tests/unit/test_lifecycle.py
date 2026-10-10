@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from orgknow.db.lifecycle import Observation
+from orgknow.db.models import Observation
 from orgknow.ingestion.lifecycle import (
     Range,
     file_ranges,

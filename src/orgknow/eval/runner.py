@@ -43,7 +43,7 @@ from psycopg.rows import TupleRow
 from pydantic import BaseModel, ConfigDict, Field
 
 from orgknow.cli import ASK_ERRORS
-from orgknow.db.models import Hit, TemporalFilter
+from orgknow.db.models import Authority, Hit, TemporalFilter
 from orgknow.embeddings.embedder import DIMENSIONS, Embedder, EmbedResult, InputType
 from orgknow.eval.checks import AnswerChecks, check_answer
 from orgknow.eval.golden import (
@@ -139,6 +139,8 @@ class RankedHit(BaseModel):
     # What the S09 time metrics read (S09-T3); absent in older folders.
     current: bool | None = None
     release_windows: list[tuple[int, int | None]] | None = None
+    # The tier and a KEP's stage at the target release (S09-T6); absent in older folders.
+    authority: Authority | None = None
 
 
 class RouteRecord(BaseModel):
@@ -574,6 +576,7 @@ def _run_question(
                 rerank_score=hit.rerank_score,
                 current=hit.current,
                 release_windows=hit.release_windows,
+                authority=hit.authority,
             )
             for rank, hit in enumerate(hits, start=1)
         ],

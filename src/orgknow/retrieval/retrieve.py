@@ -12,16 +12,20 @@ RETRIEVAL_MODE.
   release window keeps texts valid in it, widened by HISTORY_WINDOW_SLACK; every other route has
   no filter. The route comes from the caller (ADR-009: live in `ask`, stored in the eval).
 
-Every dense search uses the HNSW search width HNSW_EF_SEARCH, in every mode.
+Every dense search uses the HNSW search width HNSW_EF_SEARCH, in every mode. In every mode, each
+returned hit carries its authority at the question's target release (S09-T6): the route's in
+temporal mode, the latest release in the others.
 """
 
 import psycopg
 from psycopg.rows import TupleRow
 
+from orgknow.db.lifecycle import observations
 from orgknow.db.models import Hit, TemporalFilter
 from orgknow.db.releases import list_releases
 from orgknow.db.retrieval import search, search_lexical
 from orgknow.embeddings.embedder import Embedder
+from orgknow.retrieval.authority import authority, kep_gates, target_release
 from orgknow.retrieval.fusion import fuse
 from orgknow.retrieval.rerank import Reranker, rerank
 from orgknow.retrieval.router import Route
@@ -57,17 +61,47 @@ def retrieve(
     `reranker` (ValueError without one), which isn't called when the pool is empty. Temporal
     mode: rerank's, on the texts `route`'s filter keeps; it needs `route` too (ValueError
     without one, before any call). A filter that keeps no text gives no hits.
+
+    Every mode: each hit's `authority` (`attach_authority`) at the target release, which only
+    temporal mode takes from the route (`target_release`); the other modes ignore a route.
     """
     mode = settings.retrieval_mode
     if mode == "temporal" and route is None:
         raise ValueError("temporal mode needs a route: none was given")
+    routed = route if mode == "temporal" else None
+    window, temporal = (None, None) if routed is None else temporal_plan(conn, routed, settings)
+    hits = _search(question, embedder, conn, settings, reranker, temporal)
+    if not hits:
+        return []
+    latest = list_releases(conn)[-1].minor  # oldest first; a stored version implies a release
+    target = target_release(None if routed is None else routed.mode, window, latest)
+    return attach_authority(conn, hits, target)
+
+
+def attach_authority(conn: psycopg.Connection[TupleRow], hits: list[Hit], target: int) -> list[Hit]:
+    """`hits`, in order, each with its authority at `target` (S09-T6): one read of the
+    observations, up to `target`, of every feature gate the KEP hits name. It works on any list,
+    a whole pool before a cut included."""
+    gates = {gate for hit in hits if hit.source_type == "kep" for gate in kep_gates(hit.metadata)}
+    rows = observations(conn, sorted(gates), target)
+    return [hit.model_copy(update={"authority": authority(hit, rows, target)}) for hit in hits]
+
+
+def _search(
+    question: str,
+    embedder: Embedder,
+    conn: psycopg.Connection[TupleRow],
+    settings: Settings,
+    reranker: Reranker | None,
+    temporal: TemporalFilter | None,
+) -> list[Hit]:
+    """The mode's hits, best first, among the texts `temporal` keeps (every text when None; dense
+    mode never gets one). See `retrieve`."""
+    mode = settings.retrieval_mode
     vector = embedder.embed([question], "query").vectors[0]
     width = settings.hnsw_ef_search
     if mode == "dense":
         return search(conn, vector, embedder.model, settings.retrieval_top_k, width)
-    temporal = None  # no filter outside temporal mode
-    if mode == "temporal" and route is not None:  # checked above: a route is given
-        _, temporal = temporal_plan(conn, route, settings)
     candidates = settings.retrieval_candidates
     dense = search(conn, vector, embedder.model, candidates, width, temporal)
     lexical = search_lexical(conn, question, candidates, temporal)

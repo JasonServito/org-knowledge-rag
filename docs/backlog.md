@@ -308,7 +308,7 @@ Tasks:
 - [x] **S09-T5 `[core]` `observed_lifecycle` from the feature-gate reference.**
   - Per gate × release, from that release's own snapshot; `make lifecycle`, also run by `make ingest`.
   - Done when: hand-worked unit tests pass; the sitting's 3,295 rows; a re-run stores identical rows.
-- [ ] **S09-T6 `[core]` `effective_stage` and authority tier per hit.**
+- [x] **S09-T6 `[core]` `effective_stage` and authority tier per hit.**
   - Tiers by source type (KEPs: shipped or implemented → 3); in every mode, the prompt and citations (AC1).
   - Done when: hand-worked unit tests pass; the sitting's KEP examples; old modes unchanged.
   - Deps: T5.

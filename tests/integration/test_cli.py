@@ -136,6 +136,11 @@ def test_ask_prints_the_answer_json_offline(
                 "release_windows": [["1.30", None]],
                 "claimed_status": None,
                 "claimed_stage": None,
+                # S09-T6: a docs page is tier 1, with no effective stage.
+                "tier": 1,
+                "superseded_proposal": False,
+                "effective_stage": None,
+                "stage_confidence": None,
                 "source_url": f"https://github.com/kubernetes/website/blob/{SHA}/{PATH}",
             }
         ],

@@ -34,7 +34,7 @@ The 3 time metrics (S09) are pooled over hits instead, by each question's golden
 | **Stale-result rate** | Stale hits ÷ hits, over the CURRENT questions' top 10. A hit is stale when no current version (open date window) holds its text | How often a "now" question gets text a later edit replaced; lower is better |
 | **Temporal accuracy** | Hits with a release window overlapping the exact golden `release_window` ÷ hits, over the questions with one. An open end is open | How often a dated question gets text from the releases it asks about |
 | **Router accuracy** | Answerable questions routed to their golden mode ÷ answerable questions | Whether the router (ADR-009) picks the right kind of question |
-| **AC1** | An `answered` answer cites ≥ 1 chunk, each with a source URL, release windows and source type | Citations are present and resolvable |
+| **AC1** | An `answered` answer cites ≥ 1 chunk, each with a source URL, release windows and source type, and a tier or the superseded-proposal flag (S09-T6) | Citations are present and resolvable |
 | **AC2** | Every cited chunk id was retrieved for this question | No invented citations |
 | **AC3** | An unanswerable question gets `insufficient_evidence` with a reason | The system says "I don't know" when it should |
 | **False refusal** | An answerable question gets `insufficient_evidence` | The system gives up when it shouldn't |

@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from orgknow.db.models import Confidence
+
 AnswerStatus = Literal["answered", "insufficient_evidence"]
 
 
@@ -49,6 +51,12 @@ class Evidence(BaseModel):
     release_windows: list[tuple[str, str | None]]  # ("1.24", "1.29"); None: still valid
     claimed_status: str | None
     claimed_stage: str | None
+    # The hit's authority at the target release (S09-T6). Defaults, so answers saved before it
+    # still load: no tier and not a superseded proposal, which AC1 fails.
+    tier: int | None = None  # None: a superseded proposal, or no authority on the hit
+    superseded_proposal: bool = False  # a KEP claiming withdrawn, rejected or replaced
+    effective_stage: str | None = None  # a KEP's stage at the target release
+    stage_confidence: Confidence | None = None  # high: observed; low: the claim
     source_url: str  # the file on GitHub at the snapshot commit
 
 

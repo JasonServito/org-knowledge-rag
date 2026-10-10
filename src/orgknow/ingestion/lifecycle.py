@@ -22,12 +22,8 @@ from typing import Any
 import psycopg
 from psycopg.rows import TupleRow
 
-from orgknow.db.lifecycle import (
-    Confidence,
-    Observation,
-    reference_versions,
-    replace_observations,
-)
+from orgknow.db.lifecycle import reference_versions, replace_observations
+from orgknow.db.models import Confidence, Observation
 from orgknow.db.releases import list_releases
 from orgknow.ingestion.git_reader import read_file
 from orgknow.ingestion.normalize import decode

@@ -1,25 +1,15 @@
 """Writes to and reads from `observed_lifecycle` (migration 0006), and the read of a release's
-feature-gate reference that `make lifecycle` builds it from (S09-T5)."""
+feature-gate reference that `make lifecycle` builds it from (S09-T5). Also the newest version of
+given documents, for the golden labels' tiers (S09-T6)."""
 
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any
 
 import psycopg
 from psycopg.rows import TupleRow, class_row
 from pydantic import BaseModel
 
-Confidence = Literal["high", "low"]  # ADR-003 D5's status_confidence
-
-
-class Observation(BaseModel):
-    """One `observed_lifecycle` row: a feature gate's stage at a minor release, as that release's
-    own feature-gate reference gives it (ADR-003 D2). The table's CHECKs, not this model, check
-    that a high row has a stage from the vocabulary."""
-
-    gate: str  # the name the release's reference gives it
-    release: int  # the minor: 24 for v1.24
-    stage: str | None  # None: no stage could be read (always low)
-    status_confidence: Confidence
+from orgknow.db.models import NewestVersion, Observation
 
 
 class ReferenceVersion(BaseModel):
@@ -79,5 +69,28 @@ def observations(
             ORDER BY gate, release
             """,
             {"gates": list(gates), "until_release": until_release},
+        )
+        return cur.fetchall()
+
+
+def newest_versions(
+    conn: psycopg.Connection[TupleRow], canonical_ids: Sequence[str]
+) -> list[NewestVersion]:
+    """Return the newest version (latest date window) of each document in `canonical_ids`, by
+    canonical id: what its tier reads. An id with no document is left out; aliases aren't
+    searched."""
+    with conn.cursor(row_factory=class_row(NewestVersion)) as cur:
+        cur.execute(
+            """
+            -- DISTINCT ON keeps each document's first row in the ORDER BY: its newest version.
+            -- One document's date windows never overlap (R8), so the order is total.
+            SELECT DISTINCT ON (d.canonical_id)
+                   d.canonical_id, d.source_type, v.claimed_status, v.claimed_stage, v.metadata
+            FROM documents d
+            JOIN document_versions v ON v.document_id = d.id
+            WHERE d.canonical_id = ANY(%(canonical_ids)s)
+            ORDER BY d.canonical_id, v.valid_from_date DESC
+            """,
+            {"canonical_ids": list(canonical_ids)},
         )
         return cur.fetchall()
