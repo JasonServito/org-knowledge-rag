@@ -301,7 +301,7 @@ Tasks:
 - [x] **S09-T3 `[core]` S09 metrics in the eval.**
   - Stale-result rate, temporal accuracy, router accuracy: printed, stored in the summary, in the table.
   - Done when: hand-computed unit tests pass; dense, hybrid and rerank print the sitting's baselines.
-- [ ] **S09-T4 `[core]` Temporal retrieval mode.**
+- [x] **S09-T4 `[core]` Temporal retrieval mode.**
   - Route, resolve, then ADR-003 D4's filters inside both searches, on top of rerank.
   - Done when: fixture integration tests pass; temporal-mode `make eval-retrieval` prints the sitting's prototype numbers.
   - Deps: T2.

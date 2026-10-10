@@ -21,12 +21,16 @@ from orgknow.eval.runner import (
     QuestionRow,
     RankedHit,
     Rate,
+    RouteRecord,
+    RouterStats,
     Summary,
+    router_line,
     summarize,
     time_line,
     timing_line,
 )
 from orgknow.generation.schema import TokenUsage
+from orgknow.retrieval.router import TimeScope
 from orgknow.settings import Settings
 
 STARTED_AT = datetime(2026, 10, 8, 10, tzinfo=UTC)
@@ -331,3 +335,76 @@ def test_the_retrieve_time_line(
 )
 def test_the_time_line(stale: Count | None, temporal: Rate | None, expected: str) -> None:
     assert time_line(stale, temporal) == expected
+
+
+def _routed(row: QuestionRow, routed: Mode, answerable: bool = True) -> QuestionRow:
+    """The row with a temporal-mode route of mode `routed` (S09-T4); the rest of the route is
+    filler."""
+    route = RouteRecord(
+        mode=routed,
+        time_scope=TimeScope(kind="none", start=None, end=None),
+        window=None,
+        filter=None,
+    )
+    return row.model_copy(update={"answerable": answerable, "route": route})
+
+
+def test_router_accuracy_counts_the_answerable_rows_with_a_route() -> None:
+    rows = [
+        _routed(_row(5.0, mode="CURRENT"), "CURRENT"),  # a match
+        _routed(_row(5.0, mode="HISTORY"), "CHANGE"),  # a miss
+        _routed(_row(5.0), "WHY", answerable=False),  # unanswerable: not counted
+        _row(5.0, mode="WHY").model_copy(update={"answerable": True}),  # no route: not counted
+    ]
+
+    assert _summary(rows).router == Rate(pass_=1, total=2)
+
+
+@pytest.mark.parametrize(
+    ("stats", "expected"),
+    [
+        # The run contract's pinned line: 35 / 36 = 0.9722 -> 0.972.
+        (
+            RouterStats(
+                router=Rate(pass_=35, total=36),
+                windows=7,
+                golden_windows=9,
+                extra=0,
+                current_only=10,
+                windowed=7,
+                unfiltered=19,
+            ),
+            "Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  "
+            "Plans: 10 current-only, 7 windowed, 19 unfiltered",
+        ),
+        # 2 / 3 = 0.6667 -> 0.667. Then no golden mode at all: n/a.
+        (
+            RouterStats(
+                router=Rate(pass_=2, total=3),
+                windows=0,
+                golden_windows=0,
+                extra=2,
+                current_only=0,
+                windowed=1,
+                unfiltered=2,
+            ),
+            "Router accuracy 0.667 (2 of 3)  Windows 0 of 0 (2 extra)  "
+            "Plans: 0 current-only, 1 windowed, 2 unfiltered",
+        ),
+        (
+            RouterStats(
+                router=None,
+                windows=0,
+                golden_windows=0,
+                extra=0,
+                current_only=1,
+                windowed=0,
+                unfiltered=0,
+            ),
+            "Router accuracy n/a  Windows 0 of 0 (0 extra)  "
+            "Plans: 1 current-only, 0 windowed, 0 unfiltered",
+        ),
+    ],
+)
+def test_the_router_line(stats: RouterStats, expected: str) -> None:
+    assert router_line(stats) == expected

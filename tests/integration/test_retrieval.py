@@ -18,11 +18,12 @@ from tests.conftest import FakeEmbedder, FakeReranker
 
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.documents import create_document
-from orgknow.db.models import NewChunk, NewVersion
+from orgknow.db.models import NewChunk, NewVersion, TemporalFilter
 from orgknow.db.retrieval import search, search_lexical
 from orgknow.db.versions import insert_version
 from orgknow.embeddings.embedder import DIMENSIONS
 from orgknow.retrieval.retrieve import retrieve
+from orgknow.retrieval.router import Mode, Route
 from orgknow.settings import Settings
 
 Conn = psycopg.Connection[TupleRow]
@@ -341,6 +342,131 @@ def test_a_text_held_only_by_closed_versions_is_not_current_in_either_search(con
     assert {(hit.text, hit.current) for hit in lexical} == {(replaced, False), (kept, True)}
 
 
+# The temporal filters (S09-T4, S09-R1 decisions 2-4), inside both searches. One page, with a
+# closed version [20, 22] (dates 1.20 to 1.23) and a current one [23, now]. NEW_ONLY is in the
+# current version only, OLD_ONLY in the closed one only (so it isn't current), BOTH in both. Both
+# searches rank them NEW_ONLY, BOTH, OLD_ONLY: by cosine distance to e1, 0, 1 - 1/√2 and 1; and by
+# ts_rank_cd for "kubelet version skew policy", checked in psql: 0.1 (the 4 words adjacent),
+# 0.0333 (spread over 6 positions) and 0.02 (over 8).
+
+D20 = datetime(2020, 12, 8, tzinfo=UTC)
+D23 = datetime(2021, 12, 7, tzinfo=UTC)
+NEW_ONLY = "Kubelet version skew policy in the new text."
+BOTH = "Kubelet version skew and its policy, in both."
+OLD_ONLY = "Kubelet version skew, then later the old policy."
+SKEW_QUESTION = "kubelet version skew policy"
+
+
+def _filtered_rows(conn: Conn, model: str = MODEL) -> dict[str, int]:
+    """The page above, its 3 texts and their `model` vectors. Returns the current version's chunk
+    ids."""
+    document_id = create_document(conn, "web:/test/skew/", "docs_page")
+    old = _version(conn, document_id, (20, 22), (D20, D23), SHA_OLD)
+    new = _version(conn, document_id, (23, None), (D23, None), SHA_NEW)
+    add_chunks(
+        conn,
+        old,
+        [
+            NewChunk(ordinal=0, heading_path=[], text=BOTH),
+            NewChunk(ordinal=1, heading_path=[], text=OLD_ONLY),
+        ],
+    )
+    new_ids = add_chunks(
+        conn,
+        new,
+        [
+            NewChunk(ordinal=0, heading_path=[], text=NEW_ONLY),
+            NewChunk(ordinal=1, heading_path=[], text=BOTH),
+        ],
+    )
+    _embed(conn, NEW_ONLY, E1, model)
+    _embed(conn, BOTH, E1_PLUS_E2, model)
+    _embed(conn, OLD_ONLY, E2, model)
+    return {NEW_ONLY: new_ids[0], BOTH: new_ids[1]}
+
+
+def _filter(
+    current_only: bool = False, from_release: int | None = None, until_release: int | None = None
+) -> TemporalFilter:
+    return TemporalFilter(
+        current_only=current_only, from_release=from_release, until_release=until_release
+    )
+
+
+@pytest.mark.parametrize(
+    ("temporal", "expected"),
+    [
+        # No filter, and a filter with every condition off: today's results.
+        (None, [NEW_ONLY, BOTH, OLD_ONLY]),
+        (_filter(), [NEW_ONLY, BOTH, OLD_ONLY]),
+        # CURRENT: OLD_ONLY is held only by the closed version.
+        (_filter(current_only=True), [NEW_ONLY, BOTH]),
+        # HISTORY "until 20": BOTH passes through its [20, 22] version; NEW_ONLY, only in [23, now],
+        # doesn't.
+        (_filter(until_release=20), [BOTH, OLD_ONLY]),
+        (_filter(until_release=22), [BOTH, OLD_ONLY]),
+        (_filter(until_release=23), [NEW_ONLY, BOTH, OLD_ONLY]),
+        # "from": [20, 22] reaches 22, inclusive, not 23; an open end reaches every release.
+        (_filter(from_release=22), [NEW_ONLY, BOTH, OLD_ONLY]),
+        (_filter(from_release=23), [NEW_ONLY, BOTH]),
+        (_filter(from_release=21, until_release=21), [BOTH, OLD_ONLY]),
+        # A window outside the corpus matches nothing.
+        (_filter(until_release=19), []),
+        (_filter(from_release=40), [NEW_ONLY, BOTH]),  # an open version is valid at 1.40 too
+    ],
+    ids=[
+        "none",
+        "all-off",
+        "current",
+        "until-20",
+        "until-22",
+        "until-23",
+        "from-22",
+        "from-23",
+        "21-to-21",
+        "until-19",
+        "from-40",
+    ],
+)
+def test_both_searches_keep_a_text_when_some_version_holding_it_passes(
+    conn: Conn, temporal: TemporalFilter | None, expected: list[str]
+) -> None:
+    _filtered_rows(conn)
+
+    dense = search(conn, E1, MODEL, 10, WIDTH, temporal)
+    lexical = search_lexical(conn, SKEW_QUESTION, 10, temporal)
+
+    assert [hit.text for hit in dense] == expected
+    assert [hit.text for hit in lexical] == expected
+
+
+def test_a_kept_text_cites_its_newest_version_and_lists_every_window(conn: Conn) -> None:
+    # "until 20" keeps BOTH through its old version; the hit is still the whole text: the chunk in
+    # the newest version holding it, every window, and current (S04-R2 decision 4, S09-T3).
+    chunk_ids = _filtered_rows(conn)
+
+    dense = search(conn, E1, MODEL, 10, WIDTH, _filter(until_release=20))
+    lexical = search_lexical(conn, SKEW_QUESTION, 10, _filter(until_release=20))
+
+    for hits in (dense, lexical):
+        assert [(hit.chunk_id, hit.release_windows, hit.current) for hit in hits[:1]] == [
+            (chunk_ids[BOTH], [(20, 22), (23, None)], True)
+        ]
+
+
+def test_the_filter_runs_before_each_searchs_limit(conn: Conn) -> None:
+    # One place each: NEW_ONLY ranks first in both searches, but "until 20" drops it before the
+    # LIMIT, so BOTH takes the place instead of leaving it empty.
+    _filtered_rows(conn)
+
+    assert [hit.text for hit in search(conn, E1, MODEL, 1, WIDTH, _filter(until_release=20))] == [
+        BOTH
+    ]
+    assert [
+        hit.text for hit in search_lexical(conn, SKEW_QUESTION, 1, _filter(until_release=20))
+    ] == [BOTH]
+
+
 def test_lexical_no_match_and_stop_words_only_give_no_hits(conn: Conn) -> None:
     # The texts hold "the", "and" and "of", but those are stop words: the query keeps no word.
     _page(conn, "web:/test/page/", [GATE_TEXT, "The history of the API and its removal."])
@@ -357,21 +483,27 @@ def test_search_sets_the_search_width_for_its_query(conn: Conn) -> None:
     # set_config(..., true) is local to the transaction. `search` runs inside this outer block, so
     # its own block is a savepoint and the local value lasts until the outer block ends: read it
     # there.
+    # S09-T4: so does the iterative scan, which keeps walking the index past the width while the
+    # filters drop rows (pgvector's default is off).
     with conn.transaction():
         search(conn, E1, MODEL, 10, WIDTH)
-        width = conn.execute("SELECT current_setting('hnsw.ef_search')").fetchone()
+        values = conn.execute(
+            "SELECT current_setting('hnsw.ef_search'), current_setting('hnsw.iterative_scan')"
+        ).fetchone()
 
-    assert width == ("100",)
+    assert values == ("100", "strict_order")
 
 
 def test_on_an_autocommit_connection_the_width_ends_with_the_search(settings: Settings) -> None:
-    # `search` opens its own transaction block, so on an autocommit connection the width applies
-    # to its query and is gone afterwards: back to pgvector's default.
+    # `search` opens its own transaction block, so on an autocommit connection the width and the
+    # iterative scan apply to its query and are gone afterwards: back to pgvector's defaults.
     with psycopg.connect(settings.database_url, autocommit=True) as autocommit:
         assert search(autocommit, E1, MODEL, 10, WIDTH) == []  # no rows outside a test
-        width = autocommit.execute("SELECT current_setting('hnsw.ef_search')").fetchone()
+        values = autocommit.execute(
+            "SELECT current_setting('hnsw.ef_search'), current_setting('hnsw.iterative_scan')"
+        ).fetchone()
 
-    assert width == ("40",)
+    assert values == ("40", "off")
 
 
 # Hybrid retrieval (S07-T3), through `retrieve` with the fake embedder, which embeds every
@@ -504,3 +636,89 @@ def test_rerank_with_an_empty_pool_returns_no_hits_without_a_model_call(
 
     assert retrieve(QUESTION, fake_embedder, conn, _rerank_settings(settings), reranker) == []
     assert reranker.calls == []
+
+
+# Temporal mode (S09-T4), through `retrieve` with the fake embedder, a fake reranker and a route,
+# on the skew page above. The fake embeds every question as the all-ones direction, so dense search
+# ranks by cosine distance to it, by hand: e1 and e2 both 1 - 1/32 = 0.96875, (e1 + e2) / √2
+# 0.955806. With 20 candidates per search every text fits, so the pool is whatever the filter keeps.
+
+
+def _temporal_settings(settings: Settings) -> Settings:
+    return settings.model_copy(
+        update={
+            "retrieval_mode": "temporal",
+            "retrieval_candidates": 20,
+            "retrieval_top_k": 10,
+            "history_window_slack": 1,
+        }
+    )
+
+
+def _route(mode: Mode, kind: str = "none", start: str | None = None) -> Route:
+    return Route.model_validate(
+        {"mode": mode, "time_scope": {"kind": kind, "start": start, "end": None}}
+    )
+
+
+SKEW_SCORES = {NEW_ONLY: 0.9, BOTH: 0.5, OLD_ONLY: 0.1}
+
+
+@pytest.mark.parametrize(
+    ("route", "pool"),
+    [
+        # CURRENT: current text only, whatever the time scope.
+        (_route("CURRENT"), {NEW_ONLY, BOTH}),
+        # HISTORY "before 1.21": until 20, searched until 21 (slack 1): BOTH through [20, 22].
+        (_route("HISTORY", "before", "1.21"), {BOTH, OLD_ONLY}),
+        # HISTORY "since 1.24": from 24, searched from 23: OLD_ONLY's [20, 22] ends before it.
+        (_route("HISTORY", "since", "1.24"), {NEW_ONLY, BOTH}),
+        # No filter: HISTORY with no time scope, and WHY even with one (decision 3).
+        (_route("HISTORY"), {NEW_ONLY, BOTH, OLD_ONLY}),
+        (_route("WHY", "in", "1.20"), {NEW_ONLY, BOTH, OLD_ONLY}),
+    ],
+    ids=["current", "history-before-1.21", "history-since-1.24", "history-no-scope", "why"],
+)
+def test_temporal_mode_reranks_only_the_texts_the_routes_filter_keeps(
+    conn: Conn,
+    settings: Settings,
+    fake_embedder: FakeEmbedder,
+    route: Route,
+    pool: set[str],
+) -> None:
+    _filtered_rows(conn, fake_embedder.model)
+    reranker = FakeReranker(SKEW_SCORES)
+
+    hits = retrieve(
+        SKEW_QUESTION, fake_embedder, conn, _temporal_settings(settings), reranker, route
+    )
+
+    # One reranker call with the filtered pool; hits in the fake's score order.
+    assert [set(texts) for _, texts in reranker.calls] == [pool]
+    assert [hit.text for hit in hits] == [t for t in (NEW_ONLY, BOTH, OLD_ONLY) if t in pool]
+
+
+def test_temporal_mode_with_a_filter_keeping_nothing_returns_no_hits_without_a_model_call(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    # "before 1.15" is outside the corpus: until 14, searched until 15; every version starts at 20.
+    _filtered_rows(conn, fake_embedder.model)
+    reranker = FakeReranker(SKEW_SCORES)
+    route = _route("HISTORY", "before", "1.15")
+
+    hits = retrieve(
+        SKEW_QUESTION, fake_embedder, conn, _temporal_settings(settings), reranker, route
+    )
+
+    assert (hits, reranker.calls) == ([], [])
+
+
+def test_temporal_mode_without_a_reranker_raises(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    _filtered_rows(conn, fake_embedder.model)
+
+    with pytest.raises(ValueError, match="temporal mode needs a reranker"):
+        retrieve(
+            SKEW_QUESTION, fake_embedder, conn, _temporal_settings(settings), None, _route("WHY")
+        )

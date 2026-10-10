@@ -157,10 +157,10 @@ class Hit(BaseModel):
     snapshot_sha: str
     source_path: str
     metadata: dict[str, Any]  # the version's front matter, including `title`
-    rrf_score: float | None = None  # the fused score, in hybrid and rerank modes only
+    rrf_score: float | None = None  # the fused score, in hybrid, rerank and temporal modes only
     dense_rank: int | None = None  # position in the dense list, from 1; None if not in it
     lexical_rank: int | None = None  # position in the lexical list, from 1; None if not in it
-    rerank_score: float | None = None  # the cross-encoder's raw score, in rerank mode only
+    rerank_score: float | None = None  # the cross-encoder's raw score (rerank and temporal modes)
 
 
 class TemporalFilter(BaseModel):

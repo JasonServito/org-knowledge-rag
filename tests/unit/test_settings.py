@@ -280,3 +280,28 @@ def test_router_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_bad_router_settings_are_refused(field: str, value: object) -> None:
     with pytest.raises(ValidationError, match=field):
         Settings(_env_file=None, database_url="x", **{field: value})
+
+
+def test_temporal_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HISTORY_WINDOW_SLACK", raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # S09-R1 decision 2: HISTORY windows widened by 1 release.
+    assert settings.history_window_slack == 1
+
+
+def test_temporal_mode_and_a_slack_of_0_to_5_are_accepted() -> None:
+    for slack in (0, 5):
+        settings = Settings(
+            _env_file=None, database_url="x", retrieval_mode="temporal", history_window_slack=slack
+        )
+        assert (settings.retrieval_mode, settings.history_window_slack) == ("temporal", slack)
+
+
+@pytest.mark.parametrize("slack", ["-1", "6"])
+def test_a_slack_outside_0_to_5_is_refused(monkeypatch: pytest.MonkeyPatch, slack: str) -> None:
+    monkeypatch.setenv("HISTORY_WINDOW_SLACK", slack)
+
+    with pytest.raises(ValidationError, match="history_window_slack"):
+        Settings(_env_file=None, database_url="x")

@@ -87,10 +87,12 @@ eval-sections:
 
 # Score retrieval alone (S07-R1 decision 5): retrieve in RETRIEVAL_MODE for every answerable golden
 # question with its stored vector (EVAL_VECTORS_DIR), then print the mode and Recall@10, Hit@10,
-# MRR and nDCG@10, then the stale-result rate and temporal accuracy (S09-T3), then the retrieve
-# time's p50 and p95 and, in rerank mode, the reranker's load time (S08-T4). Free: no Voyage or
-# Anthropic call (a missing vector is an error), and it writes
-# nothing. The check before a paid `make eval`. Needs `make up`.
+# MRR and nDCG@10, then the stale-result rate and temporal accuracy (S09-T3), then in temporal
+# mode the router line (router accuracy, windows, plans; S09-T4), then the retrieve time's p50 and
+# p95 and, in rerank and temporal modes, the reranker's load time (S08-T4). Temporal mode reads
+# each question's stored route (EVAL_ROUTES_DIR; a missing one is an error, filled by
+# `make eval-routes`). Free: no Voyage or Anthropic call (a missing vector is an error), and it
+# writes nothing. The check before a paid `make eval`. Needs `make up`.
 # Example: RETRIEVAL_MODE=hybrid make eval-retrieval (the default mode is rerank)
 eval-retrieval:
 	uv run python -m orgknow.eval retrieval
@@ -111,12 +113,15 @@ eval-routes:
 # eval/results) and rebuilds the ablation table there. PAID: one Anthropic call per question with
 # hits (needs ANTHROPIC_API_KEY), and one Voyage request when a question has no stored vector
 # (needs VOYAGE_API_KEY then; a re-run makes 0). A label matching no stored text stops it before
-# any paid call; a failed ask is a row, not a crash.
+# any paid call; a failed ask is a row, not a crash. In temporal mode it also routes each question
+# with no stored route (EVAL_ROUTES_DIR; one ROUTER_MODEL call each, saved as it arrives; a re-run
+# makes 0), and retrieves each question with its route.
 eval-smoke:
 	uv run python -m orgknow.eval run --smoke
 
 # The same for every question of the golden set. PAID: one Anthropic call per question (S04: about
-# $0.02-0.04 each), so run it only when asked.
+# $0.02-0.04 each; in temporal mode, plus one router call per question with no stored route), so
+# run it only when asked.
 eval:
 	uv run python -m orgknow.eval run
 

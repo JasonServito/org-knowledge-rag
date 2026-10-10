@@ -277,6 +277,41 @@ What it means for S15 (a projection; S15 decides):
   - The hosted Voyage `rerank-2.5` fallback: no local model, ~$0.0004 per question (not verified).
   - ONNX quantization: not measured; unquantized ONNX was no faster.
 
+## Time scores by stage
+
+S09-R1, 2026-10-10. Retrieval only, from `make eval-retrieval` in each mode: free, from the stored question vectors and, for `temporal`, the stored routes. The paid S09 row and its improvement-rule verdict come with S09-T8.
+
+| Stage | Recall@10 | MRR | Stale rate | Temporal accuracy | Router accuracy |
+|---|---|---|---|---|---|
+| dense | 0.384 | 0.614 | 0.390 | 0.344 | n/a |
+| hybrid | 0.382 | 0.675 | 0.390 | 0.333 | n/a |
+| rerank | 0.516 | 0.703 | 0.380 | 0.356 | n/a |
+| temporal | 0.560 | 0.759 | 0.000 | 0.522 | 0.972 |
+
+- **Stale rate** is over the 100 hits of the 10 CURRENT questions; **temporal accuracy** over the 90 hits of the 9 HISTORY questions with a golden window (see Metrics).
+- **`temporal` is rerank plus the route's filter** inside both searches (S09-R1 decisions 2–4). Its lines:
+
+```
+Recall@10 0.560  Hit@10 1.000  MRR 0.759  nDCG@10 0.535
+Stale rate 0.000 (0 of 100 CURRENT hits)  Temporal accuracy 0.522 (47 of 90 dated HISTORY hits)
+Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-only, 7 windowed, 19 unfiltered
+```
+
+- **These lines are the code's `make eval-retrieval` output.** They equal the sitting prototype's numbers (variant C), which ran the same filter as hand SQL with hand-resolved windows.
+- **The router's one miss is q07** (labeled HISTORY, routed CHANGE). Both plans apply no filter, since q07 names no release, so its retrieval is unchanged (ADR-009).
+- **Windows 7 of 9:** 2 HISTORY questions imply their time instead of naming it, so they get no window and no filter.
+- **Temporal accuracy is 0.522, not 1.0,** because the filter keeps ±1 release and the metric checks the exact window. In the sitting, the exact window (no slack) put 82 of 90 hits in it but lowered Recall@10 to 0.541, MRR to 0.750 and nDCG@10 to 0.525 (S09-R1 decision 2).
+- **The other 3 stages are unchanged** by S09-T4's iterative index scan (`hnsw.iterative_scan`, now on in every mode): their lines match S06, S07 and S08.
+
+**Router timing** (S09-T2's `make eval-routes`, all 43 golden questions, `claude-opus-5-5` at effort low; paid, once):
+
+```
+Routed 43 questions with claude-opus-5-5 (0 already stored). Route time: p50 1.71 s, p95 4.27 s. Cost $0.18.
+```
+
+- **Each live `orgknow ask` in temporal mode adds one router call:** ~1.7 s at p50, ~4.3 s at p95, ~$0.004.
+- **The eval's latency leaves it out:** the routes are stored, like the question vectors.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.

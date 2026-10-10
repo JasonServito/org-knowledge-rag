@@ -25,6 +25,9 @@ from orgknow.settings import Settings
         # S08-T2.
         ("rerank", ["run"], "rerank"),
         ("rerank", ["run", "--smoke"], "rerank-smoke"),
+        # S09-T4.
+        ("temporal", ["run"], "temporal"),
+        ("temporal", ["run", "--smoke"], "temporal-smoke"),
     ],
 )
 def test_the_run_name_defaults_to_the_retrieval_mode(

@@ -7,12 +7,16 @@ on or before d (ADR-002 D3). None is computed by the code under test.
 """
 
 from datetime import date
+from typing import Any, cast
 
 import pytest
+from tests.conftest import FakeEmbedder, FakeReranker
 
 from orgknow.db.models import Release, TemporalFilter
+from orgknow.retrieval.retrieve import retrieve
 from orgknow.retrieval.router import Mode, TimeScope
 from orgknow.retrieval.temporal import Window, plan, resolve_window
+from orgknow.settings import Settings
 
 # (version, release date, end of life), typed from the manifest's `releases.list`.
 RELEASES = [
@@ -122,3 +126,15 @@ def test_history_in_28_with_slack_1_searches_27_to_29() -> None:
 )
 def test_other_routes_have_no_filter(mode: Mode, window: Window | None) -> None:
     assert plan(mode, window, slack=1) is None
+
+
+def test_temporal_mode_without_a_route_raises_before_any_call() -> None:
+    # S09-T4: the route is required in temporal mode. The check comes before the question is
+    # embedded or any query runs, so no database is needed here (the connection is never used).
+    settings = Settings(_env_file=None, database_url="x", retrieval_mode="temporal")
+    embedder = FakeEmbedder()
+
+    with pytest.raises(ValueError, match="temporal mode needs a route: none was given"):
+        retrieve("q", embedder, cast(Any, None), settings, FakeReranker({}))
+
+    assert embedder.calls == []

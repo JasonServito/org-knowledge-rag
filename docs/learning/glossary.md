@@ -47,6 +47,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **MRR** | Mean Reciprocal Rank: the average of 1 / (rank of the first relevant result). |
 | **nDCG** | Normalized Discounted Cumulative Gain: a rank-quality score that rewards relevant results appearing higher. |
 | **Oracle (for grading)** | An independent source of truth used to check a heuristic's output. S02 graded git's rename guesses against the site's redirects, Hugo aliases and gate titles. |
+| **Query router** | A step before search that sorts a question by what it asks for (here an LLM call returning a query mode and the release or year it names), so retrieval can pick a plan per kind of question. Code, not the model, turns the release or year into a release window (ADR-009). |
 | **RAG** | Retrieval-Augmented Generation: retrieve evidence, then have an LLM answer from that evidence. |
 | **Recall@K** | The fraction of relevant items that appear in the top K results. |
 | **RRF** | Reciprocal Rank Fusion: combine ranked lists with score = Σ 1/(k + rank), where k is often 60. |
