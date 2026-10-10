@@ -1,6 +1,6 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed \
-	eval-check eval-sections eval-retrieval eval-smoke eval eval-table eval-resummarize
+	eval-check eval-sections eval-retrieval eval-routes eval-smoke eval eval-table eval-resummarize
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -93,6 +93,16 @@ eval-sections:
 # Example: RETRIEVAL_MODE=hybrid make eval-retrieval (the default mode is rerank)
 eval-retrieval:
 	uv run python -m orgknow.eval retrieval
+
+# Route every golden question (all of them, answerable or not) that has no stored route in
+# EVAL_ROUTES_DIR/<ROUTER_MODEL>.json (ADR-009 D3): the router's mode and time scope per question,
+# keyed like the question vectors. Then print how many were routed and already stored, the route
+# time's p50 and p95, and the cost. PAID: one ROUTER_MODEL call per missing route (needs
+# ANTHROPIC_API_KEY then; v0's 43 cost about $0.19 with claude-opus-5-5 at effort low); a re-run
+# makes 0. Each route is saved as it arrives, so a failure midway keeps the ones paid for. The file
+# records the router prompt's hash: a file made with another prompt is an error.
+eval-routes:
+	uv run python -m orgknow.eval routes
 
 # Run the golden set's smoke questions (`smoke: true`) end to end: retrieval in RETRIEVAL_MODE with
 # each question's stored vector (EVAL_VECTORS_DIR), one answer call, then the metrics and AC1-AC3.

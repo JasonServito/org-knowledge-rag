@@ -19,6 +19,10 @@
 
 In rerank mode, `run` and `retrieval` load the cross-encoder once, before the question loop, and
 time the load (S08-T2).
+- `routes`: route every golden question (all of them, answerable or not) with no stored route in
+  EVAL_ROUTES_DIR/<ROUTER_MODEL>.json, saving each route as it comes (S09-T2, ADR-009 D3), then
+  print how many, the route time's p50 and p95, and the cost. Paid: one ROUTER_MODEL call per
+  missing route; the Anthropic key is needed only then.
 - `table`: rebuild the ablation table from every results folder (`table.py`).
 - `resummarize`: rebuild the `summary.json` of every results folder that has one and a
   `questions.jsonl`, from its saved rows (S08-T3), so an older folder gains the newer summary
@@ -50,6 +54,7 @@ from orgknow.eval.golden import (
 )
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import AnthropicGenerator
+from orgknow.retrieval.router import ClaudeRouter
 from orgknow.settings import Settings
 
 if TYPE_CHECKING:  # for the annotation only: importing the module loads torch
@@ -157,6 +162,35 @@ def retrieval(settings: Settings) -> int:
     return 0
 
 
+def routes(settings: Settings) -> int:
+    """`make eval-routes`: route each golden question with no stored route, then print the routes
+    line; 1 on an error. Routes made before an error stay saved."""
+    golden_path = settings.eval_golden_path
+    try:
+        golden = load_golden_file(golden_path)
+    except GoldenSetError as error:
+        for line in error.errors:
+            print(f"error: {golden_path}: {line}", file=sys.stderr)
+        return 1
+    # The key is needed only when a route is missing: the runner says so if one is.
+    router = None
+    if settings.anthropic_api_key:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
+        router = ClaudeRouter(client, settings)
+    path = settings.eval_routes_dir / f"{settings.router_model}.json"
+    questions = [question.question for question in golden.questions]
+    try:
+        stored = runner.load_routes(path)
+        already = sum(runner.question_key(question) in stored for question in questions)
+        times = runner.route_missing(questions, stored, router, path)
+    except runner.EvalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    tokens = (0, 0) if router is None else (router.input_tokens, router.output_tokens)
+    print(runner.routes_line(settings, times, already, *tokens))
+    return 0
+
+
 def table(settings: Settings) -> int:
     """`make eval-table`: rebuild the ablation table from every results folder."""
     print(f"Ablation table: {write_table(settings.eval_results_dir)}")
@@ -209,6 +243,7 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     commands.add_parser(
         "retrieval", help="score retrieval alone from the stored question vectors (free)"
     )
+    commands.add_parser("routes", help="route every golden question with no stored route (paid)")
     commands.add_parser("table", help="rebuild the ablation table from every results folder")
     commands.add_parser(
         "resummarize", help="rebuild every results folder's summary.json from its saved rows"
@@ -232,6 +267,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         return retrieval(settings)
     if args.command == "resummarize":
         return resummarize(settings)
+    if args.command == "routes":
+        return routes(settings)
     return table(settings)
 
 

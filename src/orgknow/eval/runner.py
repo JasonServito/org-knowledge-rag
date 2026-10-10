@@ -18,6 +18,9 @@ In rerank mode (S08-T2), both get the reranker the caller loaded once, before th
 
 `resummarize` (S08-T3, `make eval-resummarize`) rebuilds a folder's `summary.json` from its saved
 rows, so a summary written before a new summary field gains it with no new run.
+
+The question routes (S09-T2, ADR-009 D3) are stored like the vectors, one file per router model,
+keyed the same way: `route_missing` (`make eval-routes`) routes only questions with no route.
 """
 
 import hashlib
@@ -51,6 +54,7 @@ from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
 from orgknow.retrieval.rerank import Reranker
 from orgknow.retrieval.retrieve import retrieve
+from orgknow.retrieval.router import SYSTEM_PROMPT, Route, Router, RouterError
 from orgknow.settings import Settings
 
 
@@ -225,6 +229,96 @@ def embed_missing(
         raise EvalError(f"embedding the questions failed: {_one_line(error)}") from error
     vectors.update(zip(missing, result.vectors, strict=True))
     return len(missing)
+
+
+class StoredRoutes(BaseModel):
+    """The route file: the router prompt's hash, and each question's route by its key."""
+
+    prompt_sha256: str
+    routes: dict[str, Route]
+
+
+# The hash the route file records: a file made with another prompt is an error (ADR-009 D3).
+ROUTER_PROMPT_SHA256 = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+
+
+def load_routes(path: Path) -> dict[str, Route]:
+    """The stored question routes by key. A missing or empty file holds none; a file made with a
+    different router prompt is an EvalError."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    if not text.strip():
+        return {}
+    stored = StoredRoutes.model_validate_json(text)
+    if stored.prompt_sha256 != ROUTER_PROMPT_SHA256:
+        raise EvalError(
+            f"{path}: made with a different router prompt: delete it and run `make eval-routes`"
+        )
+    return stored.routes
+
+
+def save_routes(path: Path, routes: Mapping[str, Route]) -> None:
+    """Write the route file with the prompt's hash, keys sorted, so the same routes always write
+    the same bytes. Indented, so a reviewer can read each route."""
+    stored = StoredRoutes(prompt_sha256=ROUTER_PROMPT_SHA256, routes=dict(routes))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(stored.model_dump(mode="json"), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def route_missing(
+    questions: Sequence[str], routes: dict[str, Route], router: Router | None, path: Path
+) -> list[float]:
+    """Route, one call each in the questions' order, each question with no route in `routes`;
+    add each new route to `routes` and save the file at `path` after each one, so a failure
+    midway keeps the routes already paid for. Returns each call's time in seconds: an empty list
+    means no call. With no router (no Anthropic key), a missing route is an EvalError; so is a
+    failed call."""
+    missing = {question_key(q): q for q in questions if question_key(q) not in routes}
+    if not missing:
+        return []
+    if router is None:
+        raise EvalError(
+            f"{len(missing)} questions have no stored route and ANTHROPIC_API_KEY is not set: add "
+            "the key to .env (see .env.example)."
+        )
+    times = []
+    for key, question in missing.items():
+        start = time.monotonic()
+        try:
+            routes[key] = router.route(question)
+        except (*ASK_ERRORS, RouterError) as error:
+            raise EvalError(f"routing {question!r} failed: {_one_line(error)}") from error
+        times.append(time.monotonic() - start)
+        save_routes(path, routes)
+    return times
+
+
+def routes_line(
+    settings: Settings,
+    times: Sequence[float],
+    stored: int,
+    input_tokens: int,
+    output_tokens: int,
+) -> str:
+    """`make eval-routes`'s line (S09-R1, pinned format): how many questions were routed and how
+    many already had a stored route; when any was routed, the median and the nearest-rank p95 of
+    this command's route times, and its cost at the ROUTER_PRICE_* prices."""
+    line = f"Routed {len(times)} questions with {settings.router_model} ({stored} already stored)."
+    if not times:
+        return line
+    cost = (
+        input_tokens * settings.router_price_input_usd_per_mtok
+        + output_tokens * settings.router_price_output_usd_per_mtok
+    ) / 1e6
+    return (
+        f"{line} Route time: p50 {statistics.median(times):.2f} s, p95 {_p95(times):.2f} s. "
+        f"Cost ${cost:.2f}."
+    )
 
 
 class StoredVectors:

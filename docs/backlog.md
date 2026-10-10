@@ -294,7 +294,7 @@ Tasks:
 
 - [x] **S09-T1 `[core]` ADR-009: query-mode routing.**
   - Decided in the S09-R1 sitting (2026-10-09): an LLM router; committed as Accepted in the run PR.
-- [ ] **S09-T2 `[core]` Router and time scope → release window.**
+- [x] **S09-T2 `[core]` Router and time scope → release window.**
   - The `Router` interface, the Claude router and a fake; time scope → window through the `releases` table; stored routes and `make eval-routes`.
   - Done when: hand-worked unit tests pass; temporal-mode `make eval-retrieval` prints router accuracy ≥ 34 of 36 and 7 of 9 windows.
   - Deps: T1.

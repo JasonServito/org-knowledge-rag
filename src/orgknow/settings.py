@@ -90,7 +90,17 @@ class Settings(BaseSettings):
     # per question (S08-T3). Output tokens include reasoning.
     generation_price_input_usd_per_mtok: float = 4.0
     generation_price_output_usd_per_mtok: float = 20.0
-    # No key: the answer step can't run (tests use a fake generator).
+    # The query router (ADR-009 D1): one call per question, before retrieval, its output a mode
+    # and the time scope the question names. Effort low, as the S09-R1 sitting measured it. The
+    # cap (1 to 16,000) counts reasoning; the sitting's routes used ~40 output tokens each,
+    # reasoning included (ADR-009). The prices, in US dollars per million tokens, give
+    # `make eval-routes`'s cost.
+    router_model: str = "claude-opus-5-5"
+    router_effort: Effort = "low"
+    router_max_tokens: int = Field(default=4096, ge=1, le=16_000)
+    router_price_input_usd_per_mtok: float = 4.0
+    router_price_output_usd_per_mtok: float = 20.0
+    # No key: the answer step and the router can't run (tests use fakes).
     anthropic_api_key: SecretStr | None = None
     # Langfuse tracing (ADR-006 D3): one trace per `ask`. Either key unset: tracing off, and `ask`
     # still runs. The public key is a SecretStr too, so neither key is ever printed.
@@ -106,6 +116,10 @@ class Settings(BaseSettings):
     # The stored question vectors, one file per embedding model (S06-R1 decision 7): a run embeds
     # only questions with no vector here, so retrieval is exactly repeatable.
     eval_vectors_dir: Path = Path("eval/question_vectors")
+    # The stored question routes, one file per router model (ADR-009 D3): `make eval-routes`
+    # routes only questions with no route here, so retrieval in temporal mode is exactly
+    # repeatable.
+    eval_routes_dir: Path = Path("eval/question_routes")
 
     @model_validator(mode="after")
     def _search_width_covers_each_search(self) -> Self:

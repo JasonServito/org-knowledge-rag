@@ -245,3 +245,38 @@ def test_rerank_mode_is_accepted() -> None:
 def test_bad_rerank_settings_are_refused(field: str, value: int) -> None:
     with pytest.raises(ValidationError, match=field):
         Settings(_env_file=None, database_url="x", **{field: value})
+
+
+def test_router_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "ROUTER_MODEL",
+        "ROUTER_EFFORT",
+        "ROUTER_MAX_TOKENS",
+        "ROUTER_PRICE_INPUT_USD_PER_MTOK",
+        "ROUTER_PRICE_OUTPUT_USD_PER_MTOK",
+        "EVAL_ROUTES_DIR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # ADR-009 D1 and the S09-R1 contract, "Claude's calls", Settings.
+    assert settings.router_model == "claude-opus-5-5"
+    assert settings.router_effort == "low"
+    assert settings.router_max_tokens == 4096
+    assert settings.router_price_input_usd_per_mtok == 4.0
+    assert settings.router_price_output_usd_per_mtok == 20.0
+    assert settings.eval_routes_dir == Path("eval/question_routes")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("router_effort", "turbo"),
+        ("router_max_tokens", 0),
+        ("router_max_tokens", 16_001),
+    ],
+)
+def test_bad_router_settings_are_refused(field: str, value: object) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: value})

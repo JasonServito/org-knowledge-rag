@@ -158,3 +158,14 @@ class Hit(BaseModel):
     dense_rank: int | None = None  # position in the dense list, from 1; None if not in it
     lexical_rank: int | None = None  # position in the lexical list, from 1; None if not in it
     rerank_score: float | None = None  # the cross-encoder's raw score, in rerank mode only
+
+
+class TemporalFilter(BaseModel):
+    """Which texts both searches keep for one question (S09-R1 decisions 2-4): a text is kept when
+    some version holding it passes. `current_only`: the version is still current (no
+    `valid_until_date`). `from_release` / `until_release`: the version's release window overlaps
+    them, inclusive; None is an open end."""
+
+    current_only: bool
+    from_release: int | None
+    until_release: int | None
