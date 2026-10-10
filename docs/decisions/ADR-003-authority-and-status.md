@@ -31,40 +31,44 @@ The gate proposed a 7-tier authority list. Two problems prevent using it as-is:
 
 For any KEP or feature, compute `effective_stage`:
 
-1. `observed_stage` for the release in question (from the CHANGELOG or the feature-gate reference, read from that release's own snapshot), else
+1. `observed_stage` for the release in question (from the feature-gate reference only, read from that release's own snapshot), else
 2. `claimed_stage` from `kep.yaml`, with `status_confidence = low`, else
 3. null: the stage is unknown.
+
+Observations live in an `observed_lifecycle` table: one row per gate × minor release, named as that release names the gate. No range covers the release → no row. A KEP is observed through its `kep.yaml` gates: only when all its gates' rows at the release are high and give one stage; otherwise step 2 (S09-R2).
 
 A missing `claimed_stage` means **no claim**. That's a separate state from a low-confidence claim, and it never raises `claim_mismatch`. 76 KEP metadata versions have no stage (spike §7 R).
 
 When `observed ≠ claimed`, emit a `claim_mismatch` flag. The conflict detector consumes it. The flag is never silently resolved in the index.
 
 **The feature-gate reference is an observation that can be wrong.** Its two formats agree for 287 of the 293 gates they share, over their whole history. But the `EventedPLEG` revert appears only in the CHANGELOG, and later files rewrite earlier ranges (spike §6 O). So:
-- the CHANGELOG is also a source of `observed_stage`, and a disagreement between the two is conflict evidence (D6)
-- ranges that leave a release's stage undefined or ambiguous (0–3% of gates per release), or that change at a patch release within R, set `status_confidence = low`. The parser never picks one range.
+- the CHANGELOG is needed too, and a disagreement between the two is conflict evidence (D6). Deferred to S10: its conflict check adds the CHANGELOG, and how a claimed `disabled` compares (S09-R2)
+- 2+ stages at R (a change at a patch release within R included), or an unparseable bound → no stage, `status_confidence = low`. One value outside the vocabulary → kept as written, low. The parser never picks one range.
 
 ### D3. Base authority tiers (1 = highest)
 
 | Tier | Source |
 |---|---|
-| 1 | `docs_page` or `feature_gate_reference`, valid for the target release |
-| 2 | `release_record` for the target release |
-| 3 | `kep`, where `effective_stage` has shipped (alpha or later observed) or status is implemented and consistent |
-| 4 | `governance_doc` (current version) |
-| 5 | `kep`: provisional or implementable, or claim not confirmed |
+| 1 | `docs_page` or `feature_gate_reference` |
+| 2 | `release_record` |
+| 3 | `kep`, where one of its gates has an observation at any release up to the target release, or its status is implemented |
+| 4 | `governance_doc` |
+| 5 | `kep`, otherwise |
 | 6 | `blog_post`. Dated and time-bound. Authoritative for its date, not for "now". |
 | 7 | `discussion` |
-| — | `kep` that is withdrawn, rejected or replaced: kept, marked `superseded_proposal` |
+| — | `kep` that is withdrawn, rejected or replaced: kept, no tier, marked `superseded_proposal` |
+
+Tiers go by source type, with a KEP's set by its gates and status (S09-R2). Validity stays separate: the filters in D4, and D4's CURRENT boost needs "valid at the latest release".
 
 ### D4. Mode-dependent adjustments
 
-The table shows starting multipliers applied after RRF, to be tuned (up = boost, down = demote, — = neutral).
+Multipliers apply after the reranker, on its probability: hits sort by sigmoid(score) × multiplier, ties in the reranker's order. Boost ×1.25, demote ×0.8, — = neutral; the values live in config. A separate `authority` retrieval mode (temporal + multipliers) applies them (S09-R2).
 
 | Mode | Boost | Demote | Filter |
 |---|---|---|---|
-| CURRENT | Tiers 1–2; latest release | Blog, superseded versions | Prefer versions valid at the latest release; keep superseded ones only as conflict evidence |
-| HISTORY | — (validity matters more than tier) | Versions outside the requested window | Hard filter on the validity window, with a small slack of ±1 release |
-| CHANGE | Versions at both ends of the window; `release_record` | — | Retrieve per window end, then merge. Deferred: no filter until a golden question names a window (S09-R1) |
+| CURRENT | Tiers 1–2 valid at the latest release | Blog | Prefer versions valid at the latest release; keep superseded ones only as conflict evidence |
+| HISTORY | — (validity matters more than tier) | — | Hard filter on the validity window, with a small slack of ±1 release |
+| CHANGE | `release_record` | — | Retrieve per window end, then merge. Deferred: no filter until a golden question names a window (S09-R1) |
 | WHY | `kep` Motivation/Alternatives sections, blog, governance | `feature_gate_reference` | No temporal filter by default |
 | UNANSWERABLE | (detected by the evidence grader, not by routing) | — | — |
 
@@ -91,11 +95,11 @@ The table shows starting multipliers applied after RRF, to be tuned (up = boost,
 
 - Tiers and multipliers live in config so ablations can vary them. So does the synonym list.
 - Two golden-set metrics get defined inputs from this ADR:
-  - `authority_selection_accuracy`
+  - `authority_selection_accuracy` (defined in the S09-R2 change table)
   - `stale_result_rate`
 - The four gate conflict cases seed the §16 conflict test set: KEP-2572, `versioning.md`, KEP-2579 `replaces: []`, KEP-4858.
 - **Known limit:** keying `lifecycle_stage` by minor release can't say "beta in 1.28.0–1.28.5, alpha from 1.28.6" (`EventedPLEG`). It only flags that the release is ambiguous.
-- **Deferred to S09:** how the CHANGELOG's release notes become `observed_stage` values, and how a claimed `disabled` compares with an observed stage.
+- **Deferred to S10** (S09-R2 sitting): how the CHANGELOG's release notes become `observed_stage` values, and how a claimed `disabled` compares with an observed stage. S10's conflict check adds both.
 
 ## Open (resolve during Stage 6, not blocking now)
 
