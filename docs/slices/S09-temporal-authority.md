@@ -398,7 +398,7 @@ At most 3 asks; the Langfuse trace links go in the brief.
 
 ### Run S09-R2: authority, and the S09 eval run
 
-- **Status:** planned
+- **Status:** PR open (T5–T7 done; T8 and the retro parked)
 - **Branch:** `s09-r2-authority`
 - **Tasks, in this order:** S09-T5 (gate stages) → S09-T6 (tiers per hit) → S09-T7 (`authority` mode and metric) → S09-T8 (the S09 eval run).
 - **Closes the slice:** yes, once the retro (`/slice-retro`) follows.
