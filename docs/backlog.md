@@ -312,7 +312,7 @@ Tasks:
   - Tiers by source type (KEPs: shipped or implemented → 3); in every mode, the prompt and citations (AC1).
   - Done when: hand-worked unit tests pass; the sitting's KEP examples; old modes unchanged.
   - Deps: T5.
-- [ ] **S09-T7 `[core]` Authority multipliers and authority-selection accuracy.**
+- [x] **S09-T7 `[core]` Authority multipliers and authority-selection accuracy.**
   - An `authority` mode: ×1.25 / ×0.8 on the reranker's probability, per ADR-003 D4; the metric with CURRENT MRR beside it.
   - Done when: hand-worked unit tests pass; `make eval-retrieval` prints the sitting's numbers in all 5 modes; the flipped-tier check matches.
   - Deps: T4, T6.

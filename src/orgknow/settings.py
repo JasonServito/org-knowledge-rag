@@ -55,15 +55,16 @@ class Settings(BaseSettings):
     # HNSW_EF_SEARCH, which must be at least this (checked below). No similarity threshold: the
     # top k are always returned (temporal mode returns fewer when its filter keeps fewer texts).
     retrieval_top_k: int = Field(default=10, ge=1, le=40)
-    # Which retrieval `ask` and the eval use (S07-R1, S08-R1, S09-R1): `dense` (the nearest
-    # vectors), `hybrid` (dense and lexical candidates fused with RRF), `rerank` (hybrid's whole
-    # fused pool, reordered by a cross-encoder) or `temporal` (rerank, with both searches filtered
-    # by the question's route: ADR-009, ADR-003 D4). `rerank` since S08-T5's eval passed the
-    # improvement rule and the p95 latency ceiling (S08-R1 decision 4, docs/evaluation.md); it
-    # stays the default until S09-T8's eval.
-    retrieval_mode: Literal["dense", "hybrid", "rerank", "temporal"] = "rerank"
-    # Hybrid, rerank and temporal: how many texts each search, dense and lexical, returns before
-    # fusion (decision 3).
+    # Which retrieval `ask` and the eval use (S07-R1, S08-R1, S09-R1, S09-R2): `dense` (the
+    # nearest vectors), `hybrid` (dense and lexical candidates fused with RRF), `rerank` (hybrid's
+    # whole fused pool, reordered by a cross-encoder), `temporal` (rerank, with both searches
+    # filtered by the question's route: ADR-009, ADR-003 D4) or `authority` (temporal, with the
+    # reranked pool reordered by the route's authority weights: ADR-003 D4 as changed in S09-R2).
+    # `rerank` since S08-T5's eval passed the improvement rule and the p95 latency ceiling (S08-R1
+    # decision 4, docs/evaluation.md); it stays the default until S09-T8's eval.
+    retrieval_mode: Literal["dense", "hybrid", "rerank", "temporal", "authority"] = "rerank"
+    # Hybrid, rerank, temporal and authority: how many texts each search, dense and lexical,
+    # returns before fusion (decision 3).
     retrieval_candidates: int = Field(default=20, ge=1, le=1000)
     # RRF's k: rank r in one list adds 1 / (k + r) to a text's fused score. 60 is the RRF paper's
     # value, not tuned (decision 3).
@@ -73,17 +74,24 @@ class Settings(BaseSettings):
     # is closer to an exact scan: at 100, 20 candidates matched an exact scan on all 43 golden
     # questions (decision 3).
     hnsw_ef_search: int = Field(default=100, ge=1, le=1000)
-    # The cross-encoder of rerank and temporal modes (ADR-008): a Hugging Face model at a pinned
-    # revision (a commit SHA), downloaded once into the Hugging Face cache if missing. It reads at
-    # most RERANK_MAX_LENGTH tokens of each (question, text) pair, the model's limit being 512 (a
-    # longer text is cut, keeping its start), and scores RERANK_BATCH_SIZE pairs per batch.
+    # The cross-encoder of rerank, temporal and authority modes (ADR-008): a Hugging Face model at
+    # a pinned revision (a commit SHA), downloaded once into the Hugging Face cache if missing. It
+    # reads at most RERANK_MAX_LENGTH tokens of each (question, text) pair, the model's limit being
+    # 512 (a longer text is cut, keeping its start), and scores RERANK_BATCH_SIZE pairs per batch.
     rerank_model: str = "BAAI/bge-reranker-base"
     rerank_revision: str = "2cfc18c9415c912f9d8155881c133215df768a70"
     rerank_max_length: int = Field(default=512, ge=1, le=512)
     rerank_batch_size: int = Field(default=8, ge=1, le=256)
-    # Temporal mode: how many releases a HISTORY question's window is widened by at each closed
-    # end, 0 to 5 (S09-R1 decision 2: ADR-003 D4's ±1). "Until 1.27" searches until 1.28.
+    # Temporal and authority modes: how many releases a HISTORY question's window is widened by at
+    # each closed end, 0 to 5 (S09-R1 decision 2: ADR-003 D4's ±1). "Until 1.27" searches until
+    # 1.28.
     history_window_slack: int = Field(default=1, ge=0, le=5)
+    # Authority mode: what the reranker's probability of a trusted source for the question's
+    # routed mode is multiplied by (boost, 1 to 4), and that of a weak one (demote, above 0, at
+    # most 1); every other hit's by 1 (S09-R2 decision 3, ADR-003 D4). Boost 1 and demote 1 give
+    # temporal mode's ranking. Set on golden set v0; v1 is their clean test.
+    authority_boost: float = Field(default=1.25, ge=1, le=4)
+    authority_demote: float = Field(default=0.8, gt=0, le=1)
     # The answer step (ADR-006 D1). Opus 5.5 always reasons, and effort sets how much; there is
     # no temperature (Opus 5.5 rejects it). Reasoning counts toward the max tokens and is billed
     # as output. At most 21,333: above that, the SDK refuses a non-streaming call (it expects

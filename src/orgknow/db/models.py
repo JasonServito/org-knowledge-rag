@@ -203,6 +203,9 @@ class Hit(BaseModel):
     # The tier and a KEP's stage at the question's target release, set by `retrieve` in every
     # mode (S09-T6); None on the search functions' own hits.
     authority: Authority | None = None
+    # Authority mode only (S09-T7): the reranker's probability, sigmoid(rerank_score), times the
+    # hit's authority factor, unrounded; the hits are ordered by it rounded to 4 decimals.
+    authority_score: float | None = None
 
 
 class TemporalFilter(BaseModel):

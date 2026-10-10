@@ -1,17 +1,19 @@
-"""Retrieval metrics on hand-built rankings (S06-T2, ADR-007 D3), and the S09 time metrics on
-hand-built hits (S09-T3, S09-R1 decision 1).
+"""Retrieval metrics on hand-built rankings (S06-T2, ADR-007 D3), the S09 time metrics on
+hand-built hits (S09-T3, S09-R1 decision 1), and authority-selection accuracy on hand-built hits
+and label tiers (S09-T7, S09-R2 decision 4).
 
 Every expected value is worked out by hand from the ADR's formulas and typed as a literal:
 1/log2(2) = 1, 1/log2(3) = 0.63093, 1/log2(6) = 0.38685, so IDCG for 2 labels = 1.63093. The
-time metrics' counts are counted by hand from the hits each test lists.
+time metrics' and authority selection's counts are counted by hand from the hits each test lists.
 """
 
 import pytest
 
-from orgknow.db.models import Hit
+from orgknow.db.models import Authority, Hit
 from orgknow.eval.golden import Label, Question
 from orgknow.eval.metrics import (
     RetrievalMetrics,
+    authority_count,
     gains,
     router_count,
     score_retrieval,
@@ -304,3 +306,104 @@ def test_router_accuracy_counts_routes_matching_the_golden_mode() -> None:
 
 def test_router_accuracy_is_none_with_no_routes() -> None:
     assert router_count([]) is None
+
+
+# --- Authority-selection accuracy (S09-T7, S09-R2 decision 4) ----------------------------------
+#
+# Per CURRENT question: its labels, their tiers (golden label order; None = worst) and its top-K
+# hits, each with the tier `retrieve` attached. Counted when the label tiers hold 2+ distinct
+# values; right when the first hit matching a label has the best (lowest) label tier.
+
+DOCS = "web:/docs/a/"
+BLOG = "web:/blog/2024/a/"
+LABEL_DOCS = Label(canonical_id=DOCS, section=["Install"])
+LABEL_BLOG = Label(canonical_id=BLOG, section=None)
+
+
+def _tiered(canonical_id: str, tier: int | None, *headings: str) -> Hit:
+    """A hit in `canonical_id` under `headings` with its tier at 1.37 attached."""
+    authority = Authority(target_release=37, tier=tier, effective_stage=None, stage_confidence=None)
+    return _hit(canonical_id, *headings).model_copy(update={"authority": authority})
+
+
+DOCS_HIT = _tiered(DOCS, 1, "Install")  # matches LABEL_DOCS
+BLOG_HIT = _tiered(BLOG, 6, "Intro")  # matches LABEL_BLOG (the whole document)
+OTHER = _tiered("web:/docs/b/", 1, "Install")  # matches neither label
+
+
+def test_the_first_labeled_hit_in_the_worse_label_tier_is_wrong() -> None:
+    # Label tiers {1, 6}: counted. The first labeled hit is the blog (tier 6), not the best (1).
+    questions = [("CURRENT", [LABEL_DOCS, LABEL_BLOG], [1, 6], [OTHER, BLOG_HIT, DOCS_HIT])]
+
+    assert authority_count(questions) == (0, 1)
+
+
+def test_the_first_labeled_hit_in_the_best_label_tier_is_right() -> None:
+    # Label tiers {2, 4}: counted. The first labeled hit is tier 2, the best.
+    changelog = Label(canonical_id="changelog:1.37", section=None)
+    governance = Label(canonical_id="community:/governance/", section=None)
+    questions = [
+        (
+            "CURRENT",
+            [governance, changelog],
+            [4, 2],
+            [OTHER, _tiered("changelog:1.37", 2, "v1.37.0"), _tiered("community:/governance/", 4)],
+        )
+    ]
+
+    assert authority_count(questions) == (1, 1)
+
+
+def test_label_tiers_with_one_value_are_not_counted() -> None:
+    # Two docs labels, both tier 1: nothing to choose between, so the question isn't counted.
+    labels = [LABEL_DOCS, Label(canonical_id="web:/docs/b/", section=None)]
+
+    assert authority_count([("CURRENT", labels, [1, 1], [OTHER, DOCS_HIT])]) is None
+
+
+def test_no_labeled_hit_is_counted_and_wrong() -> None:
+    questions = [("CURRENT", [LABEL_DOCS, LABEL_BLOG], [1, 6], [OTHER, OTHER])]
+
+    assert authority_count(questions) == (0, 1)
+
+
+def test_a_none_label_tier_is_the_worst() -> None:
+    # A superseded proposal's label (None) beside a tier-3 KEP's: 2 distinct values, the best 3.
+    withdrawn = Label(canonical_id="kep:1", section=None)
+    shipped = Label(canonical_id="kep:2", section=None)
+    labels = [withdrawn, shipped]
+    right = [_tiered("kep:2", 3, "KEP-2: B"), _tiered("kep:1", None, "KEP-1: A")]
+    wrong = [_tiered("kep:1", None, "KEP-1: A"), _tiered("kep:2", 3, "KEP-2: B")]
+
+    assert authority_count([("CURRENT", labels, [None, 3], right)]) == (1, 1)
+    assert authority_count([("CURRENT", labels, [None, 3], wrong)]) == (0, 1)
+
+
+def test_labels_spanning_2_tiers_count_even_when_the_labeled_hits_share_one() -> None:
+    # Only the blog's sections are retrieved (all tier 6), but the labels span tiers 1 and 6:
+    # the denominator is fixed by the labels, so the question counts, and it's wrong.
+    hits = [_tiered(BLOG, 6, "Intro"), _tiered(BLOG, 6, "Details"), OTHER]
+
+    assert authority_count([("CURRENT", [LABEL_DOCS, LABEL_BLOG], [1, 6], hits)]) == (0, 1)
+
+
+def test_only_current_questions_are_counted_and_they_are_pooled() -> None:
+    questions = [
+        ("CURRENT", [LABEL_DOCS, LABEL_BLOG], [1, 6], [DOCS_HIT, BLOG_HIT]),  # right
+        ("WHY", [LABEL_DOCS, LABEL_BLOG], [1, 6], [BLOG_HIT, DOCS_HIT]),  # not CURRENT
+        ("CURRENT", [LABEL_DOCS, LABEL_BLOG], [1, 6], [BLOG_HIT]),  # wrong
+        ("CURRENT", [LABEL_DOCS], [1], [DOCS_HIT]),  # one tier: not counted
+        (None, [], [], [OTHER]),  # unanswerable
+    ]
+
+    assert authority_count(questions) == (1, 2)
+
+
+def test_authority_is_none_for_rows_written_before_s09_t7() -> None:
+    # No label tiers on a CURRENT question, or no tier on its first labeled hit.
+    untiered = _hit(DOCS, "Install")  # authority None
+    labels = [LABEL_DOCS, LABEL_BLOG]
+
+    assert authority_count([("CURRENT", labels, None, [DOCS_HIT])]) is None
+    assert authority_count([("CURRENT", labels, [1, 6], [untiered, BLOG_HIT])]) is None
+    assert authority_count([]) is None

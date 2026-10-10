@@ -1,5 +1,6 @@
-"""Authority tiers per hit (S09-T6; ADR-003 D2-D3 as changed in the S09-R2 sitting). Pure: the
-caller passes in the latest release and the feature gates' observations (`observed_lifecycle`).
+"""Authority tiers per hit (S09-T6; ADR-003 D2-D3 as changed in the S09-R2 sitting), and the
+weights of authority mode (S09-T7). Pure: the caller passes in the latest release, the feature
+gates' observations (`observed_lifecycle`) and the weights (settings).
 
 - `target_release`: the release a question asks about, from its route.
 - `kep_gates`: the feature gates a KEP version names in its `kep.yaml`.
@@ -7,8 +8,15 @@ caller passes in the latest release and the feature gates' observations (`observ
 - `tier`: 1 (docs) to 6 (blogs) by source type; a KEP 3 when shipped by the target release or
   implemented, else 5; None for a superseded proposal.
 - `authority`: a hit's tier and, for a KEP, its effective stage, at the target release.
+
+S09-T7 (ADR-003 D4 as changed in the S09-R2 sitting), authority mode's weights:
+
+- `factor`: a hit's multiplier for its question's routed mode: AUTHORITY_BOOST, AUTHORITY_DEMOTE
+  or 1.
+- `weigh`: reranked hits sorted by the reranker's probability times their factor.
 """
 
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -96,3 +104,67 @@ def authority(hit: Hit, rows: Sequence[Observation], target: int) -> Authority:
         effective_stage=stage,
         stage_confidence=confidence,
     )
+
+
+def factor(hit: Hit, mode: Mode, latest: int, boost: float, demote: float) -> float:
+    """The multiplier for `hit` in a question routed to `mode` (ADR-003 D4 as changed in the
+    S09-R2 sitting): `boost`, `demote` or 1, by the first rule that matches.
+
+    - CURRENT: tier 1 or 2 and some release window containing `latest` → boost (so a CHANGELOG
+      section of an older release, tier 2 but valid only at its release, isn't); a blog post →
+      demote.
+    - CHANGE: a release record → boost.
+    - WHY: a KEP section with a heading containing "motivation" or "alternatives" (any case) →
+      boost; a blog post or governance doc → boost; the feature-gate reference → demote.
+    - HISTORY, and every other hit: 1.
+
+    Only CURRENT reads the tier: the hit's `authority`'s, None (like a superseded proposal's)
+    when it has none, which CURRENT never boosts. The WHY rule reads the source type and headings
+    only, as the S09-R2 contract pins it.
+    """
+    source = hit.source_type
+    if mode == "CURRENT":
+        hit_tier = None if hit.authority is None else hit.authority.tier
+        valid_now = any(
+            start <= latest and (until is None or latest <= until)
+            for start, until in hit.release_windows
+        )
+        if hit_tier in (1, 2) and valid_now:
+            return boost
+        if source == "blog_post":
+            return demote
+    elif mode == "CHANGE":
+        if source == "release_record":
+            return boost
+    elif mode == "WHY":
+        headings = [heading.lower() for heading in hit.heading_path]
+        if source == "kep" and any(
+            word in heading for heading in headings for word in ("motivation", "alternatives")
+        ):
+            return boost
+        if source in ("blog_post", "governance_doc"):
+            return boost
+        if source == "feature_gate_reference":
+            return demote
+    return 1.0
+
+
+def weigh(hits: Sequence[Hit], mode: Mode, latest: int, boost: float, demote: float) -> list[Hit]:
+    """`hits` (reranked, in rerank order, each with its tier) sorted by the reranker's
+    probability times its `factor` (S09-R2 decision 3), best first.
+
+    The probability is sigmoid(rerank_score) = 1 / (1 + e^-score), from 0 to 1, so a multiplier
+    above 1 always lifts a hit, which a raw score (negative for a poor match) can't promise.
+    Products are compared rounded to 4 decimals, and a tie keeps the earlier hit first, as
+    `rerank` compares its scores: a saturated probability (0.99998 and 0.99999) ties. Each hit
+    gets the unrounded product as its `authority_score`. With boost 1 and demote 1, every factor
+    is 1, and the order is the input's. A hit with no `rerank_score` raises ValueError.
+    """
+    products = []
+    for hit in hits:
+        if hit.rerank_score is None:
+            raise ValueError(f"chunk {hit.chunk_id} has no rerank_score: weigh reranked hits only")
+        probability = 1 / (1 + math.exp(-hit.rerank_score))
+        products.append(probability * factor(hit, mode, latest, boost, demote))
+    order = sorted(range(len(hits)), key=lambda i: (-round(products[i], 4), i))
+    return [hits[i].model_copy(update={"authority_score": products[i]}) for i in order]

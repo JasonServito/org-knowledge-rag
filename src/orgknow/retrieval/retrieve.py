@@ -1,4 +1,4 @@
-"""Retrieval (S07-T3, S08-T2, S09-T4): the chunk texts `ask` and the eval answer from, in
+"""Retrieval (S07-T3, S08-T2, S09-T4, S09-T7): the chunk texts `ask` and the eval answer from, in
 RETRIEVAL_MODE.
 
 - `dense`: the RETRIEVAL_TOP_K texts nearest the question's vector (S04-T5).
@@ -11,10 +11,14 @@ RETRIEVAL_MODE.
   before their own top 20 (S09-R1 decisions 2-4): CURRENT keeps current text only; HISTORY with a
   release window keeps texts valid in it, widened by HISTORY_WINDOW_SLACK; every other route has
   no filter. The route comes from the caller (ADR-009: live in `ask`, stored in the eval).
+- `authority`: temporal's pool, reranked whole (no top-K cut), each hit's authority attached,
+  then sorted by the reranker's probability times the hit's factor for the route's mode
+  (AUTHORITY_BOOST, AUTHORITY_DEMOTE or 1), and cut to the RETRIEVAL_TOP_K best (S09-R2
+  decisions 3 and 9). It needs a route too.
 
 Every dense search uses the HNSW search width HNSW_EF_SEARCH, in every mode. In every mode, each
 returned hit carries its authority at the question's target release (S09-T6): the route's in
-temporal mode, the latest release in the others.
+temporal and authority modes, the latest release in the others.
 """
 
 import psycopg
@@ -25,7 +29,7 @@ from orgknow.db.models import Hit, TemporalFilter
 from orgknow.db.releases import list_releases
 from orgknow.db.retrieval import search, search_lexical
 from orgknow.embeddings.embedder import Embedder
-from orgknow.retrieval.authority import authority, kep_gates, target_release
+from orgknow.retrieval.authority import authority, kep_gates, target_release, weigh
 from orgknow.retrieval.fusion import fuse
 from orgknow.retrieval.rerank import Reranker, rerank
 from orgknow.retrieval.router import Route
@@ -60,22 +64,29 @@ def retrieve(
     found it). Rerank mode: hybrid's fields, and the `rerank_score` it was ordered by; it needs
     `reranker` (ValueError without one), which isn't called when the pool is empty. Temporal
     mode: rerank's, on the texts `route`'s filter keeps; it needs `route` too (ValueError
-    without one, before any call). A filter that keeps no text gives no hits.
+    without one, before any call). A filter that keeps no text gives no hits. Authority mode:
+    temporal's fields and needs, ordered by `weigh`, each hit with its `authority_score`.
 
     Every mode: each hit's `authority` (`attach_authority`) at the target release, which only
-    temporal mode takes from the route (`target_release`); the other modes ignore a route.
+    temporal and authority modes take from the route (`target_release`); the other modes ignore
+    a route.
     """
     mode = settings.retrieval_mode
-    if mode == "temporal" and route is None:
-        raise ValueError("temporal mode needs a route: none was given")
-    routed = route if mode == "temporal" else None
+    if mode in ("temporal", "authority") and route is None:
+        raise ValueError(f"{mode} mode needs a route: none was given")
+    routed = route if mode in ("temporal", "authority") else None
     window, temporal = (None, None) if routed is None else temporal_plan(conn, routed, settings)
     hits = _search(question, embedder, conn, settings, reranker, temporal)
     if not hits:
         return []
     latest = list_releases(conn)[-1].minor  # oldest first; a stored version implies a release
     target = target_release(None if routed is None else routed.mode, window, latest)
-    return attach_authority(conn, hits, target)
+    hits = attach_authority(conn, hits, target)
+    if mode != "authority":
+        return hits
+    assert routed is not None  # checked above: authority mode has a route
+    boost, demote = settings.authority_boost, settings.authority_demote
+    return weigh(hits, routed.mode, latest, boost, demote)[: settings.retrieval_top_k]
 
 
 def attach_authority(conn: psycopg.Connection[TupleRow], hits: list[Hit], target: int) -> list[Hit]:
@@ -96,7 +107,8 @@ def _search(
     temporal: TemporalFilter | None,
 ) -> list[Hit]:
     """The mode's hits, best first, among the texts `temporal` keeps (every text when None; dense
-    mode never gets one). See `retrieve`."""
+    mode never gets one). See `retrieve`. Authority mode: the whole reranked pool, which
+    `retrieve` weighs before its top-K cut."""
     mode = settings.retrieval_mode
     vector = embedder.embed([question], "query").vectors[0]
     width = settings.hnsw_ef_search
@@ -114,4 +126,5 @@ def _search(
     if not pool:
         return []
     scores = reranker.score(question, [hit.text for hit in pool])
-    return rerank(pool, scores, settings.retrieval_top_k)
+    keep = len(pool) if mode == "authority" else settings.retrieval_top_k
+    return rerank(pool, scores, keep)

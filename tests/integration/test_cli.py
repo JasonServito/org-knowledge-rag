@@ -260,16 +260,19 @@ def _route(mode: str, kind: str = "none", start: str | None = None) -> Route:
     )
 
 
+# Authority mode (S09-T7) routes and filters as temporal mode does, then weighs the reranked texts.
+@pytest.mark.parametrize("mode", ["temporal", "authority"])
 def test_a_temporal_ask_prints_the_route_line_then_answers_from_the_filtered_texts(
     conn: Conn,
     cli_settings: Settings,
     fake_embedder: FakeEmbedder,
     capsys: pytest.CaptureFixture[str],
+    mode: str,
 ) -> None:
     chunk_id = _store_one_chunk(conn)
     generator = _answered(chunk_id)
     router = FakeRouter({QUESTION: _route("CURRENT")})
-    settings = _temporal(cli_settings)
+    settings = cli_settings.model_copy(update={"retrieval_mode": mode})
 
     code = ask(
         QUESTION,
@@ -287,7 +290,8 @@ def test_a_temporal_ask_prints_the_route_line_then_answers_from_the_filtered_tex
     assert router.calls == [QUESTION]
     # The route line goes to stderr, so stdout stays one line of JSON.
     assert err.splitlines() == [TRACING_OFF, "Route: CURRENT, current text only"]
-    assert [e["chunk_id"] for e in json.loads(out)["evidence"]] == [chunk_id]
+    # The citation carries its tier: a docs page, tier 1 (S09-T6).
+    assert [(e["chunk_id"], e["tier"]) for e in json.loads(out)["evidence"]] == [(chunk_id, 1)]
     assert len(generator.calls) == 1
 
 

@@ -1,5 +1,6 @@
-"""Retrieval metrics: score one question's ranked hits against its labels (ADR-007 D3); and the
-S09 time metrics, pooled over many questions' hits (S09-T3).
+"""Retrieval metrics: score one question's ranked hits against its labels (ADR-007 D3); the S09
+time metrics, pooled over many questions' hits (S09-T3); and authority-selection accuracy over
+the CURRENT questions (S09-T7).
 
 Pure: questions and their hits in, scores out. No database, no network; K is passed in.
 """
@@ -10,7 +11,7 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from orgknow.db.models import Hit
+from orgknow.db.models import Authority, Hit
 from orgknow.eval.golden import Label, Mode, Question, label_matches
 
 
@@ -139,3 +140,65 @@ def router_count(modes: Iterable[tuple[Mode, Mode]]) -> tuple[int, int] | None:
     if not pairs:
         return None
     return sum(1 for golden, routed in pairs if golden == routed), len(pairs)
+
+
+# Authority-selection accuracy (S09-T7, S09-R2 decision 4; ADR-003's consequences).
+
+
+class TieredHit(Protocol):
+    """The 3 fields authority selection reads from a hit. Both a `Hit` and a results file's hit
+    have them; a results file written before S09-T6 has no `authority` (None)."""
+
+    @property
+    def canonical_id(self) -> str: ...
+
+    @property
+    def heading_path(self) -> Sequence[str]: ...
+
+    @property
+    def authority(self) -> Authority | None: ...
+
+
+# One question as authority selection reads it: its golden mode, its labels, each label's tier in
+# label order (None when the row predates S09-T7), and its top K hits.
+AuthorityQuestion = tuple[
+    Mode | None, Sequence[Label], Sequence[int | None] | None, Sequence[TieredHit]
+]
+
+
+def authority_count(questions: Iterable[AuthorityQuestion]) -> tuple[int, int] | None:
+    """Authority-selection accuracy's (right, counted) over the questions whose golden mode is
+    CURRENT.
+
+    A question is counted when its label tiers hold 2+ distinct values (None, a superseded
+    proposal's, is one value, and the worst), so the labels alone fix the denominator. It is
+    right when its first hit matching a label has the best label tier, the lowest number; with
+    no hit matching a label, it is wrong. None when no question is counted, or a CURRENT question
+    has no label tiers, or a counted question's first labeled hit has no authority (rows written
+    before S09-T7).
+    """
+    right = counted = 0
+    for mode, labels, label_tiers, hits in questions:
+        if mode != "CURRENT":
+            continue
+        if label_tiers is None:
+            return None
+        if len(set(label_tiers)) < 2:
+            continue
+        counted += 1
+        best = min(tier for tier in label_tiers if tier is not None)  # 2+ values: one is a tier
+        first = next(
+            (
+                hit
+                for hit in hits
+                if any(label_matches(label, hit.canonical_id, hit.heading_path) for label in labels)
+            ),
+            None,
+        )
+        if first is None:
+            continue
+        if first.authority is None:
+            return None
+        if first.authority.tier == best:
+            right += 1
+    return (right, counted) if counted else None

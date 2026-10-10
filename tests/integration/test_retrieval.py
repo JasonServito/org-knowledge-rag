@@ -1,5 +1,6 @@
 """Dense retrieval (S04-T5), lexical search (S07-T1) and hybrid retrieval (S07-T3) against the
-test database: `search`, `search_lexical` and `retrieve` (with each hit's authority, S09-T6).
+test database: `search`, `search_lexical` and `retrieve` (with each hit's authority, S09-T6, and
+authority mode's weights, S09-T7).
 
 Expected distances are hand arithmetic: the cosine distance of two unit vectors is 1 - cos θ.
 Expected lexical results come from the hand-written texts and Postgres's full-text rules.
@@ -155,6 +156,7 @@ def test_a_text_in_two_versions_is_one_hit_citing_the_newest(conn: Conn) -> None
         "lexical_rank": None,
         "rerank_score": None,
         "authority": None,  # `retrieve` attaches it, not the search (S09-T6)
+        "authority_score": None,  # authority mode's `retrieve` sets it (S09-T7)
     }
 
 
@@ -274,6 +276,7 @@ def test_lexical_an_exact_term_ranks_its_text_first(conn: Conn) -> None:
             "lexical_rank": 1,
             "rerank_score": None,
             "authority": None,  # `retrieve` attaches it, not the search (S09-T6)
+            "authority_score": None,  # authority mode's `retrieve` sets it (S09-T7)
         }
     ]
 
@@ -800,11 +803,22 @@ AT_22 = {
         ("rerank", None, AT_37),
         # A route given outside temporal mode is ignored.
         ("rerank", _route("HISTORY", "in", "1.22"), AT_37),
-        # Temporal: CURRENT → the latest; HISTORY "in 1.22" → its until, 1.22.
+        # Temporal and authority: CURRENT → the latest; HISTORY "in 1.22" → its until, 1.22.
         ("temporal", _route("CURRENT"), AT_37),
         ("temporal", _route("HISTORY", "in", "1.22"), AT_22),
+        ("authority", _route("CURRENT"), AT_37),
+        ("authority", _route("HISTORY", "in", "1.22"), AT_22),
     ],
-    ids=["dense", "hybrid", "rerank", "rerank-ignores-route", "temporal-current", "temporal-1.22"],
+    ids=[
+        "dense",
+        "hybrid",
+        "rerank",
+        "rerank-ignores-route",
+        "temporal-current",
+        "temporal-1.22",
+        "authority-current",
+        "authority-1.22",
+    ],
 )
 def test_every_mode_attaches_each_hits_authority_at_the_target_release(
     conn: Conn,
@@ -821,3 +835,118 @@ def test_every_mode_attaches_each_hits_authority_at_the_target_release(
     hits = retrieve(PSA_QUESTION, fake_embedder, conn, settings, reranker, route)
 
     assert {hit.canonical_id: hit.authority for hit in hits} == expected
+
+
+# Authority mode (S09-T7, S09-R2 decisions 3 and 9), on the KEP and the docs page above. The fake
+# scores the KEP 0.5 and the page 0.1, so temporal mode puts the KEP first. The weights by hand,
+# boost 1.25: routed CURRENT, the page (tier 1, valid at 1.37) is boosted, sigmoid(0.1) * 1.25 =
+# 0.524979 * 1.25 = 0.656224; the KEP (tier 3) keeps factor 1, sigmoid(0.5) = 0.622459. So the page
+# comes first. Routed HISTORY, no hit is weighted: the KEP stays first.
+
+AUTHORITY_SCORES = {KEP_SUMMARY: 0.5, PSA_PAGE: 0.1}
+
+
+def _authority_settings(settings: Settings, top_k: int = 10) -> Settings:
+    return _temporal_settings(settings).model_copy(
+        update={
+            "retrieval_mode": "authority",
+            "retrieval_top_k": top_k,
+            "authority_boost": 1.25,
+            "authority_demote": 0.8,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("route", "expected"),
+    [
+        (_route("CURRENT"), [("web:/test/psa/", 0.656224), ("kep:2579", 0.622459)]),
+        (_route("HISTORY"), [("kep:2579", 0.622459), ("web:/test/psa/", 0.524979)]),
+    ],
+    ids=["current", "history"],
+)
+def test_authority_mode_orders_by_the_probability_times_the_routes_factor(
+    conn: Conn,
+    settings: Settings,
+    fake_embedder: FakeEmbedder,
+    route: Route,
+    expected: list[tuple[str, float]],
+) -> None:
+    _authority_rows(conn, fake_embedder.model)
+
+    hits = retrieve(
+        PSA_QUESTION,
+        fake_embedder,
+        conn,
+        _authority_settings(settings),
+        FakeReranker(AUTHORITY_SCORES),
+        route,
+    )
+
+    assert [hit.canonical_id for hit in hits] == [canonical_id for canonical_id, _ in expected]
+    assert [hit.authority_score for hit in hits] == pytest.approx(
+        [score for _, score in expected], abs=1e-6
+    )
+    # Each hit keeps its raw score and its tier at the latest release.
+    assert {hit.canonical_id: (hit.rerank_score, hit.authority) for hit in hits} == {
+        "kep:2579": (0.5, AT_37["kep:2579"]),
+        "web:/test/psa/": (0.1, AT_37["web:/test/psa/"]),
+    }
+
+
+def test_authority_mode_weighs_the_whole_reranked_pool_before_the_top_k_cut(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    # A top 1: temporal mode cuts the reranked pool to the KEP; authority mode weighs both texts
+    # first, then keeps the page.
+    _authority_rows(conn, fake_embedder.model)
+    reranker = FakeReranker(AUTHORITY_SCORES)
+    temporal = _temporal_settings(settings).model_copy(update={"retrieval_top_k": 1})
+
+    temporal_hits = retrieve(
+        PSA_QUESTION, fake_embedder, conn, temporal, reranker, _route("CURRENT")
+    )
+    authority_hits = retrieve(
+        PSA_QUESTION,
+        fake_embedder,
+        conn,
+        _authority_settings(settings, 1),
+        reranker,
+        _route("CURRENT"),
+    )
+
+    assert [hit.canonical_id for hit in temporal_hits] == ["kep:2579"]
+    assert [hit.canonical_id for hit in authority_hits] == ["web:/test/psa/"]
+    # One reranker call each, with the whole pool.
+    assert [set(texts) for _, texts in reranker.calls] == [{KEP_SUMMARY, PSA_PAGE}] * 2
+
+
+def test_authority_mode_with_a_filter_keeping_nothing_returns_no_hits_without_a_model_call(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    # As in temporal mode: "before 1.15" keeps no text of the skew page.
+    _filtered_rows(conn, fake_embedder.model)
+    reranker = FakeReranker(SKEW_SCORES)
+    route = _route("HISTORY", "before", "1.15")
+
+    hits = retrieve(
+        SKEW_QUESTION, fake_embedder, conn, _authority_settings(settings), reranker, route
+    )
+
+    assert (hits, reranker.calls) == ([], [])
+
+
+def test_authority_mode_without_a_route_or_a_reranker_raises(
+    conn: Conn, settings: Settings, fake_embedder: FakeEmbedder
+) -> None:
+    _filtered_rows(conn, fake_embedder.model)
+    reranker = FakeReranker(SKEW_SCORES)
+
+    with pytest.raises(ValueError, match="authority mode needs a route"):
+        retrieve(SKEW_QUESTION, fake_embedder, conn, _authority_settings(settings), reranker)
+    with pytest.raises(ValueError, match="authority mode needs a reranker"):
+        retrieve(
+            SKEW_QUESTION, fake_embedder, conn, _authority_settings(settings), None, _route("WHY")
+        )
+    # The missing route stops it before any call.
+    assert (fake_embedder.calls, reranker.calls) == ([("query", [SKEW_QUESTION])], [])

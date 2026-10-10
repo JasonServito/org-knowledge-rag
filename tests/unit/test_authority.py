@@ -1,5 +1,6 @@
 """S09-T6: each hit's authority tier at the question's target release, and a KEP's effective stage
-(ADR-003 D2-D3 as changed in the S09-R2 sitting; the S09-R2 contract's T6 rules).
+(ADR-003 D2-D3 as changed in the S09-R2 sitting; the S09-R2 contract's T6 rules). S09-T7: the
+authority weights per routed mode (ADR-003 D4 as changed there; the contract's T7 rules).
 
 Every expected value is typed by hand from those rules; none is computed by the code under test.
 No database, no network: the observations are hand-built rows. 1.37 is the latest release.
@@ -10,7 +11,15 @@ from typing import Any
 import pytest
 
 from orgknow.db.models import Authority, Confidence, Hit, Observation
-from orgknow.retrieval.authority import authority, kep_gates, kep_stage, target_release, tier
+from orgknow.retrieval.authority import (
+    authority,
+    factor,
+    kep_gates,
+    kep_stage,
+    target_release,
+    tier,
+    weigh,
+)
 from orgknow.retrieval.router import Mode
 from orgknow.retrieval.temporal import Window
 
@@ -239,3 +248,159 @@ def test_a_superseded_kep_hit_has_no_tier_but_keeps_its_stage() -> None:
     assert authority(hit, PODSECURITY, 22) == Authority(
         target_release=22, tier=None, effective_stage="alpha", stage_confidence="high"
     )
+
+
+# --- The weights (S09-T7; ADR-003 D4 as changed in the S09-R2 sitting, decision 3) ---------------
+#
+# Boost 1.25 and demote 0.8, passed explicitly so no expected value rests on the defaults. The
+# probabilities are typed by hand: sigmoid(x) = 1 / (1 + e^-x), so sigmoid(2) = 0.88080,
+# sigmoid(1) = 0.73106, sigmoid(-1) = 0.26894, sigmoid(11) = 0.99998 and sigmoid(12) = 0.99999 (both
+# 1.0000 at 4 decimals).
+
+BOOST, DEMOTE = 1.25, 0.8
+
+
+def _weighed_hit(
+    source_type: str,
+    tier: int | None,
+    windows: list[tuple[int, int | None]] | None = None,
+    headings: list[str] | None = None,
+    score: float | None = None,
+    chunk_id: int = 1,
+) -> Hit:
+    """A hit with its tier at 1.37 attached, as `retrieve` attaches it before the weights.
+    Default: valid from 1.30 on (so at 1.37), no heading."""
+    return _hit(
+        source_type,
+        chunk_id=chunk_id,
+        release_windows=[(30, None)] if windows is None else windows,
+        heading_path=[] if headings is None else headings,
+        rerank_score=score,
+        authority=Authority(
+            target_release=37, tier=tier, effective_stage=None, stage_confidence=None
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("mode", "hit", "expected"),
+    [
+        # CURRENT: tier 1 or 2 valid at the latest release → boost; a blog → demote.
+        ("CURRENT", _weighed_hit("docs_page", 1), BOOST),
+        ("CURRENT", _weighed_hit("feature_gate_reference", 1, [(29, 37)]), BOOST),
+        ("CURRENT", _weighed_hit("release_record", 2, [(37, 37)]), BOOST),
+        # A current CHANGELOG section of an older release: tier 2, but valid at 1.25 only.
+        ("CURRENT", _weighed_hit("release_record", 2, [(25, 25)]), 1.0),
+        # A docs page whose text ended at 1.36: tier 1, not valid at 1.37.
+        ("CURRENT", _weighed_hit("docs_page", 1, [(20, 36)]), 1.0),
+        ("CURRENT", _weighed_hit("blog_post", 6), DEMOTE),
+        ("CURRENT", _weighed_hit("kep", 3), 1.0),
+        ("CURRENT", _weighed_hit("governance_doc", 4), 1.0),
+        # A superseded proposal: no tier, never boosted.
+        ("CURRENT", _weighed_hit("kep", None), 1.0),
+        # CHANGE: a release record → boost, valid at the latest release or not.
+        ("CHANGE", _weighed_hit("release_record", 2, [(25, 25)]), BOOST),
+        ("CHANGE", _weighed_hit("docs_page", 1), 1.0),
+        ("CHANGE", _weighed_hit("blog_post", 6), 1.0),
+        # WHY: a KEP's Motivation or Alternatives section (any case, any heading level), blogs
+        # and governance docs → boost; the feature-gate reference → demote.
+        ("WHY", _weighed_hit("kep", 3, headings=["KEP-2579: PSP", "Motivation", "Goals"]), BOOST),
+        ("WHY", _weighed_hit("kep", 5, headings=["KEP-1: X", "Alternatives Considered"]), BOOST),
+        ("WHY", _weighed_hit("kep", 3, headings=["KEP-2579: PSP", "Design Details"]), 1.0),
+        ("WHY", _weighed_hit("blog_post", 6, headings=["Motivation"]), BOOST),
+        ("WHY", _weighed_hit("governance_doc", 4), BOOST),
+        ("WHY", _weighed_hit("feature_gate_reference", 1), DEMOTE),
+        ("WHY", _weighed_hit("docs_page", 1, headings=["Motivation"]), 1.0),
+        ("WHY", _weighed_hit("release_record", 2), 1.0),
+        # HISTORY: no weights (validity matters more than tier).
+        ("HISTORY", _weighed_hit("docs_page", 1), 1.0),
+        ("HISTORY", _weighed_hit("blog_post", 6), 1.0),
+        ("HISTORY", _weighed_hit("release_record", 2), 1.0),
+        ("HISTORY", _weighed_hit("feature_gate_reference", 1), 1.0),
+    ],
+    ids=[
+        "current-docs",
+        "current-gate",
+        "current-release-record-at-37",
+        "current-release-record-at-25-only",
+        "current-docs-ended-at-36",
+        "current-blog",
+        "current-kep",
+        "current-governance",
+        "current-superseded",
+        "change-release-record",
+        "change-docs",
+        "change-blog",
+        "why-kep-motivation",
+        "why-kep-alternatives",
+        "why-kep-other-section",
+        "why-blog",
+        "why-governance",
+        "why-gate",
+        "why-docs-motivation",
+        "why-release-record",
+        "history-docs",
+        "history-blog",
+        "history-release-record",
+        "history-gate",
+    ],
+)
+def test_each_modes_factor(mode: Mode, hit: Hit, expected: float) -> None:
+    assert factor(hit, mode, LATEST, BOOST, DEMOTE) == expected
+
+
+def test_current_weights_on_the_probability_put_the_boosted_docs_page_first() -> None:
+    # Rerank order: the blog (logit 2.0), then 2 current docs pages (1.0 and -1.0). Products:
+    # 0.88080 * 0.8 = 0.7046, 0.73106 * 1.25 = 0.9138, 0.26894 * 1.25 = 0.3362.
+    blog = _weighed_hit("blog_post", 6, score=2.0, chunk_id=1)
+    docs = _weighed_hit("docs_page", 1, score=1.0, chunk_id=2)
+    low_docs = _weighed_hit("docs_page", 1, score=-1.0, chunk_id=3)
+
+    weighed = weigh([blog, docs, low_docs], "CURRENT", LATEST, BOOST, DEMOTE)
+
+    assert [hit.chunk_id for hit in weighed] == [2, 1, 3]
+    assert [hit.authority_score for hit in weighed] == pytest.approx(
+        [0.9138, 0.7046, 0.3362], abs=1e-4
+    )
+    # Every other field is kept, the raw score included.
+    assert [hit.rerank_score for hit in weighed] == [1.0, 2.0, -1.0]
+
+
+def test_equal_products_keep_rerank_order() -> None:
+    # Two docs pages with one logit and one factor: equal products, so the input order stays.
+    first = _weighed_hit("docs_page", 1, score=0.5, chunk_id=1)
+    second = _weighed_hit("docs_page", 1, score=0.5, chunk_id=2)
+
+    assert [h.chunk_id for h in weigh([first, second], "CURRENT", LATEST, BOOST, DEMOTE)] == [1, 2]
+    assert [h.chunk_id for h in weigh([second, first], "CURRENT", LATEST, BOOST, DEMOTE)] == [2, 1]
+
+
+def test_a_saturated_probability_ties_at_4_decimals_and_keeps_rerank_order() -> None:
+    # sigmoid(11) = 0.99998 and sigmoid(12) = 0.99999: both 1.0000 at 4 decimals, so the logit-11
+    # hit stays first although its unrounded product is lower.
+    eleven = _weighed_hit("docs_page", 1, score=11.0, chunk_id=1)
+    twelve = _weighed_hit("docs_page", 1, score=12.0, chunk_id=2)
+
+    weighed = weigh([eleven, twelve], "HISTORY", LATEST, BOOST, DEMOTE)
+
+    assert [hit.chunk_id for hit in weighed] == [1, 2]
+
+
+def test_boost_1_and_demote_1_keep_the_input_order() -> None:
+    # The CURRENT pool above, with every factor 1: the probabilities keep the logits' order.
+    blog = _weighed_hit("blog_post", 6, score=2.0, chunk_id=1)
+    docs = _weighed_hit("docs_page", 1, score=1.0, chunk_id=2)
+    low_docs = _weighed_hit("docs_page", 1, score=-1.0, chunk_id=3)
+
+    weighed = weigh([blog, docs, low_docs], "CURRENT", LATEST, 1.0, 1.0)
+
+    assert [hit.chunk_id for hit in weighed] == [1, 2, 3]
+    # The bare probabilities: sigmoid(2), sigmoid(1), sigmoid(-1).
+    assert [hit.authority_score for hit in weighed] == pytest.approx(
+        [0.88080, 0.73106, 0.26894], abs=1e-5
+    )
+
+
+def test_a_hit_without_a_rerank_score_is_refused() -> None:
+    with pytest.raises(ValueError, match="rerank_score"):
+        weigh([_weighed_hit("docs_page", 1)], "CURRENT", LATEST, BOOST, DEMOTE)
