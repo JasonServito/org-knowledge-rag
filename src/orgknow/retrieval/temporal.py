@@ -61,6 +61,11 @@ def resolve_window(scope: TimeScope, releases: Sequence[Release]) -> Window | No
         start, end = _parse(scope.start), _parse(scope.end)
         if start is None or end is None:
             return None
+        # Values of one unit must be in order before they become releases: "between 2022 and
+        # 2021" would otherwise be 1.23 to 1.23 (1.23 is in effect on both 2022-01-01 and
+        # 2021-12-31). A release and a year are compared as releases, by `_closed`.
+        if start.unit == end.unit and start.number > end.number:
+            return None
         return _closed(_first(start, releases), _last(end, releases))
     value = _parse(scope.start or scope.end)
     if value is None:

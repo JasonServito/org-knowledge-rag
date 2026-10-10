@@ -81,6 +81,9 @@ def _scope(kind: str, start: str | None, end: str | None = None) -> TimeScope:
         (_scope("since", "2019"), Window(from_release=20)),
         # Between 2021 and 2022: in effect on 2021-01-01, 1.20 (2020-12-08); on 2022-12-31, 1.26.
         (_scope("between", "2021", "2022"), Window(from_release=20, until_release=26)),
+        # Between 2022 and 2021: the values are out of order, so no window (contract: A ≤ B). Its
+        # releases alone would hide it: in effect on 2022-01-01 and on 2021-12-31 are both 1.23.
+        (_scope("between", "2022", "2021"), None),
         # In 2019: none in effect on 2019-12-31.
         (_scope("in", "2019"), None),
         # A window outside the corpus is kept as numbers (contract, edge cases).
