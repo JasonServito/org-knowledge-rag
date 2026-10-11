@@ -174,6 +174,12 @@ def test_another_gates_row_isnt_read() -> None:
     assert kep_stage("alpha", ["A"], [_row("B", 37, "beta")], 37) == ("alpha", "low")
 
 
+def test_a_gate_with_no_row_at_the_target_release_gives_the_claim_low() -> None:
+    # Resume decision R3d: every gate the KEP names needs a row at 37. A's high beta row alone
+    # doesn't make the stage observed while B has none there.
+    assert kep_stage("stable", ["A", "B"], [_row("A", 37, "beta")], 37) == ("stable", "low")
+
+
 def test_no_claim_and_no_observation_is_unknown() -> None:
     assert kep_stage(None, ["A"], [], 37) == (None, None)
 
@@ -307,6 +313,8 @@ def _weighed_hit(
         ("WHY", _weighed_hit("kep", 3, headings=["KEP-2579: PSP", "Motivation", "Goals"]), BOOST),
         ("WHY", _weighed_hit("kep", 5, headings=["KEP-1: X", "Alternatives Considered"]), BOOST),
         ("WHY", _weighed_hit("kep", 3, headings=["KEP-2579: PSP", "Design Details"]), 1.0),
+        # A superseded proposal's Motivation: no tier, never boosted (resume decision R3a).
+        ("WHY", _weighed_hit("kep", None, headings=["KEP-1: X", "Motivation"]), 1.0),
         ("WHY", _weighed_hit("blog_post", 6, headings=["Motivation"]), BOOST),
         ("WHY", _weighed_hit("governance_doc", 4), BOOST),
         ("WHY", _weighed_hit("feature_gate_reference", 1), DEMOTE),
@@ -334,6 +342,7 @@ def _weighed_hit(
         "why-kep-motivation",
         "why-kep-alternatives",
         "why-kep-other-section",
+        "why-superseded-kep-motivation",
         "why-blog",
         "why-governance",
         "why-gate",

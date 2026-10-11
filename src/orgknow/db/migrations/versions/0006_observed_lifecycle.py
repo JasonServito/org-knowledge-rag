@@ -36,9 +36,11 @@ def upgrade() -> None:
                 FOREIGN KEY (release) REFERENCES releases (minor),
             CONSTRAINT observed_lifecycle_status_confidence_check
                 CHECK (status_confidence IN ('high', 'low')),
-            -- high: one stage from the vocabulary; low: no stage, or a value kept as written
+            -- high: one stage from the vocabulary; low: no stage, or a value kept as written.
+            -- IS NOT NULL: `NULL IN (...)` is NULL, which a CHECK lets through.
             CONSTRAINT observed_lifecycle_high_check CHECK (
-                status_confidence = 'low' OR stage IN ('alpha', 'beta', 'stable', 'deprecated'))
+                status_confidence = 'low'
+                OR (stage IS NOT NULL AND stage IN ('alpha', 'beta', 'stable', 'deprecated')))
         )
         """
     )

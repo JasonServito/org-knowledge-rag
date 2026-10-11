@@ -467,7 +467,7 @@ All free: saved pools from stored vectors and routes, the website clone, scratch
   - `retrieval/authority.py`: pure functions `target_release`, `kep_stage`, `tier`, `factor`, `weigh`.
   - `db/models.py`: `Authority(target_release: int, tier: int | None, effective_stage: str | None, stage_confidence: Literal["high", "low"] | None)`; `Hit.authority: Authority | None = None` (set in every mode); `Hit.authority_score: float | None = None` (authority mode only). `tier` None means a superseded proposal.
   - Metric functions in `eval/metrics.py`, as pure functions.
-- **Migration (pinned):**
+- **Migration (pinned; the high check's `stage IS NOT NULL` is resume decision R3c):**
 
   ```sql
   CREATE TABLE observed_lifecycle (
@@ -481,7 +481,8 @@ All free: saved pools from stored vectors and routes, the website clone, scratch
           CHECK (status_confidence IN ('high', 'low')),
       -- high: one stage from the vocabulary; low: no stage, or a value kept as written
       CONSTRAINT observed_lifecycle_high_check CHECK (
-          status_confidence = 'low' OR stage IN ('alpha', 'beta', 'stable', 'deprecated'))
+          status_confidence = 'low'
+          OR (stage IS NOT NULL AND stage IN ('alpha', 'beta', 'stable', 'deprecated')))
   )
   ```
 
@@ -496,7 +497,7 @@ All free: saved pools from stored vectors and routes, the website clone, scratch
   - **Target release:** CURRENT → the latest release; HISTORY with a window → its `until_release`, capped at the latest (no `until` → the latest); CHANGE, WHY, HISTORY without a window, and dense, hybrid and rerank modes (no route) → the latest.
   - **KEP gates:** the `name`s in the cited version's `feature-gates` list (exact match, as written).
   - **Shipped by R:** one of its gates has a row (any stage, blank included) at a release ≤ R.
-  - **Effective stage at R:** the gates' rows at R: if all are high and give one stage → that stage, high; else the version's `claimed_stage`, low; no claim → None (confidence None). Only KEPs get one.
+  - **Effective stage at R:** the gates' rows at R: if every gate it names has a row at R, all high and giving one stage → that stage, high; else the version's `claimed_stage`, low; no claim → None (confidence None). Only KEPs get one. (Resume decision R3d: "every gate it names has a row".)
   - **Tier:** `docs_page` and `feature_gate_reference` 1, `release_record` 2, `governance_doc` 4, `blog_post` 6. `kep`: `claimed_status` withdrawn, rejected or replaced → None (superseded proposal); shipped by R or `implemented` → 3; else 5.
   - `retrieve` attaches `authority` to the returned hits in dense, hybrid, rerank and temporal modes (one `observations` read per question), and to the whole pool in authority mode before the weights.
   - **The prompt (pinned):** each block's second line is `authority: tier N` or `authority: superseded proposal`. A KEP block's claim line is followed by `stage at 1.R: S (observed)` (high), `stage at 1.R: S (claimed, not observed)` (low) or `stage at 1.R: unknown`. The system prompt's paragraph becomes: "Each chunk starts with a line giving its id and the releases it was valid in ("now": still valid in the latest release), then its authority tier (1 = docs and feature-gate pages, 2 = release notes, 3 = shipped KEPs, 4 = governance docs, 5 = unshipped KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP claimed, and its stage at the asked-about release."
@@ -505,7 +506,7 @@ All free: saved pools from stored vectors and routes, the website clone, scratch
   - **Factor, by the routed mode.** Each hit gets one factor; the first matching rule wins:
     - CURRENT: tier 1 or 2 and some release window contains the latest release → boost; `blog_post` → demote.
     - CHANGE: `release_record` → boost.
-    - WHY: a `kep` hit with a heading containing "motivation" or "alternatives" (case-insensitive) → boost; `blog_post` or `governance_doc` → boost; `feature_gate_reference` → demote.
+    - WHY: a `kep` hit with a tier (not a superseded proposal) and a heading containing "motivation" or "alternatives" (case-insensitive) → boost; `blog_post` or `governance_doc` → boost; `feature_gate_reference` → demote. (Resume decision R3a: "with a tier".)
     - HISTORY, or anything else: 1.
   - **Authority mode:** temporal's pool, reranked whole (rerank order), tiers attached, then sorted by `round(sigmoid(rerank_score) × factor, 4)` descending, ties keeping rerank order; the top RETRIEVAL_TOP_K. `authority_score` = the unrounded product. An empty pool → `[]`, no reranker call. It needs a route (`ValueError` without one), like temporal.
   - **The metric:** per golden CURRENT question, the label tiers (each label's document, newest version, at the latest release; None = worst) and its top-K hits' tiers. Counted when the label tiers hold 2+ distinct values; right when a top-K hit matches a label and the first one's tier equals the best label tier. Result (right, counted), or None when nothing counts or a counted question lacks tiers.
@@ -563,7 +564,7 @@ Retrieve time: p50 4.91 s, p95 6.14 s (36 questions). Reranker load 7.4 s.
 - **A renamed gate:** each release names it as its own file does; no aliasing.
 - **Same stage over a patch boundary** (beta 1.35.0–1.35.3, beta 1.35.4–1.36): high. **A stage change at a patch:** 2 stages → blank, low.
 - **A KEP with no gate, an unmatched gate name, or no claim:** tier by status; effective stage = the claim (low) or None.
-- **A superseded proposal:** no tier, never boosted; AC1 accepts it.
+- **A superseded proposal:** no tier, never boosted, the WHY rule included (resume decision R3a); AC1 accepts it.
 - **A current CHANGELOG section of an older release:** tier 2, but not valid at the latest release, so CURRENT doesn't boost it.
 - **Boost 1, demote 1:** temporal's ranking exactly.
 - **Ties after rounding:** rerank order (a saturated probability, e.g. 0.9999, ties).

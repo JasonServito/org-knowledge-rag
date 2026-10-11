@@ -59,6 +59,12 @@ def test_a_rebuild_deletes_every_old_row(conn: Conn, seeded_releases: None) -> N
             errors.CheckViolation,
             "observed_lifecycle_high_check",
         ),
+        # high needs a stage: a blank stage is only ever low (resume decision R3c).
+        (
+            Observation(gate="X", release=20, stage=None, status_confidence="high"),
+            errors.CheckViolation,
+            "observed_lifecycle_high_check",
+        ),
         # 1.99 isn't in `releases`.
         (
             Observation(gate="X", release=99, stage="beta", status_confidence="high"),

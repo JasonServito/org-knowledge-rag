@@ -56,13 +56,15 @@ def kep_gates(metadata: Mapping[str, Any]) -> list[str]:
 def kep_stage(
     claimed_stage: str | None, gates: Sequence[str], rows: Sequence[Observation], target: int
 ) -> tuple[str | None, Confidence | None]:
-    """A KEP's effective stage at `target` and its confidence (ADR-003 D2): when its gates have
-    rows at `target`, all high and giving one stage, that stage, high; otherwise its
-    `claimed_stage`, low; with no claim either, (None, None). `rows` may hold other gates and
-    releases: only `gates`' rows at `target` are read."""
+    """A KEP's effective stage at `target` and its confidence (ADR-003 D2): when every gate in
+    `gates` has a row at `target`, all high and giving one stage, that stage, high; otherwise
+    (no gate, a gate with no row there, a low row, or 2+ stages) its `claimed_stage`, low; with
+    no claim either, (None, None). `rows` may hold other gates and releases: only `gates`' rows
+    at `target` are read."""
     at_target = [row for row in rows if row.gate in gates and row.release == target]
+    every_gate = {row.gate for row in at_target} == set(gates)
     stages = {row.stage for row in at_target}
-    if at_target and len(stages) == 1 and all(r.status_confidence == "high" for r in at_target):
+    if every_gate and len(stages) == 1 and all(r.status_confidence == "high" for r in at_target):
         return stages.pop(), "high"
     if claimed_stage is None:
         return None, None
@@ -114,17 +116,18 @@ def factor(hit: Hit, mode: Mode, latest: int, boost: float, demote: float) -> fl
       section of an older release, tier 2 but valid only at its release, isn't); a blog post →
       demote.
     - CHANGE: a release record → boost.
-    - WHY: a KEP section with a heading containing "motivation" or "alternatives" (any case) →
-      boost; a blog post or governance doc → boost; the feature-gate reference → demote.
+    - WHY: a KEP section with a heading containing "motivation" or "alternatives" (any case),
+      unless the KEP is a superseded proposal → boost; a blog post or governance doc → boost; the
+      feature-gate reference → demote.
     - HISTORY, and every other hit: 1.
 
-    Only CURRENT reads the tier: the hit's `authority`'s, None (like a superseded proposal's)
-    when it has none, which CURRENT never boosts. The WHY rule reads the source type and headings
-    only, as the S09-R2 contract pins it.
+    The tier is the hit's `authority`'s, None (like a superseded proposal's) when it has none. A
+    hit with no tier is never boosted (resume decision R3a): CURRENT needs tier 1 or 2, WHY's KEP
+    rule needs a tier, and the other boosted types always have one.
     """
     source = hit.source_type
+    hit_tier = None if hit.authority is None else hit.authority.tier
     if mode == "CURRENT":
-        hit_tier = None if hit.authority is None else hit.authority.tier
         valid_now = any(
             start <= latest and (until is None or latest <= until)
             for start, until in hit.release_windows
@@ -138,8 +141,12 @@ def factor(hit: Hit, mode: Mode, latest: int, boost: float, demote: float) -> fl
             return boost
     elif mode == "WHY":
         headings = [heading.lower() for heading in hit.heading_path]
-        if source == "kep" and any(
-            word in heading for heading in headings for word in ("motivation", "alternatives")
+        if (
+            source == "kep"
+            and hit_tier is not None
+            and any(
+                word in heading for heading in headings for word in ("motivation", "alternatives")
+            )
         ):
             return boost
         if source in ("blog_post", "governance_doc"):

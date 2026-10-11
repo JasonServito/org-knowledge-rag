@@ -35,7 +35,7 @@ For any KEP or feature, compute `effective_stage`:
 2. `claimed_stage` from `kep.yaml`, with `status_confidence = low`, else
 3. null: the stage is unknown.
 
-Observations live in an `observed_lifecycle` table: one row per gate × minor release, named as that release names the gate. No range covers the release → no row. A KEP is observed through its `kep.yaml` gates: only when all its gates' rows at the release are high and give one stage; otherwise step 2 (S09-R2).
+Observations live in an `observed_lifecycle` table: one row per gate × minor release, named as that release names the gate. No range covers the release → no row. A KEP is observed through its `kep.yaml` gates: only when every gate it names has a row at the release, all high and giving one stage; otherwise step 2 (S09-R2).
 
 A missing `claimed_stage` means **no claim**. That's a separate state from a low-confidence claim, and it never raises `claim_mismatch`. 76 KEP metadata versions have no stage (spike §7 R).
 
@@ -93,7 +93,7 @@ Multipliers apply after the reranker, on its probability: hits sort by sigmoid(s
 
 ## Consequences
 
-- Tiers and multipliers live in config so ablations can vary them. So does the synonym list.
+- The multipliers and the synonym list live in config so ablations can vary them. Tiers are a fixed rule by source type (D3).
 - Two golden-set metrics get defined inputs from this ADR:
   - `authority_selection_accuracy` (defined in the S09-R2 change table)
   - `stale_result_rate`
@@ -135,9 +135,10 @@ Decided by the developer in the S09-R2 sitting; the evidence is in `docs/slices/
 |---|---|---|---|
 | D2 observation | "`observed_stage` for the release in question (from the CHANGELOG or the feature-gate reference, read from that release's own snapshot)" | From the feature-gate reference only, in an `observed_lifecycle` table: one row per gate × minor release, from that release's own snapshot, named as that release names the gate. No range covers the release → no row. 2+ stages, or an unparseable bound → no stage, `status_confidence = low`. One value outside the vocabulary → kept as written, low | 3,295 rows over 1.20–1.37, 35 of them low |
 | D2 CHANGELOG, and a claimed `disabled` | S09 decides how the release notes become `observed_stage`, and how `disabled` compares | Deferred to S10: its conflict check adds the CHANGELOG (e.g. the `EventedPLEG` revert) and the `disabled` comparison | The reference covers every gate at every release (spike §6 N); release notes are free text |
-| D2 effective stage | Observed, else claimed (low), else unknown | The same, for a KEP through its `kep.yaml` gates: observed only when all its gates' rows at the release are high and give one stage; otherwise the claim, low | Gates disagree in 25 of 1,918 KEP × release pairs |
+| D2 effective stage | Observed, else claimed (low), else unknown | The same, for a KEP through its `kep.yaml` gates: observed only when every gate it names has a row at the release, all high and giving one stage; otherwise the claim, low | Gates disagree in 25 of 1,918 KEP × release pairs; "every gate it names has a row": resume decision R3d |
 | D3 tiers 1–2 | Tier 1 "valid for the target release"; tier 2 "for the target release" | Tier by source type: docs page and feature-gate reference 1, release record 2, governance doc 4, blog 6. Validity stays separate: the filters (D4), and D4's CURRENT boost needs "valid at the latest release" | Same ranking on v0 as tiers that depend on validity; every citation gets a tier (AC1) |
 | D3 KEP tiers | Tier 3: "`effective_stage` has shipped, or status is implemented and consistent"; tier 5 otherwise | Tier 3 when one of its gates has an observation at any release up to the target release, or its status is implemented; tier 5 otherwise. Withdrawn, rejected or replaced: no tier, "superseded proposal" | 42 of 65 gated KEPs have no observation at 1.37 (gates removed after GA), so "observed at the target" would demote shipped KEPs. With only the reference observed, "consistent" can't fail when nothing is observed |
 | D4 placement | Multipliers "applied after RRF" | After the reranker, on its probability: sort by sigmoid(score) × multiplier, ties in the reranker's order; a separate `authority` retrieval mode (temporal + multipliers) | The reranker re-sorts the whole fused pool, so multipliers after RRF do nothing; its raw scores can be negative |
 | D4 values | "Starting multipliers, to be tuned" (no numbers) | Boost ×1.25, demote ×0.8, in config. Rows used: CURRENT (boost tiers 1–2 valid at the latest release; demote blogs), CHANGE (boost release records), WHY (boost KEP Motivation/Alternatives sections, blogs, governance; demote the feature-gate reference); HISTORY none | v0 prototype: MRR 0.759 → 0.813, Recall@10 0.560 → 0.552; ×1.5 gives the same; +2 on the raw score gives MRR 0.783. Devil's advocate: strong (66 of 228 reorderings jump more than 2 logits) and set on v0 |
 | Consequences: `authority_selection_accuracy` | Named | Over the golden CURRENT questions whose labeled documents span 2+ tiers, the share whose first labeled top-10 hit has the best label tier; CURRENT-question MRR is reported beside it, because the same tier code drives the weights and the metric | Flipped tiers lift the metric 3 → 6 of 9 but lower CURRENT MRR (0.637 → 0.628); real tiers: 5 → 9 of 9, 0.783 |
+| Consequences, config | "Tiers and multipliers live in config so ablations can vary them. So does the synonym list." | The multipliers and the synonym list live in config so ablations can vary them; tiers are a fixed rule by source type (D3) | resume decision R3b |
