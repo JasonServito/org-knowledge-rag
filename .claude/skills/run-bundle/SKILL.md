@@ -7,19 +7,19 @@ disable-model-invocation: true
 
 # Run bundle
 
-You are the main session of a run. The developer is away, so never wait for an answer: park instead. Follow `CLAUDE.md` ("Runs", "Per-task loop", "Evidence pack", "Git and PRs", "Greptile", "Writing for the developer").
+You are the main session of a run. The developer is away, so never wait for an answer: park instead. Follow `CLAUDE.md` ("Runs", "Per-task loop", "Evidence pack", "Git and PRs", "Greptile", "Anthropic credit", "Writing for the developer").
 
 ## Start or resume
 
 1. Find the contract: the run `$ARGUMENTS` if given, otherwise the run named by the current branch (`sNN-rN-*`). Read its block under "Run contracts" in the slice doc. If there's no contract, stop and say so.
 2. `git switch <run branch> && git pull --ff-only`. Check that `make up` reports healthy; the end-of-run check always runs `make test-int`.
 3. Tasks with a `SNN-TY:` commit on the branch are done or parked. Start at the first task with no commit.
-4. Count Greptile credits, then print the start check-in:
+4. Count Greptile credits and take the Anthropic credit from the contract's "Paid calls allowed" (`CLAUDE.md`, "Anthropic credit"), then print the start check-in:
 
    ```
    [Check-in HH:MM] Run SNN-RN: <name>. Started
    Tasks: 1) <plain name> 2) … 3) …
-   Greptile N/50
+   Greptile N/50 · Anthropic ~US$N left
    ```
 
 ## Per task
@@ -31,6 +31,7 @@ You are the main session of a run. The developer is away, so never wait for an a
    - "Don't run `git grep`, `git log -p` or other content reads on the corpus cache clones: they are blobless, so git fetches from GitHub. Query the database instead, or use `git -c protocol.allow=never`." (S06-R1 sitting, parked question 2)
 
    Don't pass it earlier subagents' output.
+   - If the task makes paid calls: give the builder the estimated Anthropic balance. Tell it to check each paid step's cost against it first, report each step's cost, and stop at the first "credit balance is too low" error, with no retry (`CLAUDE.md`, "Anthropic credit").
 2. **Review** (step 3). Start a `reviewer` subagent with the task's contract block and the diff: `git diff HEAD` (staged and unstaged) plus the untracked files in `git status --short`. It returns must-fix and park lists.
 3. **Fix must-fix** (step 4), once. Send only the must-fix list to the builder, or to a fresh builder if it's gone. Then repeat step 2 of the loop (checks until green).
    - If it's still red or a must-fix item remains, park the task (below).
@@ -47,7 +48,7 @@ You are the main session of a run. The developer is away, so never wait for an a
 
    ```
    [Check-in HH:MM] Task 2 of 3 done: <plain name>
-   ✅ checks green · N parked · N blockers · Greptile N/50
+   ✅ checks green · N parked · N blockers · Greptile N/50 · Anthropic ~US$N left
    Next: <next task>
    ```
 
@@ -78,7 +79,7 @@ Keep running lists for the brief: each task's evidence pack, parked items, Claud
 
    ```
    [Check-in HH:MM] Run SNN-RN done: <one-line summary>
-   PR: <link(s)> · CI green · N parked · Greptile N/50
+   PR: <link(s)> · CI green · N parked · Greptile N/50 · Anthropic ~US$N left
    Next bundle (proposal): <tasks> · decisions you'll face: <list>
    Next steps for you:
    1. Morning review (~5 min): read the brief, then say "merge"
