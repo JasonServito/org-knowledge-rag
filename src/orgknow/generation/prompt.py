@@ -1,4 +1,5 @@
-"""The prompt for the answer step: a fixed system prompt, then one evidence block per hit.
+"""The prompt for the answer step: a fixed system prompt, then one evidence block per hit, then
+the conflicts code found in the hits, if any (S10-T4).
 
 Each block's first line gives the chunk id and every release window of the text (S04-R2
 decision 4), its second the hit's authority tier (S09-T6); a KEP block adds the status and stage
@@ -8,6 +9,7 @@ the KEP claimed, then its effective stage at the target release. Pure functions.
 from collections.abc import Sequence
 
 from orgknow.db.models import Authority, Hit
+from orgknow.generation.conflicts import Conflict, Resolution
 
 # Short and plain on purpose: Opus 5.5 does worse with over-prescriptive prompts. It is not asked
 # to write out its reasoning (it reasons anyway). The output schema is set by the API call.
@@ -73,7 +75,26 @@ def evidence_block(hit: Hit) -> str:
     return "\n".join(lines)
 
 
-def user_prompt(question: str, hits: Sequence[Hit]) -> str:
-    """The user message: every evidence block, nearest first, then the question."""
+# How a rule-found conflict's resolution reads (S10-R1, pinned). The rules resolve only this way
+# (ADR-010 D2), and only rule-found conflicts are shown to the model.
+_RESOLVED: dict[Resolution, str] = {"observed_beats_claimed": "Resolved: observed beats claimed."}
+
+
+def conflicts_block(conflicts: Sequence[Conflict]) -> str:
+    """The rule-found conflicts as the model sees them (S10-R1, pinned): a heading line, then one
+    line per conflict with its chunk ids ("chunk 205", or "chunks 101, 102"), its summary and its
+    resolution."""
+    lines = ["Conflicts found by code:"]
+    for conflict in conflicts:
+        noun = "chunk" if len(conflict.chunk_ids) == 1 else "chunks"
+        ids = ", ".join(str(chunk_id) for chunk_id in conflict.chunk_ids)
+        lines.append(f"- {noun} {ids}: {conflict.summary} {_RESOLVED[conflict.resolution]}")
+    return "\n".join(lines)
+
+
+def user_prompt(question: str, hits: Sequence[Hit], conflicts: Sequence[Conflict] = ()) -> str:
+    """The user message: every evidence block, nearest first, then the rule-found `conflicts`'
+    block when there is at least one, then the question."""
     blocks = "\n\n".join(evidence_block(hit) for hit in hits)
-    return f"Evidence:\n\n{blocks}\n\nQuestion: {question}"
+    found = f"\n\n{conflicts_block(conflicts)}" if conflicts else ""
+    return f"Evidence:\n\n{blocks}{found}\n\nQuestion: {question}"

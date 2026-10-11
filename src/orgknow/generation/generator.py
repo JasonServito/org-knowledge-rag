@@ -11,6 +11,7 @@ import anthropic
 import pydantic
 
 from orgknow.db.models import Hit
+from orgknow.generation.conflicts import Conflict
 from orgknow.generation.prompt import SYSTEM_PROMPT, user_prompt
 from orgknow.generation.schema import (
     Answer,
@@ -98,17 +99,27 @@ def checked_output(generation: Generation) -> ModelAnswer:
     return generation.output
 
 
-def answer(question: str, hits: Sequence[Hit], generator: Generator, settings: Settings) -> Answer:
+def answer(
+    question: str,
+    hits: Sequence[Hit],
+    generator: Generator,
+    settings: Settings,
+    rule_conflicts: Sequence[Conflict] = (),
+) -> Answer:
     """Answer `question` from `hits` with one model call, then validate and fill in citations.
 
-    No hits: `insufficient_evidence` without calling the model. A rejected answer becomes
-    `insufficient_evidence` (decision 8); the rejected output stays in `trace`. Raises
-    GenerationError when the model gives no usable answer.
+    No hits: `insufficient_evidence` without calling the model, and no conflicts. A rejected
+    answer becomes `insufficient_evidence` (decision 8); the rejected output stays in `trace`.
+    Raises GenerationError when the model gives no usable answer.
+
+    `rule_conflicts` are the hits' rule-found conflicts (`conflicts.rule_conflicts`, S10-T4):
+    the prompt lists them after the evidence, and every answer with hits carries them, rejected
+    or not. Their chunk ids never go through the citation check (ADR-010 D3).
     """
     if not hits:
-        return _insufficient(question, "no evidence retrieved", settings, trace=None)
+        return _insufficient(question, "no evidence retrieved", settings, trace=None, conflicts=[])
     repo_urls = load_repo_urls(settings.corpus_manifest_path)  # before the paid call
-    prompt = user_prompt(question, hits)
+    prompt = user_prompt(question, hits, rule_conflicts)
     generation = generator.generate(SYSTEM_PROMPT, prompt)
     output = checked_output(generation)
 
@@ -123,12 +134,13 @@ def answer(question: str, hits: Sequence[Hit], generator: Generator, settings: S
         rejected_ids=out_of_set_ids(output, by_id.keys()),
     )
     if rejection is not None:
-        return _insufficient(question, rejection, settings, trace)
+        return _insufficient(question, rejection, settings, trace, conflicts=list(rule_conflicts))
     return Answer(
         question=question,
         answer_status=output.answer_status,
         answer=output.answer,
         evidence=[fill_in(by_id[chunk_id], repo_urls) for chunk_id in cited_ids(output)],
+        conflicts=list(rule_conflicts),
         insufficient_evidence_reason=output.insufficient_evidence_reason,
         model=settings.generation_model,
         trace=trace,
@@ -136,13 +148,18 @@ def answer(question: str, hits: Sequence[Hit], generator: Generator, settings: S
 
 
 def _insufficient(
-    question: str, reason: str, settings: Settings, trace: AnswerTrace | None
+    question: str,
+    reason: str,
+    settings: Settings,
+    trace: AnswerTrace | None,
+    conflicts: list[Conflict],
 ) -> Answer:
     return Answer(
         question=question,
         answer_status="insufficient_evidence",
         answer="",
         evidence=[],
+        conflicts=conflicts,
         insufficient_evidence_reason=reason,
         model=settings.generation_model,
         trace=trace,

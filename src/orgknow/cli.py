@@ -4,9 +4,11 @@ One ask embeds the question, retrieves chunk texts in RETRIEVAL_MODE (dense, S04
 S07-T3; rerank, S08-T2, which first loads the cross-encoder; temporal, S09-T4, which also routes
 the question first, with one router call, and prints the route line; or authority, S09-T7, which
 does what temporal does, then reorders by the route's authority weights), then answers from them
-with one model call and validates the citations (S04-T6). The JSON goes to stdout; "tracing
-off", the route line and errors go to stderr, one line each. Exit codes: 0 when an answer prints
-(either status), 1 on an error, 2 on bad usage (argparse's own errors exit 2 too).
+with one model call and validates the citations (S04-T6). Between the two, code finds the
+conflicts in the hits' stored facts (S10-T4), with no network call; the answer lists them. The
+JSON goes to stdout; "tracing off", the route line and errors go to stderr, one line each. Exit
+codes: 0 when an answer prints (either status), 1 on an error, 2 on bad usage (argparse's own
+errors exit 2 too).
 
 With both Langfuse keys set, each ask leaves one trace named `ask` (ADR-006 D3). This module is
 the only caller of Langfuse, and it never puts the settings or a key in a trace.
@@ -27,6 +29,7 @@ from orgknow.db.models import Hit, TemporalFilter
 from orgknow.db.releases import list_releases
 from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
+from orgknow.generation.conflicts import Conflict, rule_conflicts
 from orgknow.generation.generator import AnthropicGenerator, GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
 from orgknow.retrieval.authority import factor
@@ -108,7 +111,8 @@ def ask(
         if langfuse is None:
             route, _, _ = _route(question, conn, settings, router)
             hits = retrieve(question, embedder, conn, settings, reranker, route)
-            result = answer(question, hits, generator, settings)
+            found = rule_conflicts(conn, hits, settings)
+            result = answer(question, hits, generator, settings, found)
         else:
             result = _traced_answer(
                 question, conn, embedder, generator, settings, langfuse, reranker, router
@@ -177,9 +181,10 @@ def _traced_answer(
     """`retrieve`, then `answer`, recorded as one trace named `ask` (the run contract's "Trace"):
     the question in, a `retrieve` span, a `generate` generation, a `validate` span, the final JSON
     out. With no hits the model isn't called, so there is no `generate` or `validate`: the
-    output's reason says "no evidence retrieved". In temporal and authority modes the route comes
-    first, and the `retrieve` span records it with its window and filter (S09-T4; all None in
-    other modes)."""
+    output's reason says "no evidence retrieved". The rule-found conflicts (S10-T4) are found
+    between `retrieve` and `generate`, which logs them. In temporal and authority modes the route
+    comes first, and the `retrieve` span records it with its window and filter (S09-T4; all None
+    in other modes)."""
     with langfuse.start_as_current_observation(name="ask", input=question) as root:
         try:
             route, window, temporal = _route(question, conn, settings, router)
@@ -218,7 +223,8 @@ def _traced_answer(
                     ]
                 )
             if hits:
-                result = _traced_generation(root, question, hits, generator, settings)
+                found = rule_conflicts(conn, hits, settings)
+                result = _traced_generation(root, question, hits, generator, settings, found)
             else:
                 result = answer(question, hits, generator, settings)
         except ASK_ERRORS as error:
@@ -250,13 +256,15 @@ def _traced_generation(
     hits: Sequence[Hit],
     generator: Generator,
     settings: Settings,
+    found: Sequence[Conflict],
 ) -> Answer:
     """`answer` inside a `generate` generation, then a `validate` span.
 
     `answer` prompts, calls the model, validates and fills in, all in one call, so `generate`
     times that whole call and both observations are filled in from `answer.trace` afterwards: no
-    step runs twice. On a GenerationError, `generate` gets the error, the stop reason and any
-    usage the API reported.
+    step runs twice. `generate`'s metadata logs the answer's conflicts (S10-T4); the rule-found
+    ones, `found`, are in its prompt. On a GenerationError, `generate` gets the error, the stop
+    reason and any usage the API reported.
     """
     with root.start_as_current_observation(
         name="generate",
@@ -268,7 +276,7 @@ def _traced_generation(
         },
     ) as generation:
         try:
-            result = answer(question, hits, generator, settings)
+            result = answer(question, hits, generator, settings, found)
         except GenerationError as error:
             generation.update(
                 level="ERROR",
@@ -287,7 +295,11 @@ def _traced_generation(
             ],
             output=None if output is None else output.model_dump(mode="json"),
             usage_details=_usage_details(trace.generation.usage),
-            metadata={"stop_reason": trace.generation.stop_reason, "effort": trace.effort},
+            metadata={
+                "stop_reason": trace.generation.stop_reason,
+                "effort": trace.effort,
+                "conflicts": [conflict.model_dump(mode="json") for conflict in result.conflicts],
+            },
         )
     root.start_observation(
         name="validate",

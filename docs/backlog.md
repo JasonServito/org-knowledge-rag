@@ -331,7 +331,7 @@ Tasks:
 - [x] **S10-T3 `[core]` Kind and resolution of a pair.**
   - A pure function: same section → supersession, else contradiction; the winner by ADR-003 D6, or unresolved.
   - Done when: hand-worked unit tests pass, including the sitting's 2 real pairs.
-- [ ] **S10-T4 `[core]` Conflicts in the answer.**
+- [x] **S10-T4 `[core]` Conflicts in the answer.**
   - `conflicts[]` on the answer and the eval rows, on every path; the rule-found block in the prompt; `ask` JSON; the trace.
   - Done when: hand-worked unit tests pass; retrieval prints S09's numbers; a demo `ask` shows KEP-4858's conflict.
   - Deps: T2.

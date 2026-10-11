@@ -20,6 +20,9 @@ metrics (S09-T3), which `time_line` reports, authority selection and the CURRENT
 Both read each labeled document's tier (S09-T7): its newest version's, at the latest release.
 `run` writes each question's label tiers in its row, so the summary can count authority selection.
 
+`run` also finds each question's rule-found conflicts after retrieval (S10-T4), gives them to the
+answer call, and keeps them in the row, on an ask error too.
+
 In rerank, temporal and authority modes (S08-T2, S09-T4, S09-T7), both get the reranker the caller
 loaded once, before the question loop.
 
@@ -192,6 +195,8 @@ class QuestionRow(BaseModel):
     answerable: bool
     hits: list[RankedHit]
     answer: Answer | None  # the `ask` JSON; None when the ask failed
+    # The answer's conflicts; on an ask error, the rule-found ones (S10-T4). [] in older folders.
+    conflicts: list[Conflict] = []
     metrics: RetrievalMetrics | None  # None when unanswerable
     checks: AnswerChecks
     usage: TokenUsage | None  # None when the model wasn't called (no hits)
@@ -268,6 +273,9 @@ class Summary(BaseModel):
     # S09-T7: authority selection over the CURRENT questions whose labels span 2+ tiers. None when
     # none does, and in a summary of rows written before S09-T7.
     authority: Rate | None = None
+    # S10-T4: the rule-found conflicts over all rows, error rows included. None in a summary
+    # written before S10.
+    conflicts_rule: int | None = None
 
 
 class RetrievalScores(BaseModel):
@@ -611,19 +619,22 @@ def _run_question(
     route: Route | None,
     tiers: Mapping[str, int | None],
 ) -> QuestionRow:
-    """Retrieve (with `route`, in temporal and authority modes), answer and score one question;
-    its labels' tiers come from `tiers` (`document_tiers`). An ask error (`cli.ASK_ERRORS`)
-    becomes the row's `error`. Retrieval reads a stored vector and a stored route, so it makes no
-    network call: its failure is a bug or a database failure, and stops the run."""
+    """Retrieve (with `route`, in temporal and authority modes), find the rule-found conflicts,
+    answer and score one question; its labels' tiers come from `tiers` (`document_tiers`). An ask
+    error (`cli.ASK_ERRORS`) becomes the row's `error`, and the row keeps the rule-found
+    conflicts. Retrieval reads a stored vector and a stored route, and the rules read only the
+    database, so neither makes a network call: their failure is a bug or a database failure, and
+    stops the run."""
     record = None if route is None else _route_record(conn, route, settings)
     start = time.monotonic()
     hits = retrieve(question.question, embedder, conn, settings, reranker, route)
     retrieve_s = round(time.monotonic() - start, 3)
+    found = rule_conflicts(conn, hits, settings)
     result: Answer | None = None
     usage: TokenUsage | None = None
     error: str | None = None
     try:
-        result = answer(question.question, hits, generator, settings)
+        result = answer(question.question, hits, generator, settings, found)
         usage = None if result.trace is None else result.trace.generation.usage
     except ASK_ERRORS as exc:
         error = f"{type(exc).__name__}: {_one_line(exc)}"
@@ -655,6 +666,7 @@ def _run_question(
             for rank, hit in enumerate(hits, start=1)
         ],
         answer=result,
+        conflicts=found if result is None else result.conflicts,
         metrics=score_retrieval(question, hits, settings.retrieval_top_k),
         checks=check_answer(question, hits, result),
         usage=usage,
@@ -911,7 +923,8 @@ def summarize(
     """The run's totals: metric means over the answerable questions, for each check how many of
     the rows it applies to (not None) passed, the p95 latencies and the mean cost per question
     at the settings' prices (S08-T3), the S09 time counts over the rows' hits (S09-T3), router
-    accuracy over the answerable rows with a route (S09-T4), and authority selection (S09-T7).
+    accuracy over the answerable rows with a route (S09-T4), authority selection (S09-T7), and
+    the rule-found conflicts over all rows (S10-T4).
 
     Authority selection needs each row's golden labels, by question id in `labels`, to find its
     first labeled hit: a row holds its label tiers, not its labels. None without `labels`."""
@@ -964,20 +977,25 @@ def summarize(
             )
         ),
         authority=authority,
+        conflicts_rule=sum(1 for row in rows for c in row.conflicts if c.found_by == "rule"),
     )
 
 
 def resummarize(folder: Path, settings: Settings) -> Summary:
     """`make eval-resummarize` (S08-T3): rebuild the folder's `summary.json` with `summarize` from
-    its `questions.jsonl`, keeping the summary's name, golden hash, start time and authority
-    selection (S09-T7: it needs the golden labels, which the rows don't hold; `run` counted it);
-    write it and return it. Nothing else in the folder changes."""
+    its `questions.jsonl`, keeping the summary's name, golden hash, start time, authority
+    selection (S09-T7: it needs the golden labels, which the rows don't hold; `run` counted it)
+    and rule-conflict count (S10-T4: rows written before S10 load with no conflicts, so a count
+    would say 0 where none was looked for); write it and return it. Nothing else in the folder
+    changes."""
     path = folder / "summary.json"
     old = Summary.model_validate_json(path.read_text(encoding="utf-8"))
     lines = (folder / "questions.jsonl").read_text(encoding="utf-8").splitlines()
     rows = [QuestionRow.model_validate_json(line) for line in lines]
     summary = summarize(old.name, old.golden_sha256, old.started_at, rows, settings)
-    summary = summary.model_copy(update={"authority": old.authority})
+    summary = summary.model_copy(
+        update={"authority": old.authority, "conflicts_rule": old.conflicts_rule}
+    )
     path.write_text(summary.model_dump_json(indent=2) + "\n", encoding="utf-8")
     return summary
 

@@ -457,7 +457,7 @@ def test_a_run_writes_the_pinned_results_format(
     assert [list(row) for row in rows] == [
         [
             *("id", "mode", "release_window", "label_tiers", "route", "answerable", "hits"),
-            "answer",
+            *("answer", "conflicts"),  # S10-T4: the row's conflicts follow its answer
             *("metrics", "checks", "usage", "latency_s", "retrieve_s", "error"),
         ]
     ] * 3
@@ -552,10 +552,12 @@ def test_a_run_writes_the_pinned_results_format(
                     f"{SHA}/content/en/docs/test/page.md",
                 }
             ],
+            "conflicts": [],  # S10-T4: docs pages alone give no rule-found conflict
             "insufficient_evidence_reason": None,
             "model": "claude-opus-5-5",
             "trace_id": None,
         },
+        "conflicts": [],
         "metrics": {
             "recall": 1.0,
             "hit": 1,
@@ -578,6 +580,7 @@ def test_a_run_writes_the_pinned_results_format(
         "answerable": True,
         "hits": hits,
         "answer": None,
+        "conflicts": [],
         "metrics": {"recall": 1.0, "hit": 1, "mrr": 1.0, "ndcg": 1.0, "distinct_sections": 3},
         "checks": {"ac1": None, "ac2": None, "ac3": None, "false_refusal": None},
         "usage": {"input_tokens": 500, "output_tokens": 16000, "thinking_tokens": 15000},
@@ -597,10 +600,12 @@ def test_a_run_writes_the_pinned_results_format(
             "answer_status": "insufficient_evidence",
             "answer": "",
             "evidence": [],
+            "conflicts": [],
             "insufficient_evidence_reason": "The sources don't cover it.",
             "model": "claude-opus-5-5",
             "trace_id": None,
         },
+        "conflicts": [],
         "metrics": None,
         "checks": {"ac1": None, "ac2": True, "ac3": True, "false_refusal": None},
         "usage": USAGE,
@@ -645,6 +650,7 @@ def test_a_run_writes_the_pinned_results_format(
         "temporal": {"pass": 0, "total": 3},
         "router": None,
         "authority": None,
+        "conflicts_rule": 0,  # S10-T4: no KEP among the hits
     }
     assert len(generator.calls) == 3
 

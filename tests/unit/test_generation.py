@@ -4,7 +4,8 @@ Every expected value is typed by hand from the S04-R2 contract's pinned formats 
 of the dev database (chunk 551, PSA "Exemptions", and chunk 4916, the KEP-2579 summary; checked
 2026-10-06). The authority lines and citation fields are the S09-R2 contract's (S09-T6), with
 KEP-2579's sitting values: at 1.37 stable (claimed, not observed), at 1.22 alpha (observed), tier
-3 at both. None is computed by the code under test. No test calls a network.
+3 at both. The rule-found conflicts on every path and their prompt block are the S10-R1 contract's
+("T4 rules (pinned)"). None is computed by the code under test. No test calls a network.
 """
 
 import json
@@ -17,13 +18,14 @@ import pytest
 from tests.conftest import FakeGenerator
 
 from orgknow.db.models import Authority, Hit
+from orgknow.generation.conflicts import Conflict
 from orgknow.generation.generator import (
     AnthropicGenerator,
     GenerationError,
     answer,
     checked_output,
 )
-from orgknow.generation.prompt import SYSTEM_PROMPT, evidence_block
+from orgknow.generation.prompt import SYSTEM_PROMPT, evidence_block, user_prompt
 from orgknow.generation.schema import Generation, ModelAnswer, TokenUsage
 from orgknow.generation.validate import fill_in, rejection_reason
 from orgknow.settings import Settings
@@ -424,21 +426,138 @@ def test_no_hits_answers_insufficient_evidence_without_calling_the_model(
     assert result.evidence == []
     assert result.answer == ""
     assert result.trace is None
+    assert result.conflicts == []  # S10-T4
+
+
+# --- Rule-found conflicts on every path, and their prompt block (S10-T4) -------------------------
+
+# KEP-4858 at 1.37 as `rule_conflicts` words it (S10-R1, pinned), about chunks 101 and 102.
+# KEP-2579's real history line, about chunk 205: v1.23 was released 2021-12-07, 34 days after the
+# line's date.
+CLAIM = Conflict(
+    kind="claim_mismatch",
+    found_by="rule",
+    chunk_ids=[101, 102],
+    documents=["kep:4858"],
+    summary=(
+        "kep:4858 claims stable (latest milestone v1.38); the feature-gate reference at 1.37 "
+        "says beta."
+    ),
+    resolution="observed_beats_claimed",
+    prevails=None,
+)
+HISTORY = Conflict(
+    kind="history_date",
+    found_by="rule",
+    chunk_ids=[205],
+    documents=["kep:2579"],
+    summary="kep:2579 says v1.23 was released 2021-11-03; the releases table says 2021-12-07.",
+    resolution="observed_beats_claimed",
+    prevails=None,
+)
+HITS_101_102 = [_docs_hit(101), _docs_hit(102)]
+
+
+@pytest.mark.parametrize(
+    ("output", "status", "reason"),
+    [
+        # Answered.
+        (_answered(101), "answered", None),
+        # The model's own insufficient_evidence.
+        (
+            ModelAnswer(
+                answer_status="insufficient_evidence",
+                answer="",
+                evidence=[],
+                insufficient_evidence_reason="The chunks give no GA release.",
+            ),
+            "insufficient_evidence",
+            "The chunks give no GA release.",
+        ),
+        # Rejected for a bad citation: the model's output isn't trusted, the rule conflicts stay.
+        (_answered(101, 999), "insufficient_evidence", "citation_validation_failed: [999]"),
+    ],
+)
+def test_every_path_with_hits_carries_the_rule_conflicts(
+    settings: Settings, output: ModelAnswer, status: str, reason: str | None
+) -> None:
+    result = answer(QUESTION, HITS_101_102, FakeGenerator(output), settings, [CLAIM, HISTORY])
+
+    assert (result.answer_status, result.insufficient_evidence_reason) == (status, reason)
+    assert result.conflicts == [CLAIM, HISTORY]
+
+
+def test_no_hits_carries_no_conflicts_and_calls_no_model(settings: Settings) -> None:
+    fake = FakeGenerator(_answered(101))
+
+    result = answer(QUESTION, [], fake, settings, [CLAIM])
+
+    assert fake.calls == []
+    assert result.conflicts == []
+
+
+def test_with_no_rule_conflicts_the_answer_has_none(settings: Settings) -> None:
+    result = answer(QUESTION, HITS_101_102, FakeGenerator(_answered(101)), settings)
+
+    assert result.conflicts == []
+
+
+def test_the_prompt_lists_a_rule_conflict_on_2_chunks_after_the_evidence(
+    settings: Settings,
+) -> None:
+    fake = FakeGenerator(_answered(101))
+
+    answer(QUESTION, HITS_101_102, fake, settings, [CLAIM])
+
+    block = "[chunk {}] valid in releases: 1.30\N{EN DASH}now\nauthority: tier 1\n" + PSA_TEXT
+    assert fake.calls == [
+        (
+            SYSTEM_PROMPT,
+            "Evidence:\n\n" + block.format(101) + "\n\n" + block.format(102) + "\n\n"
+            "Conflicts found by code:\n"
+            "- chunks 101, 102: kep:4858 claims stable (latest milestone v1.38); the feature-gate "
+            "reference at 1.37 says beta. Resolved: observed beats claimed."
+            "\n\nQuestion: What enforces pod security standards in-tree?",
+        )
+    ]
+
+
+def test_the_prompt_names_a_conflict_on_1_chunk_and_lists_each_conflict() -> None:
+    prompt = user_prompt(QUESTION, [_docs_hit(205)], [HISTORY, CLAIM])
+
+    assert prompt.endswith(
+        "\n\nConflicts found by code:\n"
+        "- chunk 205: kep:2579 says v1.23 was released 2021-11-03; the releases table says "
+        "2021-12-07. Resolved: observed beats claimed.\n"
+        "- chunks 101, 102: kep:4858 claims stable (latest milestone v1.38); the feature-gate "
+        "reference at 1.37 says beta. Resolved: observed beats claimed."
+        "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
+
+
+def test_with_no_rule_conflict_the_prompt_has_no_conflict_block() -> None:
+    assert user_prompt(QUESTION, [_docs_hit(205)], []) == (
+        "Evidence:\n\n[chunk 205] valid in releases: 1.30\N{EN DASH}now\nauthority: tier 1\n"
+        + PSA_TEXT
+        + "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
 
 
 # --- The printed JSON (pinned format) ------------------------------------------------------------
 
 
 def test_the_printed_json_has_the_pinned_shape(settings: Settings) -> None:
-    result = answer(QUESTION, [_docs_hit()], FakeGenerator(_answered(551)), settings)
+    result = answer(QUESTION, [_docs_hit()], FakeGenerator(_answered(551)), settings, [HISTORY])
 
     printed = json.loads(result.model_dump_json())
 
+    # S10-T4: `conflicts` follows `evidence`.
     assert list(printed) == [
         "question",
         "answer_status",
         "answer",
         "evidence",
+        "conflicts",
         "insufficient_evidence_reason",
         "model",
         "trace_id",
@@ -464,6 +583,18 @@ def test_the_printed_json_has_the_pinned_shape(settings: Settings) -> None:
                 "source_url": "https://github.com/kubernetes/website/blob/"
                 "c28dcd8393562ddc6adf89b920ad3c396166a31b/"
                 "content/en/docs/concepts/security/pod-security-admission.md",
+            }
+        ],
+        "conflicts": [
+            {
+                "kind": "history_date",
+                "found_by": "rule",
+                "chunk_ids": [205],
+                "documents": ["kep:2579"],
+                "summary": "kep:2579 says v1.23 was released 2021-11-03; the releases table says "
+                "2021-12-07.",
+                "resolution": "observed_beats_claimed",
+                "prevails": None,
             }
         ],
         "insufficient_evidence_reason": None,

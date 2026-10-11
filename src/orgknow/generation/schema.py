@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from orgknow.db.models import Confidence
+from orgknow.generation.conflicts import Conflict
 
 AnswerStatus = Literal["answered", "insufficient_evidence"]
 
@@ -78,6 +79,9 @@ class Answer(BaseModel):
     answer_status: AnswerStatus
     answer: str
     evidence: list[Evidence]
+    # The conflicts found in the hits (S10-T4, ADR-010 D3): the rule-found ones on every path
+    # with hits. A default, so answers saved before S10 still load, with none.
+    conflicts: list[Conflict] = []
     insufficient_evidence_reason: str | None
     model: str
     trace_id: str | None = None  # set by the CLI when tracing is on (T7)

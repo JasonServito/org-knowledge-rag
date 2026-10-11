@@ -1,7 +1,9 @@
 """The summary's p95 latencies and cost per question (S08-T3), its stale and temporal counts
-(S09-T3), its authority selection (S09-T7), and `make eval-resummarize`, from hand-built rows; and
-`make eval-retrieval`'s timing line (S08-T4), time line (S09-T3), authority line (S09-T7) and
-rule-conflict line (S10-T2), from hand-written values.
+(S09-T3), its authority selection (S09-T7), its rule-conflict count (S10-T4), and `make
+eval-resummarize`, from hand-built rows; `make eval-retrieval`'s timing line (S08-T4), time line
+(S09-T3), authority line (S09-T7) and rule-conflict line (S10-T2), from hand-written values; and a
+row's conflicts on the answered and the error path (S10-T4), with retrieval and the rule-found
+conflicts replaced by hand-built ones.
 
 Every expected value is by hand: a nearest-rank p95 is the value at sorted index
 ceil(n * 0.95) - 1 (0-based), a median of an even count is the mean of the 2 middle values, a
@@ -13,11 +15,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from tests.conftest import FakeGenerator
 
-from orgknow.db.models import Authority
+from orgknow.db.models import Authority, Hit
 from orgknow.eval import __main__ as eval_main
+from orgknow.eval import runner
 from orgknow.eval.checks import AnswerChecks
-from orgknow.eval.golden import Label, Mode
+from orgknow.eval.golden import Label, Mode, Question
 from orgknow.eval.runner import (
     Count,
     QuestionRow,
@@ -35,7 +39,7 @@ from orgknow.eval.runner import (
     timing_line,
 )
 from orgknow.generation.conflicts import Conflict, ConflictKind
-from orgknow.generation.schema import TokenUsage
+from orgknow.generation.schema import Answer, ModelAnswer, TokenUsage
 from orgknow.retrieval.router import TimeScope
 from orgknow.settings import Settings
 
@@ -149,6 +153,7 @@ def test_a_summary_without_the_new_fields_still_loads() -> None:
     assert (summary.latency_s_p95, summary.retrieve_s_p95, summary.cost_usd_mean) == (None,) * 3
     assert (summary.stale, summary.temporal, summary.router) == (None,) * 3
     assert summary.authority is None
+    assert summary.conflicts_rule is None  # S10-T4
 
 
 def test_a_row_written_before_s07_still_loads() -> None:
@@ -273,7 +278,9 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     cost = summary.pop("cost_usd_mean")
     assert cost == pytest.approx(0.006)
-    # No hits, so no stale or temporal count; no routes; no authority selection (S09-T7).
+    # No hits, so no stale or temporal count; no routes; no authority selection (S09-T7). No
+    # rule-conflict count (S10-T4): rows written before S10 load with no conflicts, which can't
+    # tell "none found" from "not looked for", so the old summary's None is kept.
     assert summary == {
         **OLD_SUMMARY,
         "latency_s_p95": 4.0,
@@ -282,6 +289,7 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
         "temporal": None,
         "router": None,
         "authority": None,
+        "conflicts_rule": None,
     }
     # Only the summary is written: the rows are unchanged, and there is no table.
     assert (folder / "questions.jsonl").read_text(encoding="utf-8") == _old_rows()
@@ -293,18 +301,21 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
 
 def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -> None:
     # A folder `run` wrote after S09-T7: its summary holds authority selection, which needs the
-    # golden labels; the rows hold only the label tiers, so resummarize keeps the value.
+    # golden labels; the rows hold only the label tiers, so resummarize keeps the value. The same
+    # for the rule-conflict count (S10-T4): 5 stays 5, though these rows hold none.
     folder = tmp_path / "authority-20261010T100000Z"
     folder.mkdir()
-    counted = {**OLD_SUMMARY, "authority": {"pass": 9, "total": 9}}
+    counted = {**OLD_SUMMARY, "authority": {"pass": 9, "total": 9}, "conflicts_rule": 5}
     (folder / "summary.json").write_text(json.dumps(counted), encoding="utf-8")
     (folder / "questions.jsonl").write_text(_old_rows(), encoding="utf-8")
 
     summary = resummarize(folder, _settings())
 
     assert summary.authority == Rate(pass_=9, total=9)
+    assert summary.conflicts_rule == 5
     written = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     assert written["authority"] == {"pass": 9, "total": 9}
+    assert written["conflicts_rule"] == 5
 
 
 @pytest.mark.parametrize(
@@ -550,3 +561,120 @@ CLAIM, HISTORY = _conflict("claim_mismatch"), _conflict("history_date")
 )
 def test_the_rule_conflict_line(conflicts: list[tuple[str, list[Conflict]]], expected: str) -> None:
     assert conflict_line(conflicts) == expected
+
+
+# --- S10-T4: the rows' conflicts, and the summary's rule-conflict count --------------------------
+
+MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
+# S09's authority run, written before S10: read only.
+S09_RUN = Path(__file__).parents[2] / "eval" / "results" / "authority-20261011T051924Z"
+MODEL = CLAIM.model_copy(update={"kind": "contradiction", "found_by": "model"})
+
+
+def test_an_s09_row_its_answer_and_its_summary_load_with_no_conflicts() -> None:
+    # q18 (KEP-4858), the 18th line: neither the row nor its answer has a `conflicts` field.
+    line = (S09_RUN / "questions.jsonl").read_text(encoding="utf-8").splitlines()[17]
+
+    row = QuestionRow.model_validate_json(line)
+
+    assert row.id == "q18"
+    assert row.conflicts == []
+    assert row.answer is not None
+    assert row.answer.conflicts == []
+    assert Answer.model_validate(json.loads(line)["answer"]).conflicts == []
+    summary = Summary.model_validate_json((S09_RUN / "summary.json").read_text(encoding="utf-8"))
+    assert summary.conflicts_rule is None
+
+
+def test_the_summary_counts_the_rule_conflicts_of_every_row() -> None:
+    # 2 + 1 (the error row's) + 0 = 3; the model-found conflict isn't counted.
+    rows = [
+        _row(5.0).model_copy(update={"conflicts": [CLAIM, HISTORY, MODEL]}),
+        _row(5.0, error="GenerationError: cut off").model_copy(update={"conflicts": [CLAIM]}),
+        _row(5.0),
+    ]
+
+    assert _summary(rows).conflicts_rule == 3
+
+
+KEP_4858 = "What are the release stages of strict IP/CIDR validation (KEP-4858)?"
+
+
+def _kep_hit(chunk_id: int) -> Hit:
+    """A KEP-4858 hit at 1.37; the row reads only its id (CLAIM is about chunk 1)."""
+    return Hit(
+        chunk_id=chunk_id,
+        content_hash="a" * 64,
+        distance=0.3,
+        text="Source: kep\nDocument: kep:4858\n\nbody",
+        canonical_id="kep:4858",
+        source_type="kep",
+        heading_path=["Summary"],
+        release_windows=[(37, None)],
+        current=True,
+        claimed_status="implemented",
+        claimed_stage="stable",
+        snapshot_repo="enhancements",
+        snapshot_sha="0" * 40,
+        source_path="keps/sig-network/4858-ip-cidr-validation/README.md",
+        metadata={"title": "Strict IP/CIDR Validation"},
+        authority=Authority(
+            target_release=37, tier=3, effective_stage="beta", stage_confidence="high"
+        ),
+    )
+
+
+def _run_q18(monkeypatch: pytest.MonkeyPatch, generator: FakeGenerator) -> QuestionRow:
+    """One row from `_run_question`, with retrieval giving hits 1 and 2 and the rules finding
+    CLAIM on exactly those hits: no database is read."""
+    hits = [_kep_hit(1), _kep_hit(2)]
+
+    def found(conn: object, found_hits: list[Hit], settings: Settings) -> list[Conflict]:
+        assert found_hits == hits
+        return [CLAIM]
+
+    monkeypatch.setattr(runner, "retrieve", lambda *args: hits)
+    monkeypatch.setattr(runner, "rule_conflicts", found)
+    question = Question(
+        id="q18",
+        question=KEP_4858,
+        answerable=False,
+        expected_answer="filler",
+        smoke=False,
+        labels=[],
+    )
+    settings = _settings(corpus_manifest_path=MANIFEST)
+    return runner._run_question(question, None, None, generator, settings, None, None, {})  # type: ignore[arg-type]
+
+
+def test_an_answered_row_holds_the_rule_conflicts_the_prompt_showed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = ModelAnswer(
+        answer_status="answered",
+        answer="Beta at 1.37.",
+        evidence=[1],
+        insufficient_evidence_reason=None,
+    )
+    generator = FakeGenerator(output)
+
+    row = _run_q18(monkeypatch, generator)
+
+    assert row.answer is not None
+    assert row.answer.conflicts == [CLAIM]
+    assert row.conflicts == [CLAIM]
+    [(_, prompt)] = generator.calls
+    assert prompt.endswith(
+        "\n\nConflicts found by code:\n- chunk 1: s Resolved: observed beats claimed.\n\n"
+        f"Question: {KEP_4858}"
+    )
+
+
+def test_an_error_row_keeps_the_rule_conflicts(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = _run_q18(monkeypatch, FakeGenerator(None, stop_reason="max_tokens"))  # a cut-off
+
+    assert row.answer is None
+    assert row.error == (
+        "GenerationError: no usable answer from the model (stop reason: max_tokens)"
+    )
+    assert row.conflicts == [CLAIM]
