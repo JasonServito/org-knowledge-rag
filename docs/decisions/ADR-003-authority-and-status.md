@@ -1,6 +1,6 @@
 # ADR-003: Source types, authority tiers, and status taxonomy
 
-- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S09-R1 (2026-10-09) and S09-R2 (2026-10-10) sittings. See the three "Changes" tables at the end. The weights were set on golden set v0 (S09-R2); v1 is their clean test.
+- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S09-R1 (2026-10-09), S09-R2 (2026-10-10) and S10-R1 (2026-10-11) sittings. See the four "Changes" tables at the end. The weights were set on golden set v0 (S09-R2); v1 is their clean test.
 - **Date:** 2026-09-22
 - **Blueprint refs:** §15, §16; readiness gap #4
 - **Builds on:** validation gate §5.3 (first-draft tiers), ADR-002
@@ -39,10 +39,10 @@ Observations live in an `observed_lifecycle` table: one row per gate × minor re
 
 A missing `claimed_stage` means **no claim**. That's a separate state from a low-confidence claim, and it never raises `claim_mismatch`. 76 KEP metadata versions have no stage (spike §7 R).
 
-When `observed ≠ claimed`, emit a `claim_mismatch` flag. The conflict detector consumes it. The flag is never silently resolved in the index.
+When `observed ≠ claimed`, emit a `claim_mismatch` flag. The conflict detector consumes it (ADR-010: the claim of the KEP version valid at the target release; a claimed `disabled` is never compared, because the reference has no `disabled` stage). The flag is never silently resolved in the index.
 
 **The feature-gate reference is an observation that can be wrong.** Its two formats agree for 287 of the 293 gates they share, over their whole history. But the `EventedPLEG` revert appears only in the CHANGELOG, and later files rewrite earlier ranges (spike §6 O). So:
-- the CHANGELOG is needed too, and a disagreement between the two is conflict evidence (D6). Deferred to S10: its conflict check adds the CHANGELOG, and how a claimed `disabled` compares (S09-R2)
+- the CHANGELOG is not a stage observation in Phase 1 (S10-R1): its release notes are free text, and its one known disagreement with the reference (the `EventedPLEG` revert) is the known limit below. It stays a retrievable `release_record`
 - 2+ stages at R (a change at a patch release within R included), or an unparseable bound → no stage, `status_confidence = low`. One value outside the vocabulary → kept as written, low. The parser never picks one range.
 
 ### D3. Base authority tiers (1 = highest)
@@ -99,7 +99,7 @@ Multipliers apply after the reranker, on its probability: hits sort by sigmoid(s
   - `stale_result_rate`
 - The four gate conflict cases seed the §16 conflict test set: KEP-2572, `versioning.md`, KEP-2579 `replaces: []`, KEP-4858.
 - **Known limit:** keying `lifecycle_stage` by minor release can't say "beta in 1.28.0–1.28.5, alpha from 1.28.6" (`EventedPLEG`). It only flags that the release is ambiguous.
-- **Deferred to S10** (S09-R2 sitting): how the CHANGELOG's release notes become `observed_stage` values, and how a claimed `disabled` compares with an observed stage. S10's conflict check adds both.
+- **Decided in S10-R1** (deferred there by S09-R2): the CHANGELOG's release notes don't become `observed_stage` values in Phase 1, and a claimed `disabled` is never compared with an observed stage (ADR-010).
 
 ## Open (resolve during Stage 6, not blocking now)
 
@@ -142,3 +142,14 @@ Decided by the developer in the S09-R2 sitting; the evidence is in `docs/slices/
 | D4 values | "Starting multipliers, to be tuned" (no numbers) | Boost ×1.25, demote ×0.8, in config. Rows used: CURRENT (boost tiers 1–2 valid at the latest release; demote blogs), CHANGE (boost release records), WHY (boost KEP Motivation/Alternatives sections, blogs, governance; demote the feature-gate reference); HISTORY none | v0 prototype: MRR 0.759 → 0.813, Recall@10 0.560 → 0.552; ×1.5 gives the same; +2 on the raw score gives MRR 0.783. Devil's advocate: strong (66 of 228 reorderings jump more than 2 logits) and set on v0 |
 | Consequences: `authority_selection_accuracy` | Named | Over the golden CURRENT questions whose labeled documents span 2+ tiers, the share whose first labeled top-10 hit has the best label tier; CURRENT-question MRR is reported beside it, because the same tier code drives the weights and the metric | Flipped tiers lift the metric 3 → 6 of 9 but lower CURRENT MRR (0.637 → 0.628); real tiers: 5 → 9 of 9, 0.783 |
 | Consequences, config | "Tiers and multipliers live in config so ablations can vary them. So does the synonym list." | The multipliers and the synonym list live in config so ablations can vary them; tiers are a fixed rule by source type (D3) | resume decision R3b |
+
+## Changes from the S10-R1 sitting (2026-10-11)
+
+Decided by the developer in the S10-R1 sitting; the evidence is in `docs/slices/S10-conflict-detection.md`, run S10-R1. A devil's advocate argued against the recommendation first.
+
+| Where | Was | Now | Evidence |
+|---|---|---|---|
+| D2, the CHANGELOG | "Deferred to S10: its conflict check adds the CHANGELOG" | Not a stage observation in Phase 1; it stays a retrievable `release_record`. The `EventedPLEG` revert stays the known limit | 362 CHANGELOG lines name a gate with a stage word, all free text; the revert line doesn't contain "feature gate", so a keyword parser misses the one known case. Not needed for the spec's `claim_mismatch` or any AC4 seed |
+| D2, a claimed `disabled` | "Deferred to S10: … how a claimed `disabled` compares" | Never compared: no `claim_mismatch` | The reference has no `disabled` stage; KEP-4004 is the only current KEP claiming it (observed `deprecated`) |
+| D2, which claim | (unstated) | The claim of the KEP version valid at the target release (the newest one when two are valid there), per ADR-010 | A hit's own version gives 2 false conflicts (KEP-3331, KEP-3866) and misses 1 (KEP-3299) on v0's hits |
+| Consequences, "Deferred to S10" | Both deferred to S10 | Both decided (above) | — |
