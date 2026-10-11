@@ -10,18 +10,19 @@
   questions) through retrieval and one answer call each, write a results folder under
   EVAL_RESULTS_DIR (`runner.py`), then rebuild the ablation table. Paid: one Anthropic call per
   question with hits, one Voyage request when a question has no stored vector, and in temporal
-  mode one ROUTER_MODEL call per question with no stored route. NAME defaults to RETRIEVAL_MODE
-  (`dense`, `hybrid`, `rerank` or `temporal`); with `--smoke`, `<mode>-smoke`, so smoke runs get
-  their own ablation-table row.
+  and authority modes one ROUTER_MODEL call per question with no stored route. NAME defaults to
+  RETRIEVAL_MODE (`dense`, `hybrid`, `rerank`, `temporal` or `authority`); with `--smoke`,
+  `<mode>-smoke`, so smoke runs get their own ablation-table row.
 - `retrieval`: retrieve for every answerable golden question with its stored vector (and in
-  temporal mode its stored route), in RETRIEVAL_MODE, and print the retrieval metrics (S07-T3),
-  the stale-result rate and temporal accuracy (S09-T3), in temporal mode the router line
-  (S09-T4), then the retrieve time's p50 and p95 and, in rerank and temporal modes, the
+  temporal and authority modes its stored route), in RETRIEVAL_MODE, and print the retrieval
+  metrics (S07-T3), the stale-result rate and temporal accuracy (S09-T3), authority selection and
+  the CURRENT questions' MRR (S09-T7), in temporal and authority modes the router line (S09-T4),
+  then the retrieve time's p50 and p95 and, in rerank, temporal and authority modes, the
   reranker's load time (S08-T4). Free: no Voyage or Anthropic call; a missing vector or route is
   an error. Writes nothing.
 
-In rerank and temporal modes, `run` and `retrieval` load the cross-encoder once, before the
-question loop, and time the load (S08-T2).
+In rerank, temporal and authority modes, `run` and `retrieval` load the cross-encoder once, before
+the question loop, and time the load (S08-T2).
 - `routes`: route every golden question (all of them, answerable or not) with no stored route in
   EVAL_ROUTES_DIR/<ROUTER_MODEL>.json, saving each route as it comes (S09-T2, ADR-009 D3), then
   print how many, the route time's p50 and p95, and the cost. Paid: one ROUTER_MODEL call per
@@ -96,8 +97,9 @@ def sections(settings: Settings, document: str) -> int:
 
 
 def _load_reranker(settings: Settings) -> tuple["CrossEncoderReranker | None", float | None]:
-    """`load_reranker` and its load time in seconds; (None, None) outside rerank and temporal
-    modes. Raises OSError when the model isn't cached and Hugging Face can't be reached."""
+    """`load_reranker` and its load time in seconds; (None, None) outside rerank, temporal and
+    authority modes. Raises OSError when the model isn't cached and Hugging Face can't be
+    reached."""
     start = time.monotonic()
     reranker = load_reranker(settings)
     return reranker, None if reranker is None else round(time.monotonic() - start, 3)
@@ -125,8 +127,10 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
         embedder = VoyageEmbedder(settings.voyage_api_url, voyage_key, settings.embedding_model)
     client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
     generator = AnthropicGenerator(client, settings)
-    # Temporal mode routes the questions with no stored route (ADR-009 D3); the key is set.
-    router = ClaudeRouter(client, settings) if settings.retrieval_mode == "temporal" else None
+    # Temporal and authority modes route the questions with no stored route (ADR-009 D3); the key
+    # is set.
+    routed = settings.retrieval_mode in ("temporal", "authority")
+    router = ClaudeRouter(client, settings) if routed else None
     try:
         reranker, load_s = _load_reranker(settings)
     except OSError as error:
@@ -148,17 +152,16 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
 
 
 def retrieval(settings: Settings) -> int:
-    """`make eval-retrieval`: print the mode, the retrieval metrics, the time metrics, in temporal
-    mode the router line, and the retrieve time; 1 on an error."""
+    """`make eval-retrieval`: print the mode, the retrieval metrics, the time metrics, authority
+    selection, in temporal and authority modes the router line, and the retrieve time; 1 on an
+    error."""
     try:
         reranker, load_s = _load_reranker(settings)
     except OSError as error:
         return _load_failed(error)
     try:
         with psycopg.connect(settings.database_url) as conn:
-            scores, retrieve_s, stale, temporal, routed = runner.score_retrieval_only(
-                conn, settings, reranker
-            )
+            scores = runner.score_retrieval_only(conn, settings, reranker)
     except GoldenSetError as error:
         for line in error.errors:
             print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
@@ -166,11 +169,12 @@ def retrieval(settings: Settings) -> int:
     except runner.EvalError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(runner.retrieval_report(settings, scores))
-    print(runner.time_line(stale, temporal))
-    if routed is not None:  # temporal mode
-        print(runner.router_line(routed))
-    print(runner.timing_line(retrieve_s, load_s))
+    print(runner.retrieval_report(settings, scores.metrics))
+    print(runner.time_line(scores.stale, scores.temporal))
+    print(runner.authority_line(scores.authority, scores.current_mrr))
+    if scores.router is not None:  # temporal and authority modes
+        print(runner.router_line(scores.router))
+    print(runner.timing_line(scores.retrieve_s, load_s))
     return 0
 
 
@@ -249,7 +253,7 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         "--name",
         help=(
             "the pipeline's name in the results (default: RETRIEVAL_MODE, dense, hybrid, "
-            "rerank or temporal; with --smoke, RETRIEVAL_MODE-smoke)"
+            "rerank, temporal or authority; with --smoke, RETRIEVAL_MODE-smoke)"
         ),
     )
     commands.add_parser(

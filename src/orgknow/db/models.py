@@ -1,7 +1,7 @@
 """Pydantic models the data-access functions take and return (ADR-005)."""
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field
 
@@ -127,6 +127,45 @@ class SectionText(BaseModel):
     content_hash: str
 
 
+Confidence = Literal["high", "low"]  # ADR-003 D5's status_confidence
+
+
+class Observation(BaseModel):
+    """One `observed_lifecycle` row: a feature gate's stage at a minor release, as that release's
+    own feature-gate reference gives it (ADR-003 D2). The table's CHECKs, not this model, check
+    that a high row has a stage from the vocabulary."""
+
+    gate: str  # the name the release's reference gives it
+    release: int  # the minor: 24 for v1.24
+    stage: str | None  # None: no stage could be read (always low)
+    status_confidence: Confidence
+
+
+class Authority(BaseModel):
+    """A hit's authority at the question's target release (S09-T6; ADR-003 D2-D3 as changed in
+    the S09-R2 sitting): its tier, and for a KEP its effective stage there."""
+
+    target_release: int  # the minor the question asks about: 37 for 1.37
+    # 1 (docs pages, the feature-gate reference) to 6 (blog posts); None: a superseded proposal
+    # (a KEP claiming withdrawn, rejected or replaced).
+    tier: int | None
+    # KEPs only: the stage its gates' rows give at the target release (high), else its claimed
+    # stage (low); None (confidence None) with neither.
+    effective_stage: str | None
+    stage_confidence: Confidence | None
+
+
+class NewestVersion(BaseModel):
+    """A document's newest version (latest date window), as much as its tier reads (S09-T6): for
+    the golden labels' tiers (S09-T7)."""
+
+    canonical_id: str
+    source_type: str
+    claimed_status: str | None
+    claimed_stage: str | None
+    metadata: dict[str, Any]  # a KEP's holds its `kep.yaml`, `feature-gates` included
+
+
 class Hit(BaseModel):
     """One retrieval result: a distinct chunk text found for the question (S04-R2 decision 4).
 
@@ -161,6 +200,12 @@ class Hit(BaseModel):
     dense_rank: int | None = None  # position in the dense list, from 1; None if not in it
     lexical_rank: int | None = None  # position in the lexical list, from 1; None if not in it
     rerank_score: float | None = None  # the cross-encoder's raw score (rerank and temporal modes)
+    # The tier and a KEP's stage at the question's target release, set by `retrieve` in every
+    # mode (S09-T6); None on the search functions' own hits.
+    authority: Authority | None = None
+    # Authority mode only (S09-T7): the reranker's probability, sigmoid(rerank_score), times the
+    # hit's authority factor, unrounded; the hits are ordered by it rounded to 4 decimals.
+    authority_score: float | None = None
 
 
 class TemporalFilter(BaseModel):

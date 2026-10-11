@@ -5,9 +5,9 @@ A row is a (name, golden_sha256) pair, in order of its first run. Each value is 
 the row's runs to 3 decimals, then its range, min and max joined by an en dash, when more than
 one run has it; an AC cell is the mean of each run's pass rate. The p95 latencies and the cost per
 question (S08-T3) use 1 and 4 decimals; a run without the value is left out, and a row with none
-says n/a. The S09 time cells (S09-T3) are each run's count / total, like an AC cell; runs before
-S09-T3 have none, so their rows say n/a. A folder without `summary.json` (such as `s04/`) is
-skipped.
+says n/a. The S09 time cells (S09-T3) and the authority-selection cell (S09-T7) are each run's
+count / total, like an AC cell; runs before S09-T3 (S09-T7 for authority selection) have none, so
+their rows say n/a. A folder without `summary.json` (such as `s04/`) is skipped.
 """
 
 from collections.abc import Sequence
@@ -23,7 +23,7 @@ COLUMNS = [
     *("Pipeline", "Set", "Runs", "Questions", "Recall@10", "Hit@10", "MRR", "nDCG@10"),
     *("AC1", "AC2", "AC3", "Errors"),
     *("p95 latency (s)", "Retrieve p95 (s)", "Cost/question ($)"),
-    *("Stale rate", "Temporal acc.", "Router acc."),
+    *("Stale rate", "Temporal acc.", "Router acc.", "Authority sel."),
 ]
 
 
@@ -68,6 +68,7 @@ def ablation_table(runs: Sequence[tuple[str, Summary]]) -> str:
                     _cell([_count_rate(s.stale) for s in summaries]),
                     _cell([_pass_rate(s.temporal) for s in summaries]),
                     _cell([_pass_rate(s.router) for s in summaries]),
+                    _cell([_pass_rate(s.authority) for s in summaries]),
                 ]
             )
         )

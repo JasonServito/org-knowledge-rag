@@ -1,5 +1,6 @@
 """The golden-set label check and the section listing (S06-T1), the eval run (S06-T4) and the
-retrieval-only scoring (S07-T3), against the test database.
+retrieval-only scoring (S07-T3), against the test database; authority mode and authority
+selection (S09-T7).
 
 Every test builds its own rows inside `conn`'s rolled-back transaction; expected counts and
 values are counted or calculated by hand from those rows and the fakes' outputs.
@@ -32,6 +33,7 @@ from orgknow.eval.golden import (
 )
 from orgknow.eval.runner import (
     EvalError,
+    authority_line,
     load_vectors,
     retrieval_report,
     router_line,
@@ -261,6 +263,8 @@ questions:
     labels: []
 """
 USAGE = {"input_tokens": 1000, "output_tokens": 300, "thinking_tokens": 200}  # FakeGenerator's
+# S09-T6: a docs page's authority with no route: tier 1 at the latest release (1.37), no stage.
+DOCS_AT_37 = {"target_release": 37, "tier": 1, "effective_stage": None, "stage_confidence": None}
 # A cut-off answer: the API reported its tokens, so the error row keeps them.
 CUT_OFF = GenerationError(
     "no usable answer from the model (stop reason: max_tokens)",
@@ -275,14 +279,19 @@ def _vector(*components: float) -> list[float]:
 
 
 def _page(
-    conn: Conn, canonical_id: str, title: str, chunks: list[tuple[list[str], str, list[float]]]
+    conn: Conn,
+    canonical_id: str,
+    title: str,
+    chunks: list[tuple[list[str], str, list[float]]],
+    source_type: str = "docs_page",
 ) -> list[int]:
-    """A docs page current since 1.24 holding `chunks`, (heading path, text, vector) each, with
-    each text's vector under the fake embedder's model. Returns the chunk ids."""
+    """A docs page (or a document of `source_type`) current since 1.24 holding `chunks`, (heading
+    path, text, vector) each, with each text's vector under the fake embedder's model. Returns
+    the chunk ids."""
     version_id = insert_version(
         conn,
         NewVersion(
-            document_id=create_document(conn, canonical_id, "docs_page"),
+            document_id=create_document(conn, canonical_id, source_type),
             content_hash=VERSION_HASH,
             source_path="content/en/docs/test/page.md",
             snapshot_repo="website",
@@ -432,6 +441,9 @@ def test_a_run_writes_the_pinned_results_format(
             "router_model": None,
             "router_effort": None,
             "history_window_slack": None,
+            # S09-T7: authority mode's weights are null outside it.
+            "authority_boost": None,
+            "authority_demote": None,
             "generation_model": "claude-opus-5-5",
             "generation_effort": "medium",
             "generation_max_tokens": 16000,
@@ -442,7 +454,8 @@ def test_a_run_writes_the_pinned_results_format(
     rows = _rows(folder)
     assert [list(row) for row in rows] == [
         [
-            *("id", "mode", "release_window", "route", "answerable", "hits", "answer"),
+            *("id", "mode", "release_window", "label_tiers", "route", "answerable", "hits"),
+            "answer",
             *("metrics", "checks", "usage", "latency_s", "retrieve_s", "error"),
         ]
     ] * 3
@@ -468,6 +481,8 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T3: the page's one version is open, since 1.24.
             "current": True,
             "release_windows": [[24, None]],
+            "authority": DOCS_AT_37,
+            "authority_score": None,  # authority mode only (S09-T7)
         },
         {
             "rank": 2,
@@ -482,6 +497,8 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T3: the page's one version is open, since 1.24.
             "current": True,
             "release_windows": [[24, None]],
+            "authority": DOCS_AT_37,
+            "authority_score": None,  # authority mode only (S09-T7)
         },
         {
             "rank": 3,
@@ -496,6 +513,8 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T3: the page's one version is open, since 1.24.
             "current": True,
             "release_windows": [[24, None]],
+            "authority": DOCS_AT_37,
+            "authority_score": None,  # authority mode only (S09-T7)
         },
     ]
     # q01: its 2 labels are found at ranks 2 and 3, so MRR 1/2 and
@@ -504,7 +523,9 @@ def test_a_run_writes_the_pinned_results_format(
         "id": "q01",
         "mode": "CURRENT",
         "release_window": None,  # the golden file gives none
-        "route": None,  # routes are temporal mode's only (S09-T4)
+        # S09-T7: both labels' documents are docs pages, tier 1, in label order.
+        "label_tiers": [1, 1],
+        "route": None,  # routes are temporal and authority modes' only (S09-T4)
         "answerable": True,
         "hits": hits,
         "answer": {
@@ -521,6 +542,10 @@ def test_a_run_writes_the_pinned_results_format(
                     "release_windows": [["1.24", None]],
                     "claimed_status": None,
                     "claimed_stage": None,
+                    "tier": 1,
+                    "superseded_proposal": False,
+                    "effective_stage": None,
+                    "stage_confidence": None,
                     "source_url": "https://github.com/kubernetes/website/blob/"
                     f"{SHA}/content/en/docs/test/page.md",
                 }
@@ -546,6 +571,7 @@ def test_a_run_writes_the_pinned_results_format(
         "id": "q02",
         "mode": "CURRENT",
         "release_window": [20, 23],  # the golden window as minors
+        "label_tiers": [1],
         "route": None,
         "answerable": True,
         "hits": hits,
@@ -560,6 +586,7 @@ def test_a_run_writes_the_pinned_results_format(
         "id": "q03",
         "mode": None,
         "release_window": None,
+        "label_tiers": [],  # no labels
         "route": None,
         "answerable": False,
         "hits": hits,
@@ -592,6 +619,8 @@ def test_a_run_writes_the_pinned_results_format(
     # count q01 only (q02 has no answer). Tokens: 1000 + 500 + 1000 in, 300 + 16000 + 300 out.
     # S09-T3: q01 and q02 are CURRENT, 3 hits each, none stale: 0 of 6. q02's golden window
     # (20 to 23) holds none of its 3 hits, all from 24 on: 0 of 3. No routes outside temporal mode.
+    # S09-T7: no CURRENT question's labels span 2 tiers (q01: 1 and 1; q02: 1), so no authority
+    # selection.
     assert summary == {
         "name": "dense",
         "golden_sha256": golden_sha256,
@@ -613,6 +642,7 @@ def test_a_run_writes_the_pinned_results_format(
         "stale": {"count": 0, "total": 6},
         "temporal": {"pass": 0, "total": 3},
         "router": None,
+        "authority": None,
     }
     assert len(generator.calls) == 3
 
@@ -621,11 +651,11 @@ def test_a_run_writes_the_pinned_results_format(
     (run_settings.eval_results_dir / "s04" / "README.md").write_text("notes", encoding="utf-8")
     table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
     # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4;
-    # stale 0 / 6 and temporal 0 / 3, both 0.000; router n/a.
+    # stale 0 / 6 and temporal 0 / 3, both 0.000; router and authority selection n/a.
     assert table.splitlines()[4:] == [
         f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
         f"| 1.000 | 1.000 | 1.000 | 1.000 | {max(latencies):.1f} | {max(retrieve_times):.1f} "
-        "| 0.1140 | 0.000 | 0.000 | n/a |"
+        "| 0.1140 | 0.000 | 0.000 | n/a | n/a |"
     ]
 
 
@@ -832,22 +862,20 @@ def test_retrieval_only_in_temporal_mode_reads_the_stored_routes(
         },
     )
 
-    scores, _, stale, temporal, routed = score_retrieval_only(
-        conn, settings, FakeReranker(RERANK_SCORES)
-    )
+    scores = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
 
     # As rerank's line in the parametrized test above, plus the router and the slack.
-    assert retrieval_report(settings, scores) == (
+    assert retrieval_report(settings, scores.metrics) == (
         "Mode: temporal (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, "
         "max length 512, router claude-opus-5-5, slack 1). Answerable questions: 2.\n"
         "Recall@10 1.000  Hit@10 1.000  MRR 0.667  nDCG@10 0.750"
     )
-    assert time_line(stale, temporal) == (
+    assert time_line(scores.stale, scores.temporal) == (
         "Stale rate 0.000 (0 of 6 CURRENT hits)  "
         "Temporal accuracy 0.000 (0 of 3 dated HISTORY hits)"
     )
-    assert routed is not None
-    assert router_line(routed) == (
+    assert scores.router is not None
+    assert router_line(scores.router) == (
         "Router accuracy 0.500 (1 of 2)  Windows 1 of 1 (1 extra)  "
         "Plans: 1 current-only, 1 windowed, 0 unfiltered"
     )
@@ -986,7 +1014,7 @@ def _store_vectors(settings: Settings, *questions: str) -> Path:
     ("mode", "expected"),
     [
         # As in the run test: q01 MRR 1/2 and nDCG 0.693426; q02 MRR 1 and nDCG 1.
-        # Means: MRR 0.75, nDCG 0.846713.
+        # Means: MRR 0.75, nDCG 0.846713. Both questions are CURRENT: CURRENT MRR 0.75 too.
         (
             "dense",
             "Mode: dense (width 100). Answerable questions: 2.\n"
@@ -1021,20 +1049,24 @@ def test_retrieval_only_scores_each_mode_and_writes_nothing(
     settings = run_settings.model_copy(update={"retrieval_mode": mode})
 
     # Dense and hybrid never call the reranker.
-    scores, retrieve_s, stale, temporal, routed = score_retrieval_only(
-        conn, settings, FakeReranker(RERANK_SCORES)
-    )
+    scores = score_retrieval_only(conn, settings, FakeReranker(RERANK_SCORES))
 
-    assert retrieval_report(settings, scores) == expected
-    assert routed is None  # no router line outside temporal mode (S09-T4)
+    assert retrieval_report(settings, scores.metrics) == expected
+    assert scores.router is None  # no router line outside temporal mode (S09-T4)
     # S09-T3: q01 and q02 are CURRENT, with 3 hits each in every mode, all held by an open
     # version since 1.24; q02's golden window, 1.20 to 1.23, holds none of its 3.
-    assert time_line(stale, temporal) == (
+    assert time_line(scores.stale, scores.temporal) == (
         "Stale rate 0.000 (0 of 6 CURRENT hits)  "
         "Temporal accuracy 0.000 (0 of 3 dated HISTORY hits)"
     )
-    assert len(retrieve_s) == 2  # one retrieve time per answerable question (S08-T4)
-    assert all(seconds >= 0 for seconds in retrieve_s)
+    # S09-T7: no CURRENT question's labels span 2 tiers. Both questions are CURRENT, so the
+    # CURRENT MRR is the MRR above.
+    assert authority_line(scores.authority, scores.current_mrr) == (
+        "Authority selection n/a (no CURRENT question with labels in 2+ tiers)  "
+        f"CURRENT MRR {expected.split('MRR ')[1].split()[0]}"
+    )
+    assert len(scores.retrieve_s) == 2  # one retrieve time per answerable question (S08-T4)
+    assert all(seconds >= 0 for seconds in scores.retrieve_s)
     assert not settings.eval_results_dir.exists()
     assert vectors_path.read_bytes() == vectors_before
 
@@ -1070,3 +1102,125 @@ def test_retrieval_only_stops_on_a_label_matching_nothing(
         "1 label matches no stored text (see `make eval-check`): "
         "q01  web:/test/missing/  (whole document)  0 texts"
     )
+
+
+# Authority mode and authority selection (S09-T7), on the 3 texts above plus a blog post current
+# since 1.24 ("c post"). One CURRENT question, Q1, labeled with page A's Install section (a docs
+# page: tier 1) and the blog post (tier 6): its label tiers span 2 values, so it counts. Routed
+# CURRENT, its filter keeps all 4 texts (all current). The fake reranker's order: the blog post
+# (2.0), "a install" (1.0), "a intro" (0.0), "b usage" (-1.0). Authority mode, by hand: the blog is
+# demoted, sigmoid(2) * 0.8 = 0.880797 * 0.8 = 0.704638; the docs texts are tier 1 and valid at
+# 1.37, so boosted: sigmoid(1) * 1.25 = 0.913823, sigmoid(0) * 1.25 = 0.625, sigmoid(-1) * 1.25 =
+# 0.336177. So "a install" (tier 1, labeled) comes first: right. Temporal mode keeps the blog first
+# (tier 6, labeled): wrong. Either way the first hit is labeled: MRR 1.
+
+AUTHORITY_SCORES = {"c post": 2.0, "a install": 1.0, "a intro": 0.0, "b usage": -1.0}
+AUTHORITY_GOLDEN = f"""\
+version: test
+questions:
+  - id: q01
+    question: {Q1}
+    mode: CURRENT
+    answerable: true
+    expected_answer: See Install.
+    smoke: true
+    labels:
+      - {{document: 'web:/test/a/', section: Install}}
+      - {{document: 'web:/blog/test/c/'}}
+"""
+
+
+@pytest.fixture
+def authority_settings(conn: Conn, chunk_ids: dict[str, int], run_settings: Settings) -> Settings:
+    """The blog post, the golden file above, Q1's stored vector and route (CURRENT), and
+    authority mode."""
+    _page(
+        conn, "web:/blog/test/c/", "Post C", [([], "c post", _vector(0.0, 0.0, 1.0))], "blog_post"
+    )
+    run_settings.eval_golden_path.write_text(AUTHORITY_GOLDEN, encoding="utf-8")
+    _store_vectors(run_settings, Q1)
+    save_routes(_routes_path(run_settings), {_key(Q1): _route("CURRENT")})
+    return run_settings.model_copy(update={"retrieval_mode": "authority"})
+
+
+def test_an_authority_run_records_the_weights_the_label_tiers_and_authority_selection(
+    conn: Conn, authority_settings: Settings
+) -> None:
+    router = FakeRouter({})  # the route is stored
+
+    folder = run(
+        conn,
+        FakeEmbedder(),
+        _refusing(),
+        authority_settings,
+        smoke=False,
+        name="authority",
+        reranker=FakeReranker(AUTHORITY_SCORES),
+        router=router,
+    )
+
+    assert router.calls == []
+    run_info = json.loads((folder / "run.json").read_text(encoding="utf-8"))
+    keys = ("rerank_model", "router_model", "history_window_slack")
+    assert {
+        key: run_info["settings"][key] for key in (*keys, "authority_boost", "authority_demote")
+    } == {
+        "rerank_model": "BAAI/bge-reranker-base",
+        "router_model": "claude-opus-5-5",
+        "history_window_slack": 1,
+        # The settings defaults (S09-R2 decision 3).
+        "authority_boost": 1.25,
+        "authority_demote": 0.8,
+    }
+    [row] = _rows(folder)
+    assert row["label_tiers"] == [1, 6]
+    assert isinstance(row["route"], dict) and row["route"]["mode"] == "CURRENT"
+    hits = row["hits"]
+    assert isinstance(hits, list)
+    assert [
+        (hit["canonical_id"], hit["authority"]["tier"], hit["rerank_score"]) for hit in hits
+    ] == [
+        ("web:/test/a/", 1, 1.0),
+        ("web:/blog/test/c/", 6, 2.0),
+        ("web:/test/a/", 1, 0.0),
+        ("web:/test/b/", 1, -1.0),
+    ]
+    assert [hit["authority_score"] for hit in hits] == pytest.approx(
+        [0.913823, 0.704638, 0.625, 0.336177], abs=1e-6
+    )
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    assert summary["authority"] == {"pass": 1, "total": 1}
+    table = write_table(authority_settings.eval_results_dir).read_text(encoding="utf-8")
+    # Stale 0 of 4 (all current), no golden window, router 1 of 1, authority selection 1 of 1.
+    assert table.splitlines()[4].endswith("| 0.000 | n/a | 1.000 | 1.000 |")
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        (
+            "temporal",
+            "Mode: temporal (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, "
+            "max length 512, router claude-opus-5-5, slack 1). Answerable questions: 1.\n"
+            "Authority selection 0.000 (0 of 1 CURRENT questions)  CURRENT MRR 1.000",
+        ),
+        (
+            "authority",
+            "Mode: authority (candidates 20, k 60, width 100, model "
+            "BAAI/bge-reranker-base@2cfc18c, max length 512, router claude-opus-5-5, slack 1, "
+            "boost 1.25, demote 0.8). "
+            "Answerable questions: 1.\n"
+            "Authority selection 1.000 (1 of 1 CURRENT questions)  CURRENT MRR 1.000",
+        ),
+    ],
+)
+def test_retrieval_only_counts_authority_selection_in_each_routed_mode(
+    conn: Conn, authority_settings: Settings, mode: str, expected: str
+) -> None:
+    settings = authority_settings.model_copy(update={"retrieval_mode": mode})
+
+    scores = score_retrieval_only(conn, settings, FakeReranker(AUTHORITY_SCORES))
+
+    mode_line = retrieval_report(settings, scores.metrics).splitlines()[0]
+    assert f"{mode_line}\n{authority_line(scores.authority, scores.current_mrr)}" == expected
+    assert scores.router is not None  # the router line prints in both modes

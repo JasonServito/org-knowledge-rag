@@ -161,9 +161,9 @@ def test_hybrid_retrieval_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> 
 
     settings = Settings(_env_file=None, database_url="x")
 
-    # S07-R1 decision 3; the mode is rerank since S08-T5's eval passed the improvement rule and
-    # the p95 ceiling (S08-R1 decision 4, docs/evaluation.md).
-    assert settings.retrieval_mode == "rerank"
+    # S07-R1 decision 3; the mode is authority since S09-T8's eval (S09-R2 decision 10,
+    # docs/evaluation.md).
+    assert settings.retrieval_mode == "authority"
     assert settings.retrieval_candidates == 20
     assert settings.rrf_k == 60
     assert settings.hnsw_ef_search == 100
@@ -304,4 +304,50 @@ def test_a_slack_outside_0_to_5_is_refused(monkeypatch: pytest.MonkeyPatch, slac
     monkeypatch.setenv("HISTORY_WINDOW_SLACK", slack)
 
     with pytest.raises(ValidationError, match="history_window_slack"):
+        Settings(_env_file=None, database_url="x")
+
+
+def test_authority_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("AUTHORITY_BOOST", "AUTHORITY_DEMOTE", "RETRIEVAL_MODE"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # S09-R2 decision 3: boost 1.25, demote 0.8. The default mode is authority since S09-T8.
+    assert (settings.authority_boost, settings.authority_demote) == (1.25, 0.8)
+    assert settings.retrieval_mode == "authority"
+
+
+def test_authority_mode_and_the_weights_range_ends_are_accepted() -> None:
+    for boost, demote in ((1.0, 1.0), (4.0, 0.01)):
+        settings = Settings(
+            _env_file=None,
+            database_url="x",
+            retrieval_mode="authority",
+            authority_boost=boost,
+            authority_demote=demote,
+        )
+        assert (settings.retrieval_mode, settings.authority_boost, settings.authority_demote) == (
+            "authority",
+            boost,
+            demote,
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        # A boost below 1 would demote, and a demote above 1 would boost.
+        ("AUTHORITY_BOOST", "0.9"),
+        ("AUTHORITY_BOOST", "4.5"),
+        ("AUTHORITY_DEMOTE", "1.1"),
+        ("AUTHORITY_DEMOTE", "0"),
+    ],
+)
+def test_weights_outside_their_range_are_refused(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValidationError, match=name.lower()):
         Settings(_env_file=None, database_url="x")

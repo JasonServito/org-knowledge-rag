@@ -28,6 +28,9 @@ from orgknow.settings import Settings
         # S09-T4.
         ("temporal", ["run"], "temporal"),
         ("temporal", ["run", "--smoke"], "temporal-smoke"),
+        # S09-T7.
+        ("authority", ["run"], "authority"),
+        ("authority", ["run", "--smoke"], "authority-smoke"),
     ],
 )
 def test_the_run_name_defaults_to_the_retrieval_mode(

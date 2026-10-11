@@ -1,6 +1,7 @@
 """The summary's p95 latencies and cost per question (S08-T3), its stale and temporal counts
-(S09-T3), and `make eval-resummarize`, from hand-built rows; and `make eval-retrieval`'s timing
-line (S08-T4) and time line (S09-T3), from hand-written values.
+(S09-T3), its authority selection (S09-T7), and `make eval-resummarize`, from hand-built rows; and
+`make eval-retrieval`'s timing line (S08-T4), time line (S09-T3) and authority line (S09-T7), from
+hand-written values.
 
 Every expected value is by hand: a nearest-rank p95 is the value at sorted index
 ceil(n * 0.95) - 1 (0-based), a median of an even count is the mean of the 2 middle values, a
@@ -13,9 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from orgknow.db.models import Authority
 from orgknow.eval import __main__ as eval_main
 from orgknow.eval.checks import AnswerChecks
-from orgknow.eval.golden import Mode
+from orgknow.eval.golden import Label, Mode
 from orgknow.eval.runner import (
     Count,
     QuestionRow,
@@ -24,6 +26,8 @@ from orgknow.eval.runner import (
     RouteRecord,
     RouterStats,
     Summary,
+    authority_line,
+    resummarize,
     router_line,
     summarize,
     time_line,
@@ -142,6 +146,7 @@ def test_a_summary_without_the_new_fields_still_loads() -> None:
 
     assert (summary.latency_s_p95, summary.retrieve_s_p95, summary.cost_usd_mean) == (None,) * 3
     assert (summary.stale, summary.temporal, summary.router) == (None,) * 3
+    assert summary.authority is None
 
 
 def test_a_row_written_before_s07_still_loads() -> None:
@@ -162,6 +167,9 @@ def test_a_row_written_before_s07_still_loads() -> None:
     assert (loaded.hits[0].rrf_score, loaded.hits[0].dense_rank) == (None, None)
     assert loaded.hits[0].lexical_rank is None
     assert (loaded.hits[0].current, loaded.hits[0].release_windows) == (None, None)
+    # S09-T6 and S09-T7: no tier, score or label tiers.
+    assert (loaded.hits[0].authority, loaded.hits[0].authority_score) == (None, None)
+    assert loaded.label_tiers is None
 
 
 def _ranked(current: bool | None, windows: list[tuple[int, int | None]] | None = None) -> RankedHit:
@@ -263,7 +271,7 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
     summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     cost = summary.pop("cost_usd_mean")
     assert cost == pytest.approx(0.006)
-    # No hits, so no stale or temporal count; no routes.
+    # No hits, so no stale or temporal count; no routes; no authority selection (S09-T7).
     assert summary == {
         **OLD_SUMMARY,
         "latency_s_p95": 4.0,
@@ -271,6 +279,7 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
         "stale": None,
         "temporal": None,
         "router": None,
+        "authority": None,
     }
     # Only the summary is written: the rows are unchanged, and there is no table.
     assert (folder / "questions.jsonl").read_text(encoding="utf-8") == _old_rows()
@@ -278,6 +287,22 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
     assert capsys.readouterr().out == (
         f"{folder}: p95 latency 4.000 s, retrieve p95 n/a, cost/question $0.006000\n"
     )
+
+
+def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -> None:
+    # A folder `run` wrote after S09-T7: its summary holds authority selection, which needs the
+    # golden labels; the rows hold only the label tiers, so resummarize keeps the value.
+    folder = tmp_path / "authority-20261010T100000Z"
+    folder.mkdir()
+    counted = {**OLD_SUMMARY, "authority": {"pass": 9, "total": 9}}
+    (folder / "summary.json").write_text(json.dumps(counted), encoding="utf-8")
+    (folder / "questions.jsonl").write_text(_old_rows(), encoding="utf-8")
+
+    summary = resummarize(folder, _settings())
+
+    assert summary.authority == Rate(pass_=9, total=9)
+    written = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    assert written["authority"] == {"pass": 9, "total": 9}
 
 
 @pytest.mark.parametrize(
@@ -408,3 +433,72 @@ def test_router_accuracy_counts_the_answerable_rows_with_a_route() -> None:
 )
 def test_the_router_line(stats: RouterStats, expected: str) -> None:
     assert router_line(stats) == expected
+
+
+# Authority selection in the summary (S09-T7): the rows' label tiers and hits, with the golden
+# labels by question id. Expected counts are by hand from the rows below.
+
+DOCS_LABEL = Label(canonical_id="web:/docs/a/", section=None)
+BLOG_LABEL = Label(canonical_id="web:/blog/2024/a/", section=None)
+
+
+def _tiered(canonical_id: str, tier: int | None) -> RankedHit:
+    authority = Authority(target_release=37, tier=tier, effective_stage=None, stage_confidence=None)
+    return RankedHit(
+        rank=1, chunk_id=7, canonical_id=canonical_id, heading_path=[], distance=0.4,
+        authority=authority,
+    )  # fmt: skip
+
+
+def test_the_summary_counts_authority_selection_with_the_golden_labels() -> None:
+    def current(question_id: str, hits: list[RankedHit]) -> QuestionRow:
+        row = _row(5.0, mode="CURRENT", hits=hits)
+        return row.model_copy(update={"id": question_id, "label_tiers": [1, 6]})
+
+    rows = [
+        current("q01", [_tiered("web:/blog/2024/a/", 6), _tiered("web:/docs/a/", 1)]),  # wrong
+        current("q02", [_tiered("web:/docs/a/", 1)]),  # right
+        _row(5.0).model_copy(update={"id": "q03", "label_tiers": []}),  # unanswerable
+    ]
+    labels = {"q01": [DOCS_LABEL, BLOG_LABEL], "q02": [DOCS_LABEL, BLOG_LABEL], "q03": []}
+
+    summary = summarize("authority", SHA, STARTED_AT, rows, _settings(), labels)
+
+    assert summary.authority == Rate(pass_=1, total=2)
+    # Without the labels (as `resummarize` calls it), there is none.
+    assert _summary(rows).authority is None
+
+
+@pytest.mark.parametrize(
+    ("authority", "current_mrr", "expected"),
+    [
+        # The run contract's pinned lines: 9 / 9 and 5 / 9 = 0.5556 -> 0.556.
+        (
+            Rate(pass_=9, total=9),
+            0.7833,
+            "Authority selection 1.000 (9 of 9 CURRENT questions)  CURRENT MRR 0.783",
+        ),
+        (
+            Rate(pass_=5, total=9),
+            0.637,
+            "Authority selection 0.556 (5 of 9 CURRENT questions)  CURRENT MRR 0.637",
+        ),
+        # No CURRENT question counted, and none at all.
+        (
+            None,
+            0.5,
+            "Authority selection n/a (no CURRENT question with labels in 2+ tiers)  "
+            "CURRENT MRR 0.500",
+        ),
+        (
+            None,
+            None,
+            "Authority selection n/a (no CURRENT question with labels in 2+ tiers)  "
+            "CURRENT MRR n/a",
+        ),
+    ],
+)
+def test_the_authority_line(
+    authority: Rate | None, current_mrr: float | None, expected: str
+) -> None:
+    assert authority_line(authority, current_mrr) == expected

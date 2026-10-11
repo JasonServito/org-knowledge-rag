@@ -1,5 +1,5 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate seed ingest ingest-report reset-corpus embed \
+.PHONY: fmt check test-int up down migrate seed ingest lifecycle ingest-report reset-corpus embed \
 	eval-check eval-sections eval-retrieval eval-routes eval-smoke eval eval-table eval-resummarize
 
 # Integration tests use their own database in the same container, so data ingested into the dev
@@ -45,13 +45,22 @@ seed:
 	uv run python -m orgknow.ingestion.seed
 
 # Read the scope's files (INGEST_SCOPE, default full) at the locked SHAs and store their versions,
-# then chunk every version that has no chunks yet. Free and local; safe to re-run (a re-run adds
-# 0 versions and 0 chunks). Needs `make up`, `make migrate`, `make seed`: it only reads `releases`,
-# and stops before reading git if a manifest release is missing there or has other dates.
-# It ends with the ingestion report: this run's counts, skipped and failed files, then the
-# database part (see ingest-report).
+# then chunk every version that has no chunks yet, then rebuild the observed lifecycle (see
+# lifecycle). Free and local; safe to re-run (a re-run adds 0 versions and 0 chunks). Needs
+# `make up`, `make migrate`, `make seed`: it only reads `releases`, and stops before reading git if
+# a manifest release is missing there or has other dates. It ends with the ingestion report: this
+# run's counts and the lifecycle line, skipped and failed files, then the database part (see
+# ingest-report).
 ingest:
 	uv run python -m orgknow.ingestion.ingest
+
+# Rebuild `observed_lifecycle` (S09-T5, ADR-003 D2): each feature gate's stage at each stored
+# release, as that release's own feature-gate reference gives it (to 1.28 the table pages, re-read
+# from the website clone; from 1.29 the stored gate files). Replaces every row in one transaction,
+# so a re-run stores the same rows; `make ingest` runs the same step after chunking. Prints one
+# line: rows, releases, and rows by confidence. Free and local. Needs `make migrate`, `make ingest`.
+lifecycle:
+	uv run python -m orgknow.ingestion.lifecycle
 
 # Print the database part of the ingestion report, without reading git: counts per source type
 # and per release, the chunk id range, and the fingerprint of every stored value except generated
@@ -87,13 +96,14 @@ eval-sections:
 
 # Score retrieval alone (S07-R1 decision 5): retrieve in RETRIEVAL_MODE for every answerable golden
 # question with its stored vector (EVAL_VECTORS_DIR), then print the mode and Recall@10, Hit@10,
-# MRR and nDCG@10, then the stale-result rate and temporal accuracy (S09-T3), then in temporal
-# mode the router line (router accuracy, windows, plans; S09-T4), then the retrieve time's p50 and
-# p95 and, in rerank and temporal modes, the reranker's load time (S08-T4). Temporal mode reads
-# each question's stored route (EVAL_ROUTES_DIR; a missing one is an error, filled by
+# MRR and nDCG@10, then the stale-result rate and temporal accuracy (S09-T3), then authority
+# selection and CURRENT MRR (S09-T7), then in temporal and authority modes the router line (router
+# accuracy, windows, plans; S09-T4), then the retrieve time's p50 and p95 and, in rerank, temporal
+# and authority modes, the reranker's load time (S08-T4). Temporal and authority modes read each
+# question's stored route (EVAL_ROUTES_DIR; a missing one is an error, filled by
 # `make eval-routes`). Free: no Voyage or Anthropic call (a missing vector is an error), and it
 # writes nothing. The check before a paid `make eval`. Needs `make up`.
-# Example: RETRIEVAL_MODE=hybrid make eval-retrieval (the default mode is rerank)
+# Example: RETRIEVAL_MODE=hybrid make eval-retrieval (the default mode is authority)
 eval-retrieval:
 	uv run python -m orgknow.eval retrieval
 
@@ -113,15 +123,15 @@ eval-routes:
 # eval/results) and rebuilds the ablation table there. PAID: one Anthropic call per question with
 # hits (needs ANTHROPIC_API_KEY), and one Voyage request when a question has no stored vector
 # (needs VOYAGE_API_KEY then; a re-run makes 0). A label matching no stored text stops it before
-# any paid call; a failed ask is a row, not a crash. In temporal mode it also routes each question
-# with no stored route (EVAL_ROUTES_DIR; one ROUTER_MODEL call each, saved as it arrives; a re-run
-# makes 0), and retrieves each question with its route.
+# any paid call; a failed ask is a row, not a crash. In temporal and authority modes it also routes
+# each question with no stored route (EVAL_ROUTES_DIR; one ROUTER_MODEL call each, saved as it
+# arrives; a re-run makes 0), and retrieves each question with its route.
 eval-smoke:
 	uv run python -m orgknow.eval run --smoke
 
 # The same for every question of the golden set. PAID: one Anthropic call per question (S04: about
-# $0.02-0.04 each; in temporal mode, plus one router call per question with no stored route), so
-# run it only when asked.
+# $0.02-0.04 each; in temporal and authority modes, plus one router call per question with no stored
+# route), so run it only when asked.
 eval:
 	uv run python -m orgknow.eval run
 

@@ -12,10 +12,11 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Claim mismatch** | A conflict where the claimed status disagrees with the observed stage. Surfaced, never silently resolved. |
 | **Content hash** | A hash of normalized document content. The same hash means no new version (ADR-002 D2). |
 | **Effective stage** | Observed stage if known, otherwise claimed stage with low confidence, otherwise unknown (ADR-003 D2). |
+| **Feature gate** | A named on/off switch for a Kubernetes feature, with a lifecycle stage per release (alpha, beta, stable, deprecated). The feature-gate reference lists each gate's stage ranges; `observed_lifecycle` keeps the stage each release's own reference gives (S09). |
 | **KEP** | Kubernetes Enhancement Proposal: a design + decision + tracking document per feature or process change. |
 | **Manifest** | `config/corpus_manifest.yaml`. It defines which repos, paths and releases are in the corpus. |
 | **Normalization** | Stripping meaning-free differences (whitespace, reviewer lists) before hashing. |
-| **Observed stage** | A feature's lifecycle stage per release, as shown by the CHANGELOG or feature-gates docs. |
+| **Observed stage** | A feature's lifecycle stage per release, as that release's own feature-gate reference shows it (`observed_lifecycle`, S09). The CHANGELOG as a second source is deferred to S10 (ADR-003 D2). |
 | **Query mode** | CURRENT, HISTORY, CHANGE or WHY. Determines filters and authority adjustments. |
 | **Release-aligned snapshot** | The state of each in-scope file captured once per Kubernetes release (ADR-002 D1). |
 | **Rename detection (similarity threshold)** | git pairs a deleted file with an added file when their contents are at least N% similar (`R081` means 81%). A lower threshold finds more renames but also pairs unrelated files. Declared signals, such as a site's redirects, are an alternative. |
@@ -27,6 +28,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | Term | Meaning |
 |---|---|
 | **Ablation** | Measuring the system with and without one component, to prove that component's contribution. |
+| **Authority-selection accuracy** | Over "now" questions whose correct sources span 2+ trust tiers, the share where the first correct result has the most trusted tier among them (S09). It leans toward the tier weights it measures, so "now"-question MRR is reported beside it. |
 | **Bi-encoder** | Embeds query and document separately, then compares the vectors. Fast; used for dense retrieval. |
 | **BM25** | The standard ranking for word search: a rare word (high IDF, inverse document frequency) counts more than a common one, and repeating a word helps less each time. Postgres's built-in `ts_rank` has neither; BM25 needs an extension. |
 | **Chunking (structure-aware)** | Splitting documents into retrievable pieces at their headings, so each chunk is one section with its heading path. Code blocks and HTML tables are never cut; an oversize list or pipe table is cut between items or rows (S05). |
@@ -50,8 +52,10 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Query router** | A step before search that sorts a question by what it asks for (here an LLM call returning a query mode and the release or year it names), so retrieval can pick a plan per kind of question. Code, not the model, turns the release or year into a release window (ADR-009). |
 | **RAG** | Retrieval-Augmented Generation: retrieve evidence, then have an LLM answer from that evidence. |
 | **Recall@K** | The fraction of relevant items that appear in the top K results. |
+| **Stale-result rate** | The share of top-K results for "now" questions whose text a later edit replaced: no current version still holds it (S09). Lower is better. |
 | **RRF** | Reciprocal Rank Fusion: combine ranked lists with score = Σ 1/(k + rank), where k is often 60. |
 | **Structured output** | Making the LLM return JSON that matches a given schema (here a Pydantic model), instead of free text that has to be parsed. |
+| **Temporal accuracy** | For questions about a dated past ("in 1.22", "before 2021"), the share of top-K results valid inside the asked-for release window (S09). |
 
 ## Engineering
 

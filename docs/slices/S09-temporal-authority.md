@@ -1,9 +1,9 @@
 # S09: Temporal and authority-aware retrieval
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 6 (project-specific metadata retrieval: query modes, temporal/version logic, authority)
 - **Started:** 2026-10-09
-- **Finished:**
+- **Finished:** 2026-10-10
 
 ## Outcome
 
@@ -34,14 +34,14 @@
 | Time scope → release window through the `releases` table | Implicit times ("before strict validation was default"); patch-level windows |
 | The 4 S09 metrics in the eval | AC6 on the answer side (cited evidence in the window): its definition is open (see Risks) |
 | Mode-specific retrieval plans (ADR-003 D4's filter column in R1) | Per-window-end retrieval for dated CHANGE questions (S09-R1 decision 3; proposed addition) |
-| `observed_lifecycle` from the feature-gate reference; `effective_stage`; tiers | The CHANGELOG as a stage observation (decided in the R2 sitting; S10 candidate) |
+| `observed_lifecycle` from the feature-gate reference; `effective_stage`; tiers | The CHANGELOG as a stage observation, and how a claimed `disabled` compares (deferred to S10 in the S09-R2 sitting) |
 | Authority multipliers in config | Learned weights; tuning beyond a small sitting prototype |
 | The S09 eval run and its row | Golden set changes (v0 is frozen); BM25 (proposed addition); conflicts (S10) |
 
 ## Metric to move
 
 - **Stale-result rate** (CURRENT, lower is better) and **temporal accuracy** (HISTORY with a window, higher is better): the temporal stage's targets.
-- **Authority-selection accuracy:** the authority stage's target (defined in the R2 sitting).
+- **Authority-selection accuracy:** the authority stage's target. Over the golden CURRENT questions whose labeled documents span 2+ tiers (9 on v0, fixed by the labels), the share whose first labeled top-10 hit has the best tier among the question's labels; CURRENT-question MRR is printed beside it (S09-R2 decision 4).
 - **Router accuracy:** a component metric, threshold ≥ 0.90 (ADR-009).
 - Recall@10, MRR, nDCG@10 and Hit@10 must not drop by more than 0.03 against `rerank` (the improvement rule).
 
@@ -76,41 +76,42 @@ These mirror `docs/backlog.md`; details live here.
 ### S09-T5: `observed_lifecycle` from the feature-gate reference `[core]`
 
 - **Goal:** a migration and an ingestion step: per gate × minor release, the stage read from that release's own snapshot (1.29+ per-gate `stages`; pre-1.29 tables), with `status_confidence` (ADR-003 D2).
-- **Done when:** decided in the R2 sitting.
+- **Done when:** hand-worked unit tests pass; `make lifecycle` stores the sitting's 3,295 rows (per-release counts and spot rows as pinned in run S09-R2); a re-run stores identical rows.
 - **Deps:** none.
 
 ### S09-T6: `effective_stage` and authority tier per hit `[core]`
 
-- **Goal:** each hit carries its tier (ADR-003 D3) for the question's target release; KEPs use `effective_stage` through their `kep.yaml` feature gates (70 of 113 current KEP versions list gates); the tier reaches the prompt and citations (AC1).
-- **Done when:** decided in the R2 sitting.
+- **Goal:** each hit carries its tier (ADR-003 D3) for the question's target release; KEPs use `effective_stage` through their `kep.yaml` feature gates (65 of 113 current KEP versions name a gate; 70 have the key); the tier reaches the prompt and citations (AC1).
+- **Done when:** hand-worked unit tests pass; every hit in every mode carries a tier; the sitting's KEP examples and the 82 / 25 / 6 split at 1.37 match; AC1's check requires the tier; dense, hybrid, rerank and temporal print their old numbers.
 - **Deps:** T5.
 
 ### S09-T7: Authority multipliers and authority-selection accuracy `[core]`
 
-- **Goal:** ADR-003 D4's boost and demote columns, from config, applied per mode; the authority-selection metric.
-- **Done when:** decided in the R2 sitting.
+- **Goal:** ADR-003 D4's boost and demote columns, from config, applied per mode after the reranker on its probability, as an `authority` mode; the authority-selection metric.
+- **Done when:** hand-worked unit tests pass; `make eval-retrieval` in authority mode prints the sitting's prototype numbers, every mode prints the authority line with the sitting's baselines, and the flipped-tier check gives the sitting's numbers.
 - **Deps:** T4, T6.
 
 ### S09-T8: S09 eval run `[commodity]`
 
 - **Goal:** 3 paid runs of `make eval` in the final S09 mode; the row; the write-up; thresholds for the 4 S09 metrics in the product spec.
-- **Done when:** the row and its spread are committed; `docs/evaluation.md` states pass or fail against the improvement rule with numbers.
+- **Done when:** the free gate passes before any paid call; the row and its spread are committed; `docs/evaluation.md` states pass or fail against the improvement rule with numbers; the product spec has the 4 thresholds by the sitting's rule (S09-R2 decision 5).
 - **Deps:** T7.
 
 ## Risks & unknowns
 
 - **Later documents describe the past.** For HISTORY questions with a window, 7 of 41 labeled sources have no text within ±1 release of it (e.g. the 2021 cadence blog for "before 2021"). The ±1 filter still scored best (S09-R1 decision 2).
-- **AC6 conflicts with the labels.** AC6 says cited evidence must be valid within the window, but v0 labels later documents as primary sources for HISTORY questions. Its definition is for the R2 sitting.
+- **AC6 conflicts with the labels.** AC6 says cited evidence must be valid within the window, but v0 labels later documents as primary sources for HISTORY questions. Out of S09's scope; the S09-R2 sitting deferred its definition to the S12 (Phase 1 closeout) sitting.
 - **A hit cites the newest copy of its text,** even for a HISTORY question whose window holds an older copy. Its windows list shows both; AC6 must allow for it.
-- **Router latency is unmeasured.** Opus at effort low adds one call to each live ask; the run measures it once (ADR-009).
-- **Multipliers after RRF do nothing in rerank mode.** ADR-003 D4 applies them after RRF, but rerank re-sorts the whole pool by its own score. Their place needs an ADR-003 change (R2 sitting).
+- **Router latency.** Opus at effort low adds one call to each live ask: p50 1.71 s, p95 4.27 s over 43 calls (S09-R1).
+- **Multipliers after RRF do nothing in rerank mode.** ADR-003 D4 applied them after RRF, but rerank re-sorts the whole pool by its own score. Resolved in the S09-R2 sitting: they apply after the reranker, on its probability (decision 3; ADR-003 change).
+- **The authority metric leans toward the weights.** The same tier code drives both, so flipped tiers still lift it (3 → 6 of 9); CURRENT-question MRR, from human labels only, tells them apart (+0.146 real, −0.009 flipped). It is printed beside the metric (S09-R2 decision 4).
 - **Tuning on the test set.** The filters are ADR-003's, chosen before any data, but v0 confirmed them; the router prompt was written from definitions, and checked on a blind rewording. v1 is the clean test.
 - **CHANGELOG release records are valid only at their own release.** 26 of 105 non-HISTORY labels have no text valid at 1.37, so staleness is defined by replacement, not by release (S09-R1 decision 1).
 
 ## Decisions expected (ADRs)
 
 - **ADR-009:** query-mode routing. Accepted in the S09-R1 sitting.
-- **ADR-003 changes:** dated CHANGE retrieval deferred (R1, done); where multipliers apply and the CHANGELOG as an observation (R2 sitting).
+- **ADR-003 changes:** dated CHANGE retrieval deferred (R1, done); tiers by source type, multipliers after the reranker, the CHANGELOG as an observation deferred to S10 (R2 sitting, done).
 
 ## Run contracts
 
@@ -118,7 +119,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S09-R1: route and filter by time
 
-- **Status:** PR open
+- **Status:** merged (PR #39)
 - **Branch:** `s09-r1-temporal`
 - **Tasks, in this order:** S09-T2 (router and windows) → S09-T3 (S09 metrics) → S09-T4 (`temporal` mode). T1 (ADR-009) was done in the sitting.
 - **Closes the slice:** no; R2 (authority) follows.
@@ -238,7 +239,7 @@ Schema: `Route(mode: Literal["CURRENT", "HISTORY", "CHANGE", "WHY"], time_scope:
 |---|---|---|
 | before | until N − 1 | until the release in effect on (Y − 1)-12-31; none → no window |
 | in | N to N | the release in effect on Y-01-01 (the first release if none yet) to the one in effect on Y-12-31; none on 12-31 → no window |
-| after | from N + 1 | from the release in effect on (Y + 1)-01-01 |
+| after | from N + 1 | from the release in effect on (Y + 1)-01-01 (the first release if none yet: "after 2010" → from 20; S09-R2 sitting) |
 | since | from N | from the release in effect on Y-01-01 (the first release if none yet) |
 | between | A to B (A ≤ B, else no window) | in effect on A-01-01 (or the first) to in effect on B-12-31 |
 | none | no window | no window |
@@ -307,7 +308,7 @@ Routed 43 questions with claude-opus-5-5 (0 already stored). Route time: p50 1.8
 #### Edge cases
 
 - **A filter leaves no text:** `[]`, no reranker call, and `ask` returns `insufficient_evidence`.
-- **A window outside the corpus** ("before 1.15", "in 1.40"): kept as numbers, so the filter matches nothing → `[]`.
+- **A window outside the corpus** ("before 1.15", "in 1.40"): kept as numbers. "before 1.15" matches nothing → `[]`. "in 1.40" still keeps current text, whose release window is open (corrected in the S09-R2 sitting: the code is kept; only HISTORY routes get a window, so a future-release question rarely reaches the filter).
 - **A time scope on a non-HISTORY route** (e.g. WHY "in v1.28"): no filter (decision 3).
 - **A route of HISTORY with no time scope** (q07, q12, q17): no filter.
 - **A text in several versions:** it passes if any of them passes. A text in [20, 22] and [23, now] passes "until 20".
@@ -395,10 +396,307 @@ At most 3 asks; the Langfuse trace links go in the brief.
 - **Package installs:** none.
 - No other network calls. No content reads on the corpus clones.
 
+### Run S09-R2: authority, and the S09 eval run
+
+- **Status:** PR open (#40); T8 and the retro done after the resume (decisions R1–R3 below)
+- **Branch:** `s09-r2-authority`
+- **Tasks, in this order:** S09-T5 (gate stages) → S09-T6 (tiers per hit) → S09-T7 (`authority` mode and metric) → S09-T8 (the S09 eval run).
+- **Closes the slice:** yes, once the retro (`/slice-retro`) follows.
+- **Parked:** S09-T8: Anthropic credit balance too low. Run 1 of 3 completed (`authority-20261010T112851Z`, $1.36); run 2 (`authority-20261010T113710Z`) returned 400 "credit balance is too low" from q23 (21 error rows, $0.67). Spent $2.03. Both folders and the table line are kept, local only (stash "parked S09-T8"). Unparked at resume (R1–R3).
+- **Parked:** the retro, because exit check 6 (the S09 row, write-up and thresholds) needs T8.
+- **Goal (plain words):**
+  - Record each feature gate's stage at each release, as that release's own docs gave it.
+  - Give every search result a trust tier (1 = official docs … 6 = blog). A KEP counts as shipped once one of its gates appears in the reference.
+  - Add an `authority` mode: per question type, nudge trusted sources up and weak ones down, after the reranker; and score whether "now" questions put the most trusted correct source first.
+  - Run the paid eval 3 times in the final mode, write the row, and set the S09 thresholds.
+
+#### Resume decisions (2026-10-10, after the run; the developer, interactive)
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| R1 | **Anthropic credit:** US$9.96 at resume (console, after a top-up). Low line: under US$5. Every check-in shows the estimated balance (US$9.96 minus the spend tools report) | A US$10 or US$3 line | About one full 3-run eval (~US$4.10) of headroom |
+| R2 | **Run 2 is dropped** (it stays only in stash "parked S09-T8"); run 1 (`authority-20261010T112851Z`) is kept if the resumed code retrieves the same hits for all 43 questions; then 2 more paid runs (~US$2.73) | 3 fresh runs (~US$4.10); keeping run 2 | Run 2's 21 error rows would skew AC3, errors and p95 |
+| R3 | **Apply the 5 review answers before the paid runs:** (a) a superseded proposal is never boosted, the WHY rule included; (b) ADR-003's Consequences line: the multipliers and the synonym list live in config; tiers are a fixed rule by source type; (c) migration 0006's high check also needs `stage IS NOT NULL`; (d) a KEP's stage is observed only when every gate it names has a row at R, all high and giving one stage (else its claim, low); (e) near-ties after rounding: no change | Apply after T8; leave for the S10 sitting | None changes a v0 result: 0 of run 1's 65 observed KEP hits fall in the 8 partially observed KEP × release pairs; 0 superseded KEPs in v0's WHY pools (T7 probe). Fix (c) is free before merge (0006 isn't on main) |
+
+#### Sitting evidence (2026-10-10)
+
+All free: saved pools from stored vectors and routes, the website clone, scratch scripts (not committed).
+
+- **Gate stages at each release's own snapshot** (spike parser, the T5 rules below): 3,295 rows over 1.20–1.37, 3,260 high and 35 low; 0–5 gates per release give 2+ stages, 0–1 a typo stage; 94–229 per release no longer cover their release (ranges ended; removed after GA).
+- **KEPs:** 113 current versions; 65 name a gate (70 have the key, 5 empty); 9 name several. 42 of 65 have no observation at 1.37 (gate removed after GA). Gates disagree in 25 of 1,918 KEP × release pairs. Claims differ from the observation in 119 of 442 pairs (claims run ahead of releases: S10's concern). 15 gate names in current KEPs match no reference name (typos such as `MixedProtocolLBSVC`, or never shipped). Two gates were renamed in their files (`APIServingWithRoute` → `APIServingWithRoutine` at 1.33; `ServiceAcccountNodeAudienceRestriction` → `ServiceAccountNodeAudienceRestriction` at 1.35): KEP-4412 matches only by the release's own name.
+- **Weights prototype** (temporal pools: rerank order with scores; tiers and weights as below):
+
+| Variant | Recall@10 | Hit@10 | MRR | nDCG@10 | Authority sel. | CURRENT MRR | Reorderings > 2 logits |
+|---|---|---|---|---|---|---|---|
+| temporal | 0.5596 | 1.0000 | 0.7586 | 0.5351 | 5 / 9 | 0.637 | — |
+| **A: ×1.25 / ×0.8 on the probability (chosen)** | **0.5522** | **1.0000** | **0.8133** | **0.5348** | **9 / 9** | **0.783** | 66 of 228 |
+| A at ×1.5 / ×0.67 | 0.5522 | 1.0000 | 0.8133 | 0.5365 | 9 / 9 | 0.783 | 76 of 254 |
+| B: +2 / −2 on the raw score | 0.5568 | 1.0000 | 0.7832 | 0.5333 | 8 / 9 | 0.708 | 6 of 253 |
+| C: after RRF (ADR-003 as written) | = temporal | | | | | | none: rerank re-sorts the pool |
+
+  - By mode alone (A): CURRENT MRR +0.041, Recall −0.006; WHY MRR +0.014, Recall +0.002; CHANGE Recall −0.004 (q07, golden HISTORY, routed CHANGE).
+  - Tiers by source type give the identical ranking to tiers that depend on validity, because D4's CURRENT boost needs "valid at the latest release" (q16's CHANGELOG-1.2x section, current but valid only at its release, isn't boosted).
+  - Stale 0 of 100 and in-window 47 of 90 are unchanged by the weights.
+- **Authority-selection baselines** (same tier rules, saved top 10s): dense 3/9 (CURRENT MRR 0.467), hybrid 2/9 (0.692), rerank 5/9 (0.588), temporal 5/9 (0.637), authority 9/9 (0.783). The old modes reproduced their pinned retrieval numbers and R1's stale and in-window counts exactly.
+- **Flipped-tier check** (tier t → 7 − t in the tier function only): authority mode gives 6 of 9 (from 3 of 9 under flipped tiers) but CURRENT MRR 0.628 (from 0.637), Recall 0.5584, MRR 0.7702, nDCG 0.5236. Real tiers: CURRENT MRR 0.783. The metric leans toward the weights; CURRENT MRR doesn't.
+- **Devil's advocates** (3, fresh context): weights act more like a cutoff than a nudge and were tuned on v0 (answered by B's row and the ×1.5 row); the metric grades itself (answered by the fixed denominator and the flipped-tier check); validity inside the tier adds nothing to the ranking (adopted: tiers by type).
+- **Cost** of `make eval`: rerank's row is $0.031 per question, so 3 runs of 43 questions ≈ $4.
+
+#### Decisions (made in the sitting, 2026-10-10)
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| 1 | Bundle T5–T8 (T8 added by the developer). R1 parked items: drop #1, 3, 7, 9, 13, 14, 15; keep #2+4+16 ("R1 cleanup"), #6, #10, #11+12 (trace coverage), #17, #18 as proposed additions; fold #5 and #8 into T7. Drop "near-duplicate crowding" (temporal: 8.3 distinct sections per top 10) | T5–T7 only | T8's two open points became rules (decisions 5 and 10) |
+| 2 | R1's questions: a future window ("in 1.40") keeps current text (the R1 edge-case line is corrected); "after 2010" starts at the first release (added to the pinned table); estimate tests at 1.5× the source | Make future windows empty | Only HISTORY routes get a window; a future-release question rarely reaches it |
+| 3 | **Weights after the reranker, on its probability:** sort by sigmoid(score) × factor; boost ×1.25, demote ×0.8, in config (ADR-003 D4 change) | +2 on the raw score; after RRF | Best MRR (+0.055), clears the +0.03 bar; +2 gives +0.025; after RRF does nothing |
+| 4 | **Authority-selection accuracy:** golden CURRENT questions whose labeled documents span 2+ tiers (fixed by the labels: 9 on v0); right when the first labeled top-10 hit has the best label tier; no tier = worst. CURRENT MRR printed beside it; the flipped-tier check is a T7 proof item | MRR only; a denominator taken from the hits | The spec names this metric; a label-fixed denominator can't shrink; MRR guards the lean |
+| 5 | **Thresholds:** the final mode's result, loosened by one unit of its own count (1 hit or 1 question), rounded to 2 decimals toward the loose side; router keeps ≥ 0.90 (ADR-009). T8 writes them into the product spec; the merge confirms them | Approve in the morning; round targets now | Decided in the sitting; only arithmetic is left |
+| 6 | *(rec.)* **Gate stages:** one row per gate × release; blank + low when unclear; a typo stage kept as written + low | A row per stage; raw ranges | One fact per gate per release; ≤ 5 unclear rows per release |
+| 7 | *(rec.)* **The CHANGELOG as a stage source, and a claimed `disabled`, deferred to S10** (ADR-003 change) | Parse release notes now | Free text; only S10's conflict check needs it |
+| 8 | *(rec.)* **Tiers by source type;** KEP tier 3 when shipped by the target release or implemented, else 5; withdrawn, rejected or replaced: "superseded proposal" (no tier). D4's CURRENT boost needs "valid at the latest release" (ADR-003 D3 change) | A tier that depends on validity | Same ranking; every citation gets a tier (AC1) |
+| 9 | *(rec.)* **A new `authority` mode** (temporal + weights); every mode attaches tiers | A switch inside temporal | One mode per ablation stage; every stage prints the metric |
+| 10 | *(rec.)* **T8:** a free gate before any paid call; T8 runs `authority` if its `make eval-retrieval` passes the improvement rule against `temporal` (authority selection +0.03, no retrieval metric −0.03), else `temporal` | — | No paid run on unverified code |
+| 11 | **1 PR**, an explicit exception to the ~800-line alarm (estimate ~2,000). Paid calls as listed below | 2 stacked PRs split after T6 (recommended) | The developer's call |
+
+**Claude's calls (overrulable):**
+
+- **Layout:**
+  - `db/migrations/versions/0006_observed_lifecycle.py`: the table below.
+  - `ingestion/lifecycle.py`: pure functions (parse a table page's rows; turn a gate file's `stages` into ranges; the stage at a release), plus `main()` for `make lifecycle` (reads stored versions and the clone, writes the table).
+  - `db/lifecycle.py`: replace all rows in one transaction; read a release's inputs; `observations(conn, gates, until_release)`; the newest version's tier inputs per document (for the labels).
+  - `retrieval/authority.py`: pure functions `target_release`, `kep_stage`, `tier`, `factor`, `weigh`.
+  - `db/models.py`: `Authority(target_release: int, tier: int | None, effective_stage: str | None, stage_confidence: Literal["high", "low"] | None)`; `Hit.authority: Authority | None = None` (set in every mode); `Hit.authority_score: float | None = None` (authority mode only). `tier` None means a superseded proposal.
+  - Metric functions in `eval/metrics.py`, as pure functions.
+- **Migration (pinned; the high check's `stage IS NOT NULL` is resume decision R3c):**
+
+  ```sql
+  CREATE TABLE observed_lifecycle (
+      gate              text NOT NULL,
+      release           smallint NOT NULL,
+      stage             text,
+      status_confidence text NOT NULL,
+      CONSTRAINT observed_lifecycle_pkey PRIMARY KEY (gate, release),
+      CONSTRAINT observed_lifecycle_release_fkey FOREIGN KEY (release) REFERENCES releases (minor),
+      CONSTRAINT observed_lifecycle_status_confidence_check
+          CHECK (status_confidence IN ('high', 'low')),
+      -- high: one stage from the vocabulary; low: no stage, or a value kept as written
+      CONSTRAINT observed_lifecycle_high_check CHECK (
+          status_confidence = 'low'
+          OR (stage IS NOT NULL AND stage IN ('alpha', 'beta', 'stable', 'deprecated')))
+  )
+  ```
+
+- **T5 rules (pinned):**
+  - **Release R's snapshot:** 1.20–1.28: the table rows of the `feature-gates` and `feature-gates-removed` page versions valid at R, read from the clone at their `snapshot_sha` (both pages' rows for a gate are joined). 1.29+: every `gate:` document's version valid at R (one per gate), named by its front-matter `title` at R, ranges from its `stages`.
+  - **A table row** is a line `| \`Name\` | default | stage | from | until |` (the spike's pattern; `Since | Until` or `From | To`); an empty cell or `-` is an open end.
+  - **A version** is a string `v?1.N(.P)?(-alpha|beta|rc.M)?`; its minor is N. Anything else, a YAML number included, is unparseable.
+  - **The stage at R:** a range covers R when from-minor ≤ R ≤ to-minor (open end: open). Any range with an unparseable bound → blank, low. No covering range → no row. The covering ranges' distinct stages, after strip, lower case and `ga` → `stable`: one in {alpha, beta, stable, deprecated} → that stage, high; one outside → the cell as written (stripped), low; 2+ → blank, low.
+  - **Writes:** delete every row, then insert, in one transaction; releases 1.20 to the latest in `releases`.
+  - `make lifecycle` (`python -m orgknow.ingestion.lifecycle`) rebuilds the table; `make ingest` runs the same step after chunking, before its report. Output (pinned): `Observed lifecycle: 3295 rows over 18 releases (3260 high, 35 low).`
+- **T6 rules (pinned):**
+  - **Target release:** CURRENT → the latest release; HISTORY with a window → its `until_release`, capped at the latest (no `until` → the latest); CHANGE, WHY, HISTORY without a window, and dense, hybrid and rerank modes (no route) → the latest.
+  - **KEP gates:** the `name`s in the cited version's `feature-gates` list (exact match, as written).
+  - **Shipped by R:** one of its gates has a row (any stage, blank included) at a release ≤ R.
+  - **Effective stage at R:** the gates' rows at R: if every gate it names has a row at R, all high and giving one stage → that stage, high; else the version's `claimed_stage`, low; no claim → None (confidence None). Only KEPs get one. (Resume decision R3d: "every gate it names has a row".)
+  - **Tier:** `docs_page` and `feature_gate_reference` 1, `release_record` 2, `governance_doc` 4, `blog_post` 6. `kep`: `claimed_status` withdrawn, rejected or replaced → None (superseded proposal); shipped by R or `implemented` → 3; else 5.
+  - `retrieve` attaches `authority` to the returned hits in dense, hybrid, rerank and temporal modes (one `observations` read per question), and to the whole pool in authority mode before the weights.
+  - **The prompt (pinned):** each block's second line is `authority: tier N` or `authority: superseded proposal`. A KEP block's claim line is followed by `stage at 1.R: S (observed)` (high), `stage at 1.R: S (claimed, not observed)` (low) or `stage at 1.R: unknown`. The system prompt's paragraph becomes: "Each chunk starts with a line giving its id and the releases it was valid in ("now": still valid in the latest release), then its authority tier (1 = docs and feature-gate pages, 2 = release notes, 3 = shipped KEPs, 4 = governance docs, 5 = unshipped KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP claimed, and its stage at the asked-about release."
+  - **Citations:** `Evidence` gains `tier: int | None`, `superseded_proposal: bool`, `effective_stage: str | None` and `stage_confidence`. AC1's check also requires a tier, or `superseded_proposal`.
+- **T7 rules (pinned):**
+  - **Factor, by the routed mode.** Each hit gets one factor; the first matching rule wins:
+    - CURRENT: tier 1 or 2 and some release window contains the latest release → boost; `blog_post` → demote.
+    - CHANGE: `release_record` → boost.
+    - WHY: a `kep` hit with a tier (not a superseded proposal) and a heading containing "motivation" or "alternatives" (case-insensitive) → boost; `blog_post` or `governance_doc` → boost; `feature_gate_reference` → demote. (Resume decision R3a: "with a tier".)
+    - HISTORY, or anything else: 1.
+  - **Authority mode:** temporal's pool, reranked whole (rerank order), tiers attached, then sorted by `round(sigmoid(rerank_score) × factor, 4)` descending, ties keeping rerank order; the top RETRIEVAL_TOP_K. `authority_score` = the unrounded product. An empty pool → `[]`, no reranker call. It needs a route (`ValueError` without one), like temporal.
+  - **The metric:** per golden CURRENT question, the label tiers (each label's document, newest version, at the latest release; None = worst) and its top-K hits' tiers. Counted when the label tiers hold 2+ distinct values; right when a top-K hit matches a label and the first one's tier equals the best label tier. Result (right, counted), or None when nothing counts or a counted question lacks tiers.
+  - **CURRENT MRR:** the mean MRR over the golden CURRENT questions (printed only).
+- **Settings:** `RETRIEVAL_MODE` gains `authority` (the default stays `rerank` until T8, which sets it to the final mode). `AUTHORITY_BOOST` (default 1.25, 1–4) and `AUTHORITY_DEMOTE` (default 0.8, > 0 and ≤ 1). `.env.example` lists both. Boost 1 and demote 1 give temporal's ranking exactly.
+- **Eval files:** `run.json` settings gain `authority_boost` and `authority_demote` (None outside authority mode); authority mode records the router fields and routes as temporal does. Each hit gains `authority` (and `authority_score`); each row gains `label_tiers` (golden label order). All optional, so old folders load. Summary gains `authority: Rate | None`; the table gains `Authority sel.` after `Router acc.` (`n/a` for older rows).
+- **`ask` in authority mode:** as temporal (live route, route line); citations carry the tier.
+- **Trace:** the `retrieve` span records each hit's tier and, in authority mode, its factor and `authority_score` (not tested: the trace-coverage proposed addition).
+- **R1 parked #5 and #8 (folded into T7):** the architecture doc's metrics row names all metric functions; `score_retrieval_only` returns a small named model instead of a tuple.
+- **Docs:** ADR-003's S09-R2 change table (in this commit); `docs/architecture.md` (lifecycle, tiers, authority mode); README (`authority` mode, `make lifecycle`); `docs/evaluation.md` (the metric's definition and its lean, the side table's authority row and column, T8's write-up); the product spec's thresholds (T8); glossary: "authority tier" and "feature gate" if absent.
+
+#### Pinned: output formats
+
+`make eval-retrieval`, authority mode:
+
+```
+Mode: authority (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, max length 512, router claude-opus-5-5, slack 1, boost 1.25, demote 0.8). Answerable questions: 36.
+Recall@10 0.552  Hit@10 1.000  MRR 0.813  nDCG@10 0.535
+Stale rate 0.000 (0 of 100 CURRENT hits)  Temporal accuracy 0.522 (47 of 90 dated HISTORY hits)
+Authority selection 1.000 (9 of 9 CURRENT questions)  CURRENT MRR 0.783
+Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-only, 7 windowed, 19 unfiltered
+Retrieve time: p50 4.91 s, p95 6.14 s (36 questions). Reranker load 7.4 s.
+```
+
+- Times are examples. Every other mode adds the authority line after its stale/temporal line, and every other line stays as it is today:
+
+| Mode | Authority line |
+|---|---|
+| dense | `Authority selection 0.333 (3 of 9 CURRENT questions)  CURRENT MRR 0.467` |
+| hybrid | `Authority selection 0.222 (2 of 9 CURRENT questions)  CURRENT MRR 0.692` |
+| rerank | `Authority selection 0.556 (5 of 9 CURRENT questions)  CURRENT MRR 0.588` |
+| temporal | `Authority selection 0.556 (5 of 9 CURRENT questions)  CURRENT MRR 0.637` |
+
+**Side table** in `docs/evaluation.md` ("Time scores by stage", renamed "Time and authority scores by stage"): gains the `Authority selection` and `CURRENT MRR` columns and an `authority` row (0.552, 0.813, 0.000, 0.522, 1.000, 0.783, the run's router value).
+
+#### Pinned: T8
+
+1. **Free gate:** `RETRIEVAL_MODE=authority make eval-retrieval` and `RETRIEVAL_MODE=temporal make eval-retrieval` print the pinned lines. Any difference → park T8 with $0 spent.
+2. **Mode rule:** authority if, against temporal, authority selection rises ≥ 0.03 and no retrieval metric drops > 0.03 (the prototype: +0.444; Recall −0.007); else temporal. The brief states which, with the numbers.
+3. **3 paid runs:** `RETRIEVAL_MODE=<final> make eval`, the usual results-folder names; then `make eval-table`.
+4. **Write-up** in `docs/evaluation.md`: the S09 row against `rerank` under the improvement rule (stale, temporal and authority selection as the targets; Recall/MRR/nDCG/Hit within 0.03; AC1–AC3 and false refusals against the baseline's range), CURRENT MRR, cost per question, p95 latency, and the router's separate timing (R1).
+5. **Thresholds** (decision 5) into the product spec's thresholds table. With the prototype's numbers: stale ≤ 0.01 (from 0 of 100), temporal ≥ 0.51 (from 47 of 90), authority ≥ 0.88 (from 9 of 9), router ≥ 0.90 (kept).
+6. `RETRIEVAL_MODE`'s default becomes the final mode (settings, `.env.example`, README).
+
+#### Handoffs between tasks
+
+- T5 → T6: the table and `observations`.
+- T6 → T7: `Hit.authority` in every mode, the target release, the label tier inputs.
+- T7 → T8: the `authority` mode, the metric, the table column.
+- If T5 parks, T6 still ships (KEPs fall back to their claims); its KEP examples and the 82 / 25 / 6 split park. If T6 parks, T7 parks. If T7 parks, T8 runs temporal, and the authority threshold parks.
+
+#### Edge cases
+
+- **A gate listed on both pre-1.29 pages:** its rows are joined (`DaemonSetUpdateSurge` at 1.27: stable, high, from the main page's open row; a known limit).
+- **A renamed gate:** each release names it as its own file does; no aliasing.
+- **Same stage over a patch boundary** (beta 1.35.0–1.35.3, beta 1.35.4–1.36): high. **A stage change at a patch:** 2 stages → blank, low.
+- **A KEP with no gate, an unmatched gate name, or no claim:** tier by status; effective stage = the claim (low) or None.
+- **A superseded proposal:** no tier, never boosted, the WHY rule included (resume decision R3a); AC1 accepts it.
+- **A current CHANGELOG section of an older release:** tier 2, but not valid at the latest release, so CURRENT doesn't boost it.
+- **Boost 1, demote 1:** temporal's ranking exactly.
+- **Ties after rounding:** rerank order (a saturated probability, e.g. 0.9999, ties).
+- **An empty pool or a filter that keeps nothing:** `[]`, no reranker call, `insufficient_evidence` in `ask`.
+- **Old results folders:** no `authority` or `label_tiers`; they load, and the authority metric is None (`n/a`).
+
+#### Files in scope
+
+- **New:**
+  - `src/orgknow/db/migrations/versions/0006_observed_lifecycle.py`
+  - `src/orgknow/ingestion/lifecycle.py`, `src/orgknow/db/lifecycle.py`, `src/orgknow/retrieval/authority.py`
+  - `tests/unit/test_lifecycle.py`, `tests/unit/test_authority.py`, an integration test of the table and `observations`, and a small table-page fixture in `tests/fixtures/`
+  - T8's 3 results folders under `eval/results/`
+- **Changed:**
+  - Config: `Makefile` (`lifecycle`), `.env.example`
+  - Code: `src/orgknow/settings.py`, `src/orgknow/db/models.py`, `src/orgknow/ingestion/ingest.py`, `src/orgknow/retrieval/retrieve.py`, `src/orgknow/generation/{prompt,schema}.py` and where `Evidence` is built, `src/orgknow/cli.py`, `src/orgknow/eval/{runner,metrics,checks,table,__main__}.py`
+  - Results: `eval/results/ablation.md` (regenerated)
+  - Docs: `README.md`, `docs/{architecture,evaluation,product-spec}.md`, `docs/learning/glossary.md`, `docs/backlog.md` (ticks)
+  - Tests that build a `Hit`, `Evidence`, a row, a summary, the prompt or the table
+- **Not touched:** `eval/golden_set/`, `eval/question_vectors/`, `eval/question_routes/`, earlier migrations, chunking, every older results folder.
+
+#### Proof map
+
+| Task | Done when / rule | Proof | Expected values from |
+|---|---|---|---|
+| T5 | Stage rules | Unit: alpha 1.22–1.22, beta 1.23–1.24, GA 1.25–1.27 → 22 alpha high, 25 stable high, 28 no row; alpha 1.14– and beta 1.17– at 20 → blank low; `True` 1.19– at 20 → `True` low; GA 1.22–`1,24` at 25 → blank low; beta 1.31.0–1.31.0 and deprecated 1.31.1– at 31 → blank low; beta 1.35.0–1.35.3 and beta 1.35.4–1.36 at 35 → beta high; a version given as a YAML number → unparseable; a table page fixture with `Since \| Until`, `From \| To`, `-` and empty cells | By hand |
+| T5 | **Real table** | `make lifecycle` prints the pinned line; per release, rows (high / blank / typo): 20: 152 (147/4/1), 21: 170 (167/2/1), 22: 196 (192/3/1), 23: 216, 24: 224, 25: 144 (143/1/0), 26: 146 (145/1/0), 27: 147 (145/1/1), 28: 154 (153/1/0), 29: 159, 30: 159 (155/4/0), 31: 161 (160/1/0), 32: 172 (171/1/0), 33: 181 (180/1/0), 34: 201 (199/2/0), 35: 216 (214/2/0), 36: 238 (236/2/0), 37: 259 (254/5/0). Spot rows: PodSecurity 22 alpha high, 25 stable high, 28 none; EventedPLEG 29 beta high, 30 alpha high; CSIMigrationAWS 20 blank low; LegacyNodeRoleBehavior 20 `True` low; SetHostnameAsFQDN 25 blank low; APIServingWithRoutine 33 alpha high, APIServingWithRoute 33 none; DRADeviceTaints 37 blank low | Sitting probe |
+| T5 | Repeatable | A second `make lifecycle` and a `make ingest`: the sha256 of the sorted rows is unchanged | — |
+| T5 | Schema | Integration: a high row with stage `True` and a row for release 99 are rejected; the rebuild is all-or-nothing | The migration |
+| T6 | Rules | Unit: each type's tier; KEP withdrawn → None, implementable with a gate seen at 25 only and target 37 → 3, implementable never seen → 5, implemented never seen → 3; effective stage: one high stage at R → it, high; 2 gates disagree → claim, low; nothing at R → claim, low; no claim → None; target release: CURRENT 37, HISTORY until 27 → 27, from 30 → 37, until 40 → 37, CHANGE → 37, no route → 37 | By hand |
+| T6 | **Real KEPs** | KEP-2579 at 37: stable (claimed, low), tier 3; at 22: alpha (observed, high), tier 3. KEP-4858 at 37: beta (observed, high), claim stable, tier 3. KEP-2799 at 26: beta (claimed, low). KEP-4412 at 37: beta (observed, high). Current KEP versions at 37: 82 tier 3, 25 tier 5, 6 superseded | Sitting probe |
+| T6 | Prompt and AC1 | Unit: the pinned lines in a KEP and a docs block; AC1 fails a citation with no tier that isn't a superseded proposal | The contract |
+| T6 | Old modes unchanged | dense 0.384 / 0.944 / 0.614 / 0.369; hybrid 0.382 / 0.944 / 0.675 / 0.385; rerank 0.516 / 0.972 / 0.703 / 0.489; temporal 0.560 / 1.000 / 0.759 / 0.535; their stale/temporal lines as R1 | S06–S09-R1 |
+| T7 | Weights | Unit: CURRENT, logits 2.0 (blog), 1.0 (docs, current), −1.0 (docs, current) → 0.8808 × 0.8 = 0.7046, 0.7311 × 1.25 = 0.9138, 0.2689 × 1.25 = 0.3362 → docs, blog, docs; equal products keep rerank order; each mode's factor table; boost 1 and demote 1 → the input order | By hand |
+| T7 | Metric | Unit: label tiers {1, 6}, first labeled hit tier 6 → counted, wrong; {2, 4}, first 2 → right; one tier only → not counted; no labeled hit → counted, wrong; a None label tier is worst; a question whose labeled top-10 hits share one tier but whose labels span 2 → counted | By hand |
+| T7 | **Gate** | `RETRIEVAL_MODE=authority make eval-retrieval` → the pinned lines (0.552 / 1.000 / 0.813 / 0.535; 0 of 100; 47 of 90; 9 of 9; CURRENT MRR 0.783); each other mode's authority line as pinned | Sitting prototype |
+| T7 | Flipped tiers | The tier function returns 7 − t (None stays): authority mode → Recall 0.558, MRR 0.770, nDCG 0.524, authority 6 of 9, CURRENT MRR 0.628; restored, `git diff` clean | Sitting prototype |
+| T7 | Settings and table | Unit: `AUTHORITY_BOOST=0.9` and `AUTHORITY_DEMOTE=1.1` → validation errors; authority mode without a route → `ValueError`. `make eval-table`: older rows unchanged except one `n/a` | The contract |
+| T8 | Gate, row, write-up, thresholds | The free gate's output; 3 results folders; the table row and spread; the write-up's pass/fail; the spec's 4 thresholds by decision 5 | T7's gate; decision 5 |
+
+If a pinned number differs, the task parks that item (with both numbers) and keeps the code, as in R1.
+
+#### Break-it rules
+
+- T5: take the first covering range instead of flagging 2+ stages → the "alpha 1.14– and beta 1.17–" test fails.
+- T6: "shipped" = observed at the target release only → the "gate seen at 25 only, target 37 → 3" test fails.
+- T7: multiply the raw score instead of the probability → the hand-worked ordering test fails (the blog ranks first).
+
+#### Real-data demo
+
+```bash
+make lifecycle && make lifecycle
+for m in dense hybrid rerank temporal authority; do RETRIEVAL_MODE=$m HF_HUB_OFFLINE=1 make eval-retrieval; done
+RETRIEVAL_MODE=authority HF_HUB_OFFLINE=1 uv run orgknow ask "What enforces pod security standards in-tree?"
+RETRIEVAL_MODE=authority HF_HUB_OFFLINE=1 uv run orgknow ask "Does the API server reject IP addresses with leading zeros by default?"
+```
+
+- The first ask's top citation should be a docs page (tier 1), where temporal ranked a blog first. The second should cite KEP-4858 with `stage at 1.37: beta (observed)` beside `claimed: implemented/stable`. The Langfuse trace links go in the brief.
+
+#### Bundle-level check
+
+1. `make check`.
+2. `make test-int` (Postgres checked healthy at run start; the migration applied to the dev database with `make migrate` before T5's real-data steps).
+3. `make eval-retrieval` in all 5 modes: the pinned lines.
+4. `make eval-table`: older rows unchanged except the new `n/a` cell; the S09 row present.
+5. `git status --short`: only intended files.
+
+#### PR plan
+
+1 PR, above the ~800-line alarm by the developer's choice (decision 11; estimate ~2,000 reviewable lines, plus results). Greptile: 1 trigger (14/50 used before the run).
+
+#### Paid calls allowed
+
+- **Anthropic answers:** T8's 3 × `make eval` (≤ 129 calls) and ≤ 2 demo asks.
+- **Anthropic router:** ≤ 2 calls (the demo asks); the eval uses stored routes (≤ 43 more only if a route is missing).
+- **Voyage:** ≤ 2 requests (the demo asks); the eval uses stored vectors.
+- **Cap:** $7 for all of them.
+- **Langfuse:** traces of the demo asks and the eval's asks.
+- **Hugging Face:** none (`HF_HUB_OFFLINE=1`; the reranker is cached).
+- **Package installs:** none.
+- **Local reads** of the website clone (T5's 13 table files) are allowed; no other network calls.
+
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - **S09-R1** (PR #39), 3 tasks in 1 PR; T1 (ADR-009) was decided in the sitting:
+    - **T2:** the router: one Claude call (Opus 5.5, effort low) returns a mode and a time scope; code turns the scope into a release window. 35 of 36 modes and 7 of 9 windows on v0; p50 1.71 s, p95 4.27 s per call.
+    - **T3:** stale-result rate, temporal accuracy and router accuracy in `make eval-retrieval` and the summaries.
+    - **T4:** `temporal` mode: filters inside both searches. Stale "now" hits 38 → 0 of 100; dated "back then" hits in the window 32 → 47 of 90.
+  - **S09-R2** (PR #40), 4 tasks in 1 PR:
+    - **T5:** `observed_lifecycle`: 3,295 gate × release rows over 1.20–1.37, 3,260 high and 35 low. Every per-release count and spot row matched the sitting.
+    - **T6:** a tier on every hit in every mode (0 of 1,440 missing), and a KEP's stage at the asked-about release. The tier is in the prompt and the citations, and AC1 requires it. Current KEPs at 1.37: 82 tier 3, 25 tier 5, 6 superseded.
+    - **T7:** `authority` mode (×1.25 / ×0.8 on the reranker's probability) and authority-selection accuracy: 9 of 9 (temporal 5, rerank 5, hybrid 2, dense 3). The flipped-tier check reproduced the sitting's numbers.
+    - **T8:** 3 paid runs in authority mode: 0 errors, identical hits in all 3.
+  - **Result:** authority passes the improvement rule against rerank, so `RETRIEVAL_MODE` now defaults to `authority`.
+    - Targets: stale rate 0.380 → 0.000; temporal accuracy 0.356 → 0.522; authority selection 0.556 → 1.000.
+    - Retrieval: Recall@10 0.516 → 0.552 (+0.037), Hit@10 0.972 → 1.000, MRR 0.703 → 0.813 (+0.110), nDCG@10 0.489 → 0.535 (+0.046). CURRENT MRR 0.588 → 0.783.
+    - Answers: AC1–AC3 100% in all 3 runs; false refusals 0 of 36 (rerank 1–2).
+    - Speed and cost: p95 14.9 s (14.5–15.3; rerank 14.2); retrieve p95 6.5 s; $0.032 per question (rerank $0.031). A live ask adds the router call (p95 4.27 s).
+    - Thresholds in the product spec (decision 5): stale ≤ 0.01, temporal ≥ 0.51, authority selection ≥ 0.88, router ≥ 0.90.
+  - **Paid in S09:** about $5.4 in all.
+    - R1 sitting router test: $0.31.
+    - R1 run: about $0.25.
+    - R2: $4.09 for the 3 kept runs, $0.67 for the dropped partial run, and about $0.07 for 2 demo asks.
+    - Voyage: 4 requests. Hugging Face: 0 downloads.
+  - **Tests:** 707 unit and 177 integration (from 506 and 126).
+  - **PR sizes:**
+    - R1: about 2,900 reviewable lines (estimate 1,400).
+    - R2: about 3,200 (estimate 2,000).
+    - Greptile, R1: 1 fixed, 1 parked.
+    - Greptile, R2: 4 comments. 1 was fixed; the 3 parked ones were fixed at the resume (R3).
 - **Surprises:**
+  - **Weights applied after RRF do nothing in rerank mode,** because the reranker re-sorts the whole pool. Found in the R2 sitting; ADR-003 now applies them after the reranker, on its probability.
+  - **42 of 65 gated KEPs have no gate row at 1.37:** the gate was removed after GA. So a KEP counts as "shipped" when a gate row exists at any release up to the target.
+  - **The reference renames gates in its own files** (2 cases), and 15 gate names in KEPs match no reference name. Without aliasing, KEP-4412 matches only by the release's own name.
+  - **The Anthropic credit ran out mid-eval:** run 2 failed from question 23 with a 400. Nothing tracked the balance. The workflow now tracks it (PR #41).
+  - **The pinned migration let a blank stage be "high".** `NULL IN (...)` is NULL, and a CHECK lets NULL through. Greptile found it.
+  - **The sitting's ADR-003 change table left D2–D4's own text on the old rules.** `docs/decisions/README.md` asks for both; Greptile found it.
+  - **Run 1, on pre-R3 code, could be kept:** the final code retrieves the same hits for 43 of 43 questions (430 hits), and the comparison flagged a deliberately corrupted copy.
+  - **Later documents describe the past** (R1): 7 of 41 dated HISTORY labels have no text within ±1 release of their window.
 - **What didn't work / negative results:**
+  - **Recall@10 dips against temporal** (0.560 → 0.552) and fell on 4 questions against rerank (q07, q09, q11, q30).
+  - **The authority metric leans toward the weights:** inverted tiers still lift it (3 → 6 of 9). CURRENT MRR, from human labels only, tells them apart (0.628 inverted vs. 0.783 real), so both are printed.
+  - **43 of 90 dated HISTORY hits are still outside the exact window.** The exact-window filter put 82 of 90 inside but lowered Recall@10 (0.541).
+  - **CHANGE questions score the same as in rerank,** although 4 of 9 got a different top 10.
+  - **Keyword rules routed 12 of 36 correctly on a blind rewording** (36 of 36 on the original wording), so routing costs a model call.
+  - **One answer took 29.7 s** (q42, run 1), over the 23 s ceiling. It's the 43rd of 43, so p95 leaves it out; the other 2 runs took 10–12 s.
+  - **v0 isn't a clean test.** The ±1 slack and the weights (4 variants) were chosen on v0; v1 is the clean test.
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S09-*.md`
+  - Check the Anthropic credit before every paid step, and show it in check-ins (`CLAUDE.md`, "Anthropic credit").
+  - In the sitting, read every pinned CHECK for NULL: a CHECK passes when its condition is NULL.
+  - When the sitting changes an ADR sub-decision, update its text in place in the same commit, not only the change table.
+  - Cross-check pinned rules against the edge-case list: the WHY rule and "never boosted" disagreed.
+  - Size estimates: R1 ran +107% over and R2 +60%. Tests are about half of each PR, so estimate them separately and add 50%.
+- **Slice brief:** `docs/learning/S09-temporal-authority.md`

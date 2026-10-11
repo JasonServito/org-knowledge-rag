@@ -1,4 +1,5 @@
-"""Answer checks AC1-AC3 and the false-refusal flag on hand-built answers (S06-T3).
+"""Answer checks AC1-AC3 and the false-refusal flag on hand-built answers (S06-T3; AC1's tier,
+S09-T6).
 
 Every expected record is a hand-written literal: True (pass), False (fail) or None (n/a).
 The retrieved hits are chunks 11, 12 and 13; chunk 99 was not retrieved.
@@ -67,6 +68,7 @@ def _citation(chunk_id: int, **changes: Any) -> Evidence:
         "release_windows": [("1.30", None)],
         "claimed_status": None,
         "claimed_stage": None,
+        "tier": 1,
         "source_url": "https://github.com/kubernetes/website/blob/0/content/en/docs/a.md",
     }
     return Evidence(**(fields | changes))
@@ -125,6 +127,22 @@ def test_a_citation_missing_a_field_fails_ac1(changes: dict[str, Any]) -> None:
     answer = _answered(_citation(11), _citation(12, **changes))
     assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
         ac1=False, ac2=True, ac3=None, false_refusal=False
+    )
+
+
+def test_a_citation_with_no_tier_that_isnt_a_superseded_proposal_fails_ac1() -> None:
+    # S09-T6: e.g. a hit that never had its authority attached.
+    answer = _answered(_citation(11), _citation(12, tier=None))
+    assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
+        ac1=False, ac2=True, ac3=None, false_refusal=False
+    )
+
+
+def test_a_superseded_proposal_with_no_tier_passes_ac1() -> None:
+    citation = _citation(12, source_type="kep", tier=None, superseded_proposal=True)
+    answer = _answered(_citation(11), citation)
+    assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
+        ac1=True, ac2=True, ac3=None, false_refusal=False
     )
 
 

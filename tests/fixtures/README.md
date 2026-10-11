@@ -12,6 +12,7 @@ Small real files from the Kubernetes corpus, copied byte-exact at pinned commits
 | `website_s05/release-notes/excerpt-1.20.md` | kubernetes/website, `content/en/docs/setup/release/notes.md`, lines 1–18 | `2886f437` (1.20) |
 | `website_s05/release-notes/1.N.md` | kubernetes/website, `content/en/releases/notes.md` (where the page moved at 1.21) | `release-1.N` in the lock: `7ed77d72` (1.21), `80b4524c` (1.22) |
 | `website_s05/feature-gates-page/excerpt-1.28.md` | kubernetes/website, `content/en/docs/reference/command-line-tools-reference/feature-gates.md`, lines 52–63: the start of the first pipe table | `6b57c309` (1.28) |
+| `website_s09/feature-gates-tables/main-excerpt-1.25.md`, `removed-excerpt-1.25.md` | kubernetes/website, `content/en/docs/reference/command-line-tools-reference/feature-gates.md` lines 214–232 (the start of the graduated or deprecated table: `Since \| Until`, `-` and empty Until cells) and `feature-gates-removed.md` lines 31–36 (the start of its table: `From \| To`, `-` in the Default column) | `8eb33afd` (1.25) |
 | `website_s05/redirects/excerpt-1.21.txt` | kubernetes/website, `static/_redirects`, lines 495–498 | `7ed77d72` (1.21) |
 | `website_s05/feature-gates/<gate>/1.N.md` | kubernetes/website, `content/en/docs/reference/command-line-tools-reference/feature-gates/<gate>.md`, whole file: `StrictIPCIDRValidation` (1.37), `APIServingWithRoute` (1.32), `APIServingWithRoutine` (1.33), `PodInfoAPI` (1.36), `InPlacePodVerticalScalingMemoryBackedVolumes` (1.37) | The lock's website SHA for 1.N (`website_releases`): `a6b9d383` (1.32), `b9ab6105` (1.33), `1de955eb` (1.36), `256a1f49` (1.37, `main`). Each file's `git hash-object` equals the blob at that commit |
 | `kep_2579/1.N.kep.yaml` | [kubernetes/enhancements](https://github.com/kubernetes/enhancements), `keps/sig-auth/2579-psp-replacement/kep.yaml` | `master` on the 1.N release date in the lock (`release_date_snapshots`) |
@@ -30,6 +31,6 @@ Small real files from the Kubernetes corpus, copied byte-exact at pinned commits
 
 ## License
 
-- `website_s04/`, `website_s05/` and `blog/`: Kubernetes documentation and blog, © The Kubernetes Authors, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- `website_s04/`, `website_s05/`, `website_s09/` and `blog/`: Kubernetes documentation and blog, © The Kubernetes Authors, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - `kep_2579/`, `kep_4317/`, `kep_old/`, `kubernetes/` and `sig_release/`: © The Kubernetes Authors, licensed [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0), the license of the enhancements, kubernetes and sig-release repos.
 | `eval/demo.yaml` | Not a corpus file: 3 Appendix A seeds (#6, #13, #10) in the ADR-007 format, labeled in the S06-R1 sitting from the dev database and verified by the developer | The dev database at `main` 60bd146 (S05 corpus, fingerprint `sha256:458effad…`) |

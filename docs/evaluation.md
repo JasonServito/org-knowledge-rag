@@ -22,7 +22,7 @@ How the pipeline is measured: a fixed golden set, one results folder per run, an
 
 K = 10 (`RETRIEVAL_TOP_K`). Retrieval metrics are per answerable question, then averaged over the 36. Each label is credited once, at its first matching hit, so a second copy of a found section adds nothing (ADR-007 D3).
 
-The 3 time metrics (S09) are pooled over hits instead, by each question's golden mode or window (S09-R1 decision 1).
+The 3 time metrics (S09) are pooled over hits instead, by each question's golden mode or window (S09-R1 decision 1). Authority selection (S09-T7) is per CURRENT question, over a fixed subset of them.
 
 | Metric | Definition | What it tells you |
 |---|---|---|
@@ -34,7 +34,9 @@ The 3 time metrics (S09) are pooled over hits instead, by each question's golden
 | **Stale-result rate** | Stale hits ÷ hits, over the CURRENT questions' top 10. A hit is stale when no current version (open date window) holds its text | How often a "now" question gets text a later edit replaced; lower is better |
 | **Temporal accuracy** | Hits with a release window overlapping the exact golden `release_window` ÷ hits, over the questions with one. An open end is open | How often a dated question gets text from the releases it asks about |
 | **Router accuracy** | Answerable questions routed to their golden mode ÷ answerable questions | Whether the router (ADR-009) picks the right kind of question |
-| **AC1** | An `answered` answer cites ≥ 1 chunk, each with a source URL, release windows and source type | Citations are present and resolvable |
+| **Authority selection** | Over the CURRENT questions whose labeled documents span 2+ authority tiers, the share whose first labeled top-10 hit has the best (lowest) label tier. A label's tier is its document's newest version's at the latest release; a superseded proposal (no tier) is the worst | Whether a "now" question's first good source is its most trusted one (S09-R2 decision 4) |
+| **CURRENT MRR** | MRR over the 10 CURRENT questions (printed by `make eval-retrieval` only) | The guard beside authority selection: whether the first good source still ranks high |
+| **AC1** | An `answered` answer cites ≥ 1 chunk, each with a source URL, release windows and source type, and a tier or the superseded-proposal flag (S09-T6) | Citations are present and resolvable |
 | **AC2** | Every cited chunk id was retrieved for this question | No invented citations |
 | **AC3** | An unanswerable question gets `insufficient_evidence` with a reason | The system says "I don't know" when it should |
 | **False refusal** | An answerable question gets `insufficient_evidence` | The system gives up when it shouldn't |
@@ -42,10 +44,12 @@ The 3 time metrics (S09) are pooled over hits instead, by each question's golden
 | **Retrieve p95** | The same over the retrieval step alone; n/a for runs before S08-T3, which didn't time it | What retrieval, e.g. a reranker, adds to the wait |
 | **Cost per question** | Input tokens × $4/M + output tokens × $20/M (ADR-006 D1 prices, `GENERATION_PRICE_*`; output includes reasoning), averaged over the questions with a model call | What one answer costs |
 
-The ablation table (`eval/results/ablation.md`) shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns, and the 3 time metrics as `Stale rate`, `Temporal acc.` and `Router acc.`.
+The ablation table (`eval/results/ablation.md`) shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns, the 3 time metrics as `Stale rate`, `Temporal acc.` and `Router acc.`, and authority selection as `Authority sel.`.
 
 - **Stale means replaced, not "not valid at 1.37".** A CHANGELOG section is valid only at its own release, but isn't stale until an edit replaces it. On v0's 105 CURRENT, CHANGE and WHY labels, "replaced" flags 2 correct labels; "not valid at 1.37" would flag 26.
 - **Temporal accuracy uses the exact golden window,** not one widened by 1 release. The planned HISTORY filter keeps texts within ±1 release (S09-R1 decision 2), so a widened window would read 100% by construction.
+- **Authority selection's denominator is fixed by the labels:** 9 of v0's 10 CURRENT questions have labels in 2+ tiers. A question counts even when its top 10 holds only one tier, or no labeled hit (then it's wrong), so a mode can't shrink the denominator.
+- **Authority selection leans toward the weights.** The same tier code drives authority mode's weights and this metric, so a mode that boosts low tier numbers scores well by construction. The check, in the S09-R2 sitting and again in S09-T7: flipping every tier (t → 7 − t) lifts authority mode from 3 to 6 of 9 under the flipped tiers, but lowers CURRENT MRR from 0.637 to 0.628; real tiers give 9 of 9 and 0.783. So CURRENT MRR, which doesn't read tiers, is printed beside it.
 
 ## Reading a result
 
@@ -277,18 +281,19 @@ What it means for S15 (a projection; S15 decides):
   - The hosted Voyage `rerank-2.5` fallback: no local model, ~$0.0004 per question (not verified).
   - ONNX quantization: not measured; unquantized ONNX was no faster.
 
-## Time scores by stage
+## Time and authority scores by stage
 
-S09-R1, 2026-10-10. Retrieval only, from `make eval-retrieval` in each mode: free, from the stored question vectors and, for `temporal`, the stored routes. The paid S09 row and its improvement-rule verdict come with S09-T8.
+S09-R1 and S09-R2, 2026-10-10. Retrieval only, from `make eval-retrieval` in each mode: free, from the stored question vectors and, for `temporal` and `authority`, the stored routes. The paid S09 row and its improvement-rule verdict are in the next section (Authority).
 
-| Stage | Recall@10 | MRR | Stale rate | Temporal accuracy | Router accuracy |
-|---|---|---|---|---|---|
-| dense | 0.384 | 0.614 | 0.390 | 0.344 | n/a |
-| hybrid | 0.382 | 0.675 | 0.390 | 0.333 | n/a |
-| rerank | 0.516 | 0.703 | 0.380 | 0.356 | n/a |
-| temporal | 0.560 | 0.759 | 0.000 | 0.522 | 0.972 |
+| Stage | Recall@10 | MRR | Stale rate | Temporal accuracy | Authority selection | CURRENT MRR | Router accuracy |
+|---|---|---|---|---|---|---|---|
+| dense | 0.384 | 0.614 | 0.390 | 0.344 | 0.333 | 0.467 | n/a |
+| hybrid | 0.382 | 0.675 | 0.390 | 0.333 | 0.222 | 0.692 | n/a |
+| rerank | 0.516 | 0.703 | 0.380 | 0.356 | 0.556 | 0.588 | n/a |
+| temporal | 0.560 | 0.759 | 0.000 | 0.522 | 0.556 | 0.637 | 0.972 |
+| authority | 0.552 | 0.813 | 0.000 | 0.522 | 1.000 | 0.783 | 0.972 |
 
-- **Stale rate** is over the 100 hits of the 10 CURRENT questions; **temporal accuracy** over the 90 hits of the 9 HISTORY questions with a golden window (see Metrics).
+- **Stale rate** is over the 100 hits of the 10 CURRENT questions; **temporal accuracy** over the 90 hits of the 9 HISTORY questions with a golden window; **authority selection** over the 9 CURRENT questions whose labels span 2+ tiers (see Metrics).
 - **`temporal` is rerank plus the route's filter** inside both searches (S09-R1 decisions 2–4). Its lines:
 
 ```
@@ -302,6 +307,17 @@ Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-on
 - **Windows 7 of 9:** 2 HISTORY questions imply their time instead of naming it, so they get no window and no filter.
 - **Temporal accuracy is 0.522, not 1.0,** because the filter keeps ±1 release and the metric checks the exact window. In the sitting, the exact window (no slack) put 82 of 90 hits in it but lowered Recall@10 to 0.541, MRR to 0.750 and nDCG@10 to 0.525 (S09-R1 decision 2).
 - **The other 3 stages are unchanged** by S09-T4's iterative index scan (`hnsw.iterative_scan`, now on in every mode): their lines match S06, S07 and S08.
+- **`authority` is temporal plus the weights** (S09-R2 decisions 3 and 9): the reranked pool sorted by the reranker's probability × 1.25 (sources the routed mode trusts) or × 0.8 (weak ones), then the top 10. Its lines:
+
+```
+Recall@10 0.552  Hit@10 1.000  MRR 0.813  nDCG@10 0.535
+Stale rate 0.000 (0 of 100 CURRENT hits)  Temporal accuracy 0.522 (47 of 90 dated HISTORY hits)
+Authority selection 1.000 (9 of 9 CURRENT questions)  CURRENT MRR 0.783
+Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-only, 7 windowed, 19 unfiltered
+```
+
+- **These equal the sitting prototype's numbers** (variant A), which weighed the saved temporal pools by hand. Against temporal: MRR 0.759 → 0.813, authority selection 5 → 9 of 9, CURRENT MRR 0.637 → 0.783, Recall@10 0.560 → 0.552; stale and in-window hits unchanged. With boost 1 and demote 1 it prints temporal's scores exactly.
+- **The weights were set on v0,** so part of the gain may fit v0 only; v1 is their clean test (ADR-003).
 
 **Router timing** (S09-T2's `make eval-routes`, all 43 golden questions, `claude-opus-5-5` at effort low; paid, once):
 
@@ -309,19 +325,106 @@ Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-on
 Routed 43 questions with claude-opus-5-5 (0 already stored). Route time: p50 1.71 s, p95 4.27 s. Cost $0.18.
 ```
 
-- **Each live `orgknow ask` in temporal mode adds one router call:** ~1.7 s at p50, ~4.3 s at p95, ~$0.004.
+- **Each live `orgknow ask` in temporal or authority mode adds one router call:** ~1.7 s at p50, ~4.3 s at p95, ~$0.004.
 - **The eval's latency leaves it out:** the routes are stored, like the question vectors.
+
+## Authority
+
+S09-T8, 2026-10-10 and 2026-10-11 (UTC). Rerank plus both S09 stages:
+
+- **The time filter** (`temporal`, S09-R1): the router sorts each question into CURRENT, HISTORY, CHANGE or WHY; a CURRENT question searches current text only, a dated HISTORY question texts valid in its releases ±1.
+- **The authority weights** (`authority`, S09-R2): after the reranker, each text's probability × 1.25 for a source the routed mode trusts, × 0.8 for a weak one, then the best 10.
+- **The mode rule** (S09-R2 decision 10), free: against temporal, authority selection rose by 0.444 (5 → 9 of 9) and no retrieval metric dropped by more than 0.03 (Recall@10 −0.0074, MRR +0.0547, nDCG@10 −0.0003, Hit@10 0; from the 4-decimal values in the S09 slice doc). So the runs used `authority`.
+- First, the free gate: `make eval-retrieval` in authority and temporal modes printed the pinned lines (side table above).
+- 3 runs of `RETRIEVAL_MODE=authority make eval`, 43 questions each, all `git_dirty: false`: `authority-20261010T112851Z` (commit `47c8c06`), `authority-20261011T051049Z` and `authority-20261011T051924Z` (commit `011c8b0`).
+- **Run 1 ran on `47c8c06`, before resume decision R3** (the 5 review answers). Its hits equal the final code's for 43 of 43 questions (chunk ids, tiers, authority scores), and all 3 runs sent the same input tokens.
+- **A second run on `47c8c06` was dropped:** the Anthropic credit ran out from q23 (21 error rows). It isn't in the table (resume decision R2).
+
+| Measure | Authority | Spread over 3 runs | Rerank |
+|---|---|---|---|
+| Recall@10 | 0.552 | none | 0.516 |
+| Hit@10 | 1.000 (36 of 36) | none | 0.972 (35 of 36) |
+| MRR | 0.813 | none | 0.703 |
+| nDCG@10 | 0.535 | none | 0.489 |
+| Distinct sections | 8.3 of 10 | none | 7.4 of 10 |
+| Stale rate | 0.000 (0 of 100) | none | 0.380 (38 of 100) |
+| Temporal accuracy | 0.522 (47 of 90) | none | 0.356 (32 of 90) |
+| Authority selection | 1.000 (9 of 9) | none | 0.556 (5 of 9) |
+| CURRENT MRR | 0.783 | none | 0.588 |
+| Router accuracy | 0.972 (35 of 36) | none | n/a (no router) |
+| AC1 | 100% | 36 answered, all pass | 100% |
+| AC2 | 100% (43 of 43) | none | 100% (43 of 43) |
+| AC3 | 100% (7 of 7) | none | 100% (7 of 7) |
+| False refusals | 0 of 36 | none | 1.3 of 36 (1–2) |
+| p95 latency | 14.9 s | 14.5–15.3 s (runs: 15.1, 15.3, 14.5) | 14.2 s (13.4–15.0 s) |
+| Retrieve p95 | 6.5 s | 6.3–6.7 s | 6.7 s (6.6–6.9 s) |
+| Cost per question | $0.032 | $0.0316–0.0317 | $0.031 ($0.0307–0.0309) |
+| Errors | 0 | none | 0 |
+
+Rerank's stale, temporal, authority and CURRENT MRR values are from `make eval-retrieval` (free). It gives the same 4 retrieval metrics as rerank's paid runs, which predate these metrics; their hits weren't compared one by one.
+
+**The improvement rule** against rerank, on the 3-run means, with the 3 S09 metrics as the targets (S09-R2, pinned T8). Changes are computed before rounding.
+
+| Condition | Rerank | Authority | Change | Result |
+|---|---|---|---|---|
+| Stale rate drops by ≥ 0.03 | 0.3800 | 0.0000 | −0.3800 | Pass |
+| Temporal accuracy rises by ≥ 0.03 | 0.3556 | 0.5222 | +0.1667 | Pass |
+| Authority selection rises by ≥ 0.03 | 0.5556 | 1.0000 | +0.4444 | Pass |
+| Recall@10 drops by ≤ 0.03 | 0.5156 | 0.5522 | +0.0366 | Pass |
+| Hit@10 drops by ≤ 0.03 | 0.9722 | 1.0000 | +0.0278 | Pass |
+| MRR drops by ≤ 0.03 | 0.7032 | 0.8133 | +0.1100 | Pass |
+| nDCG@10 drops by ≤ 0.03 | 0.4888 | 0.5348 | +0.0460 | Pass |
+| AC1, AC2, AC3 at or above rerank's range (100% in all 3 runs) | 100% | 100% in all 3 runs | 0 | Pass |
+| False refusals at or below rerank's range (1–2 of 36) | 1.33 | 0 (runs: 0, 0, 0) | −1.33 | Pass |
+
+- **Verdict: pass.** `RETRIEVAL_MODE` now defaults to `authority` (S09-R2, pinned T8).
+- **Phase 1 thresholds on v0:** Recall@10 (≥ 0.46), MRR (≥ 0.69), nDCG@10 (≥ 0.45), Hit@10 (≥ 0.944), p95 latency (≤ 23 s) and cost per question (≤ $0.06) all pass. The 4 S09 thresholds come from these runs (`docs/product-spec.md`).
+- **Each stage's share** (free, side table above):
+  - The filter (temporal against rerank): stale 38 → 0 of 100, in-window hits 32 → 47 of 90, Recall@10 +0.044, MRR +0.055.
+  - The weights (authority against temporal): authority selection 5 → 9 of 9, CURRENT MRR 0.637 → 0.783, MRR +0.055, Recall@10 −0.007.
+- **Not a clean test:** the filter's slack and the weights were chosen on v0 (see Known limits). v1 is the clean test.
+
+By question type (retrieval only; rerank in brackets; one question moves a row by 0.10–0.14):
+
+| Mode | Questions | Recall@10 | Hit@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|
+| CURRENT | 10 | 0.588 (0.557) | 1.000 (1.000) | 0.783 (0.588) | 0.545 (0.488) |
+| HISTORY | 10 | 0.492 (0.400) | 1.000 (0.900) | 0.728 (0.577) | 0.468 (0.375) |
+| CHANGE | 9 | 0.560 (0.560) | 1.000 (1.000) | 0.944 (0.944) | 0.577 (0.577) |
+| WHY | 7 | 0.576 (0.564) | 1.000 (1.000) | 0.810 (0.738) | 0.561 (0.538) |
+
+What the runs show:
+
+- **33 of 43 questions got a different top 10 from rerank's:** 24 with different texts, 9 in a different order. 88 of the 430 hits (20%) were outside rerank's top 10.
+  - All 3 runs retrieved the same top 10 on all 43 questions.
+- **Recall@10 rose on 7 questions and fell on 4:**
+  - q11 (−0.20), q09 and q30 (−0.17 each): a labeled source pushed out.
+  - q07 (−0.125): labeled HISTORY, routed CHANGE (unfiltered), so the CHANGE weights (release notes boosted) moved it; temporal left it as rerank had it.
+- **MRR rose on 9 questions and fell on 1** (q19: rank 2 → 3). q04, q16, q24, q30 and q43 now have a labeled source at rank 1.
+- **CHANGE questions score as in rerank** on all 4 metrics, though 4 of 9 got a different top 10.
+- **q43 found its first labeled sources** (Hit@10 0 → 1; Recall@10 0 → 0.6), through the HISTORY filter (releases 1.19–1.21; HISTORY is unweighted).
+- **No refusals.** q43 (refused in all 3 rerank runs) and q14 (refused once) were answered in all 3 runs.
+- **p95 latency 14.5–15.3 s, mean 14.9 s** (+0.7 s over rerank).
+  - Retrieve p95 6.3–6.7 s; answer time alone (latency minus retrieve, p95): 8.7–9.1 s.
+  - Run 1's slowest answer was q42 at 29.7 s. Runs 2 and 3 took 10.2–11.8 s on it, with the same hits. It is the 43rd of 43, so the p95 (the 41st) leaves it out.
+  - The reranker loads once per run (7.6–8.2 s), outside every question's latency.
+- **The router's time isn't in it.** The eval uses stored routes; a live ask adds one router call: p50 1.71 s, p95 4.27 s over 43 calls (S09-T2, above), ~$0.004.
+  - The eval's p95 plus the router's p95: about 19.2 s, under the 23 s ceiling. Adding two p95s overstates it.
+- **Input tokens: 260,127 per run, +6,322 (+2.5%) over rerank**, identical in all 3 runs. Output was 15,984–16,210 tokens, of which 634–746 were reasoning.
+- **Each run took 7 min 54 s to 8 min 15 s** and cost $1.36 ($4.09 for the 3).
 
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
 - **37 of the 43 questions were checked by Claude only.** The developer spot-checked 6.
-- **Latency leaves out the question embedding and the reranker's load.** The vectors are stored, so a live `orgknow ask` adds one Voyage call. It also loads the reranker (~7.5 s) on every ask, until the API keeps it loaded (S12).
+- **Latency leaves out the question embedding, the router call and the reranker's load.** The vectors and routes are stored, so a live `orgknow ask` adds one Voyage call and, in temporal and authority modes, one router call (p95 4.27 s). It also loads the reranker (~7.5 s) on every ask, until the API keeps it loaded (S12).
 - **Retrieve p95 is n/a for the dense and hybrid runs.** They ran before the retrieval step was timed (S08-T3).
   - Their p95 latency and cost were added to each `summary.json` from its `questions.jsonl` by `make eval-resummarize`, and match the numbers above.
 - **The time metrics are n/a for the dense, hybrid and rerank runs.** Their hits don't record whether they're current or their release windows (S09-T3). `make eval-retrieval` scores both for any mode, free.
+- **Authority selection is n/a for the same runs.** Their rows don't record label tiers or hit tiers (S09-T7). `make eval-retrieval` scores it for any mode, free.
 - **The dense baseline's run 3 says `git_dirty: true`.** Its only changed tracked file was the ablation table, which run 2 had just rewritten. The code was the same commit.
   - Since S07 the dirty check ignores `eval/results/`. All 3 hybrid runs and all 3 rerank runs say `git_dirty: false`.
-- **v0 isn't a clean test of hybrid or rerank.** v1 is the clean test.
+- **v0 isn't a clean test of hybrid, rerank or authority.** v1 is the clean test.
   - Hybrid: about 30 retrieval configurations were tried on v0 in the S07 sitting before this one was chosen, so part of the +0.060 MRR may fit v0 only.
   - Rerank: ~9 setups (3 models × 3 pool sizes) were tried on v0 in the S08 sitting, and Recall@10 was named the target after they were seen, so part of the +0.134 Recall@10 may fit v0 only.
+  - Authority: the filter's ±1 release slack (against the exact window, S09-R1) and the weights (4 variants, S09-R2) were chosen on v0, so part of the S09 gains may fit v0 only.

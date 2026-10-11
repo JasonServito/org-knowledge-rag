@@ -2,7 +2,9 @@
 
 Every expected value is typed by hand from the S04-R2 contract's pinned formats and from real rows
 of the dev database (chunk 551, PSA "Exemptions", and chunk 4916, the KEP-2579 summary; checked
-2026-10-06). None is computed by the code under test. No test calls a network.
+2026-10-06). The authority lines and citation fields are the S09-R2 contract's (S09-T6), with
+KEP-2579's sitting values: at 1.37 stable (claimed, not observed), at 1.22 alpha (observed), tier
+3 at both. None is computed by the code under test. No test calls a network.
 """
 
 import json
@@ -14,7 +16,7 @@ import httpx2
 import pytest
 from tests.conftest import FakeGenerator
 
-from orgknow.db.models import Hit
+from orgknow.db.models import Authority, Hit
 from orgknow.generation.generator import (
     AnthropicGenerator,
     GenerationError,
@@ -39,6 +41,9 @@ PSA_TEXT = (
     "You can define _exemptions_ from pod security enforcement."
 )
 KEP_SHA = "0ffd37f8925d8a9af7ce7a7409007db8285a30b1"
+DOCS_AT_37 = Authority(target_release=37, tier=1, effective_stage=None, stage_confidence=None)
+KEP_AT_37 = Authority(target_release=37, tier=3, effective_stage="stable", stage_confidence="low")
+KEP_AT_22 = Authority(target_release=22, tier=3, effective_stage="alpha", stage_confidence="high")
 KEP_TEXT = (
     "Source: kep\n"
     "Title: KEP-2579: PSP Replacement Policy\n"
@@ -66,6 +71,7 @@ def _docs_hit(chunk_id: int = 551, **changes: Any) -> Hit:
         snapshot_sha=PSA_SHA,
         source_path="content/en/docs/concepts/security/pod-security-admission.md",
         metadata={"title": "Pod Security Admission"},
+        authority=DOCS_AT_37,
     )
     return hit.model_copy(update=changes)
 
@@ -87,6 +93,7 @@ def _kep_hit(**changes: Any) -> Hit:
         snapshot_sha=KEP_SHA,
         source_path="keps/sig-auth/2579-psp-replacement/README.md",
         metadata={"title": "PSP Replacement Policy"},
+        authority=KEP_AT_37,
     )
     return hit.model_copy(update=changes)
 
@@ -216,6 +223,10 @@ def test_fill_in_a_docs_hit() -> None:
         "release_windows": [["1.30", None]],
         "claimed_status": None,
         "claimed_stage": None,
+        "tier": 1,
+        "superseded_proposal": False,
+        "effective_stage": None,
+        "stage_confidence": None,
         "source_url": "https://github.com/kubernetes/website/blob/"
         "c28dcd8393562ddc6adf89b920ad3c396166a31b/"
         "content/en/docs/concepts/security/pod-security-admission.md",
@@ -236,10 +247,26 @@ def test_fill_in_a_kep_hit() -> None:
         "release_windows": [["1.22", "1.24"], ["1.25", None]],
         "claimed_status": "implemented",
         "claimed_stage": "stable",
+        "tier": 3,
+        "superseded_proposal": False,
+        "effective_stage": "stable",
+        "stage_confidence": "low",
         "source_url": "https://github.com/kubernetes/enhancements/blob/"
         "0ffd37f8925d8a9af7ce7a7409007db8285a30b1/"
         "keps/sig-auth/2579-psp-replacement/README.md",
     }
+
+
+def test_a_superseded_proposals_citation_has_no_tier_and_says_so() -> None:
+    superseded = Authority(
+        target_release=37, tier=None, effective_stage="beta", stage_confidence="low"
+    )
+    hit = _kep_hit(claimed_status="withdrawn", claimed_stage="beta", authority=superseded)
+
+    evidence = fill_in(hit, {"enhancements": "https://github.com/kubernetes/enhancements"})
+
+    assert (evidence.tier, evidence.superseded_proposal) == (None, True)
+    assert (evidence.effective_stage, evidence.stage_confidence) == ("beta", "low")
 
 
 def test_the_section_is_null_before_the_first_heading() -> None:
@@ -255,7 +282,8 @@ def test_the_evidence_block_of_a_docs_hit() -> None:
     hit = _docs_hit(release_windows=[(24, 29), (31, None)])
 
     assert evidence_block(hit) == (
-        "[chunk 551] valid in releases: 1.24\N{EN DASH}1.29, 1.31\N{EN DASH}now\n" + PSA_TEXT
+        "[chunk 551] valid in releases: 1.24\N{EN DASH}1.29, 1.31\N{EN DASH}now\n"
+        "authority: tier 1\n" + PSA_TEXT
     )
 
 
@@ -264,17 +292,64 @@ def test_the_evidence_block_of_a_kep_hit() -> None:
     assert evidence_block(_kep_hit()) == (
         "[chunk 4916] valid in releases: "
         "1.21\N{EN DASH}1.22, 1.22\N{EN DASH}1.24, 1.24\N{EN DASH}1.25, 1.25\N{EN DASH}now\n"
-        "claimed: implemented/stable\n" + KEP_TEXT
+        "authority: tier 3\n"
+        "claimed: implemented/stable\n"
+        "stage at 1.37: stable (claimed, not observed)\n" + KEP_TEXT
+    )
+
+
+def test_a_kep_blocks_stage_observed_at_the_target_release() -> None:
+    hit = _kep_hit(release_windows=[(21, 22)], authority=KEP_AT_22)
+
+    assert evidence_block(hit) == (
+        "[chunk 4916] valid in releases: 1.21\N{EN DASH}1.22\n"
+        "authority: tier 3\n"
+        "claimed: implemented/stable\n"
+        "stage at 1.22: alpha (observed)\n" + KEP_TEXT
+    )
+
+
+def test_a_superseded_proposals_block() -> None:
+    superseded = Authority(
+        target_release=37, tier=None, effective_stage="beta", stage_confidence="low"
+    )
+    hit = _kep_hit(
+        release_windows=[(25, None)],
+        claimed_status="withdrawn",
+        claimed_stage="beta",
+        authority=superseded,
+    )
+
+    assert evidence_block(hit) == (
+        "[chunk 4916] valid in releases: 1.25\N{EN DASH}now\n"
+        "authority: superseded proposal\n"
+        "claimed: withdrawn/beta\n"
+        "stage at 1.37: beta (claimed, not observed)\n" + KEP_TEXT
     )
 
 
 def test_a_one_release_window_prints_once_and_a_missing_claim_prints_none() -> None:
-    hit = _kep_hit(release_windows=[(24, 24), (26, None)], claimed_stage=None)
+    # No claim and no observation: the stage is unknown.
+    unknown = Authority(target_release=37, tier=3, effective_stage=None, stage_confidence=None)
+    hit = _kep_hit(release_windows=[(24, 24), (26, None)], claimed_stage=None, authority=unknown)
 
     assert evidence_block(hit) == (
         "[chunk 4916] valid in releases: 1.24, 1.26\N{EN DASH}now\n"
-        "claimed: implemented/none\n" + KEP_TEXT
+        "authority: tier 3\n"
+        "claimed: implemented/none\n"
+        "stage at 1.37: unknown\n" + KEP_TEXT
     )
+
+
+def test_the_system_prompt_explains_the_tiers_and_the_stage_line() -> None:
+    # The S09-R2 contract's pinned paragraph, word for word.
+    assert (
+        "Each chunk starts with a line giving its id and the releases it was valid in "
+        '("now": still valid in the latest release), then its authority tier (1 = docs and '
+        "feature-gate pages, 2 = release notes, 3 = shipped KEPs, 4 = governance docs, "
+        "5 = unshipped KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP "
+        "claimed, and its stage at the asked-about release.\n"
+    ) in SYSTEM_PROMPT
 
 
 def test_the_prompt_sent_holds_every_block_then_the_question(settings: Settings) -> None:
@@ -286,8 +361,11 @@ def test_the_prompt_sent_holds_every_block_then_the_question(settings: Settings)
         (
             SYSTEM_PROMPT,
             "Evidence:\n\n"
-            "[chunk 551] valid in releases: 1.30\N{EN DASH}now\n" + PSA_TEXT + "\n\n"
-            "[chunk 4916] valid in releases: 1.25\N{EN DASH}now\nclaimed: implemented/stable\n"
+            "[chunk 551] valid in releases: 1.30\N{EN DASH}now\nauthority: tier 1\n"
+            + PSA_TEXT
+            + "\n\n"
+            "[chunk 4916] valid in releases: 1.25\N{EN DASH}now\nauthority: tier 3\n"
+            "claimed: implemented/stable\nstage at 1.37: stable (claimed, not observed)\n"
             + KEP_TEXT
             + "\n\nQuestion: What enforces pod security standards in-tree?",
         )
@@ -379,6 +457,10 @@ def test_the_printed_json_has_the_pinned_shape(settings: Settings) -> None:
                 "release_windows": [["1.30", None]],
                 "claimed_status": None,
                 "claimed_stage": None,
+                "tier": 1,
+                "superseded_proposal": False,
+                "effective_stage": None,
+                "stage_confidence": None,
                 "source_url": "https://github.com/kubernetes/website/blob/"
                 "c28dcd8393562ddc6adf89b920ad3c396166a31b/"
                 "content/en/docs/concepts/security/pod-security-admission.md",

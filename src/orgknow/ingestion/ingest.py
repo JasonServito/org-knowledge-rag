@@ -24,9 +24,11 @@ with no chunks are chunked, so a re-run writes nothing.
    exit code non-zero.
 5. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
    (`chunker.py`), one transaction per version.
-6. Report (`report.py`, S05-T8): this run's counts, each skipped file once with its snapshots,
-   each failure (starting with its snapshot's label where it happened at one), then the
-   database part that `make ingest-report` prints alone, with the fingerprint.
+6. Lifecycle (`lifecycle.py`, S09-T5): rebuild `observed_lifecycle` from the stored versions, as
+   `make lifecycle` does, in one transaction.
+7. Report (`report.py`, S05-T8): this run's counts and the lifecycle line, each skipped file once
+   with its snapshots, each failure (starting with its snapshot's label where it happened at
+   one), then the database part that `make ingest-report` prints alone, with the fingerprint.
 """
 
 import logging
@@ -85,6 +87,7 @@ from orgknow.ingestion.identity import (
     governance_canonical_id,
     kep_file_canonical_id,
 )
+from orgknow.ingestion.lifecycle import lifecycle_line, rebuild_lifecycle
 from orgknow.ingestion.manifest import (
     BlogGroup,
     ChangelogGroup,
@@ -883,6 +886,7 @@ def main() -> None:
             )
         except ReleasesMismatch as exc:
             sys.exit(f"Nothing ingested: {exc}.")  # exit code 1, message on stderr
+        lifecycle = rebuild_lifecycle(conn, cache_dir, settings.claim_synonyms)
         database = database_report(conn)
 
     # The report (S05-T8): every list sorted, so two ingests of the same data print the same.
@@ -897,6 +901,7 @@ def main() -> None:
         f"Closed versions: {summary.closed_versions}. "
         f"Unchanged documents: {summary.unchanged_documents}.",
         f"New chunks: {summary.new_chunks}.",
+        lifecycle_line(lifecycle),
         f"Skipped: {len(skipped)} files or versions.",
         *(f"  {line}" for line in skipped),
         f"Failed: {len(failures)} documents or versions.",

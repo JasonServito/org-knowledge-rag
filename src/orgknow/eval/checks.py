@@ -18,7 +18,7 @@ class AnswerChecks(BaseModel):
     """One question's checks: True (pass), False (fail) or None (n/a). The field names are the
     results file's `checks` keys."""
 
-    ac1: bool | None  # an `answered` answer has citations, each with its provenance
+    ac1: bool | None  # an `answered` answer has citations, each with its provenance and tier
     ac2: bool | None  # every cited chunk was retrieved for this question
     ac3: bool | None  # an unanswerable question got `insufficient_evidence` with a reason
     false_refusal: bool | None  # an answerable question got `insufficient_evidence`
@@ -36,12 +36,15 @@ def check_answer(question: Question, hits: Sequence[Hit], answer: Answer | None)
 
 
 def _ac1(answer: Answer | None) -> bool | None:
-    """When `answered`: at least 1 citation, each with a source URL, a release window and a
-    source type. Tiers join citations in S09 (S06-R1 decision 4), so they aren't checked."""
+    """When `answered`: at least 1 citation, each with a source URL, a release window, a source
+    type, and a tier or the superseded-proposal flag (S09-T6; S06-R1 decision 4)."""
     if answer is None or answer.answer_status != "answered":
         return None
     return bool(answer.evidence) and all(
-        citation.source_url and citation.release_windows and citation.source_type
+        citation.source_url
+        and citation.release_windows
+        and citation.source_type
+        and (citation.tier is not None or citation.superseded_proposal)
         for citation in answer.evidence
     )
 
