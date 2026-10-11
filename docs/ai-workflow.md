@@ -65,7 +65,7 @@ A check-in looks like this:
 
 ```
 [Check-in 02:14] Task 2 of 3 done: store document versions
-✅ checks green · 1 parked · 0 blockers · Greptile 3/50
+✅ checks green · 1 parked · 0 blockers · Greptile 3/50 · Anthropic ~US$12 left
 Next: seed the releases table
 ```
 
@@ -88,9 +88,10 @@ Your tested setup.
   3. Claude Desktop open with "Keep computer awake" on.
   4. Start Docker. In Ubuntu, run `tmux new -s run`, `cd` into the repo, and `make up` until it reports healthy.
   5. Check `/usage`.
-  6. Run `claude --permission-mode auto`, then `/run-bundle`.
-  7. **Confirm the start check-in appears.**
-  8. Detach (Ctrl-b, then d). Closing the window is fine. Lock the screen (Win+L).
+  6. If the run has paid calls, check the Anthropic credit (console → Plans & Billing). Top up if it's under the contract's paid calls plus US$5.
+  7. Run `claude --permission-mode auto`, then `/run-bundle`.
+  8. **Confirm the start check-in appears.**
+  9. Detach (Ctrl-b, then d). Closing the window is fine. Lock the screen (Win+L).
 - **During:** `tmux attach -t run` to read check-ins.
 - **After:** turn "Keep computer awake" off, exit Claude, run `make down`, quit Docker, then `tmux kill-session -t run`.
 

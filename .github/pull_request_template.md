@@ -18,6 +18,7 @@ Define each term on first use. Copy outputs from the tools; never retype them.
 **Needs your attention**
 Parked (N): <one line each>
 Greptile: N comments → N fixed, N parked, N dismissed · N/50 credits
+Anthropic: US$N spent · ~US$N left (or "no paid calls")
 Questions for you: <list, or "none">
 
 **Next steps for you**
