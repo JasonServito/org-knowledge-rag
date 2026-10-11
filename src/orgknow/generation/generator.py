@@ -11,7 +11,7 @@ import anthropic
 import pydantic
 
 from orgknow.db.models import Hit
-from orgknow.generation.conflicts import Conflict
+from orgknow.generation.conflicts import Conflict, model_conflicts
 from orgknow.generation.prompt import SYSTEM_PROMPT, user_prompt
 from orgknow.generation.schema import (
     Answer,
@@ -114,7 +114,10 @@ def answer(
 
     `rule_conflicts` are the hits' rule-found conflicts (`conflicts.rule_conflicts`, S10-T4):
     the prompt lists them after the evidence, and every answer with hits carries them, rejected
-    or not. Their chunk ids never go through the citation check (ADR-010 D3).
+    or not. After them come the pairs the model listed that `model_conflicts` keeps (S10-T5);
+    the rest go to `trace.dropped_conflicts`. A rejected answer keeps none of the model's pairs:
+    its output isn't trusted. No conflict id goes through the citation check (ADR-010 D3), so a
+    bad pair never changes the answer.
     """
     if not hits:
         return _insufficient(question, "no evidence retrieved", settings, trace=None, conflicts=[])
@@ -125,6 +128,10 @@ def answer(
 
     by_id = {hit.chunk_id: hit for hit in hits}
     rejection = rejection_reason(output, by_id.keys())
+    if rejection is None:
+        found, dropped = model_conflicts(output.conflicts, hits, rule_conflicts)
+    else:
+        found, dropped = [], list(output.conflicts)
     trace = AnswerTrace(
         system=SYSTEM_PROMPT,
         prompt=prompt,
@@ -132,6 +139,7 @@ def answer(
         generation=generation,
         rejection=rejection,
         rejected_ids=out_of_set_ids(output, by_id.keys()),
+        dropped_conflicts=dropped,
     )
     if rejection is not None:
         return _insufficient(question, rejection, settings, trace, conflicts=list(rule_conflicts))
@@ -140,7 +148,7 @@ def answer(
         answer_status=output.answer_status,
         answer=output.answer,
         evidence=[fill_in(by_id[chunk_id], repo_urls) for chunk_id in cited_ids(output)],
-        conflicts=list(rule_conflicts),
+        conflicts=[*rule_conflicts, *found],
         insufficient_evidence_reason=output.insufficient_evidence_reason,
         model=settings.generation_model,
         trace=trace,

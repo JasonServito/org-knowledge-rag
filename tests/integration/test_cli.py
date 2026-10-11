@@ -99,6 +99,7 @@ def _answered(chunk_id: int) -> FakeGenerator:
             answer="The Pod Security admission controller.",
             evidence=[chunk_id],
             insufficient_evidence_reason=None,
+            conflicts=[],
         )
     )
 

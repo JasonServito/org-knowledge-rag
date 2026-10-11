@@ -3,9 +3,11 @@ the conflicts code found in the hits, if any (S10-T4).
 
 Each block's first line gives the chunk id and every release window of the text (S04-R2
 decision 4), its second the hit's authority tier (S09-T6); a KEP block adds the status and stage
-the KEP claimed, then its effective stage at the target release. Pure functions.
+the KEP claimed, with its latest milestone (S10-T5), then its effective stage at the target
+release. Pure functions.
 """
 
+import re
 from collections.abc import Sequence
 
 from orgknow.db.models import Authority, Hit
@@ -18,14 +20,23 @@ You answer questions about Kubernetes from evidence: chunks of the Kubernetes do
 (Kubernetes Enhancement Proposals). Each chunk starts with a line giving its id and the releases \
 it was valid in ("now": still valid in the latest release), then its authority tier (1 = docs \
 and feature-gate pages, 2 = release notes, 3 = shipped KEPs, 4 = governance docs, 5 = unshipped \
-KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP claimed, and its stage at \
-the asked-about release.
+KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP claimed, with its latest \
+milestone, and its stage at the asked-about release.
 
 - Answer only from the evidence, and cite the ids of the chunks that support the answer.
 - If the evidence doesn't support an answer, return `insufficient_evidence` with a short reason \
 saying what is missing.
 - Never state a rationale, motive or history that the evidence doesn't contain.
+- If two chunks disagree (two sources, or an older and a newer version of one text), list the \
+pair in `conflicts` with one sentence on what differs, and say so in the answer. Settle it this \
+way: an observed stage beats a KEP's claim; a chunk valid at the asked-about release beats one \
+that isn't; otherwise the lower tier number wins; with equal tiers, say it is unresolved. \
+Conflicts found by code are listed after the evidence: don't list them again.
 """
+
+# A KEP's latest milestone, as its kep.yaml writes it ("v1.22", or "1.17"): group 1 is the minor
+# (S10-R1, pinned).
+MILESTONE = re.compile(r"^v?1\.(\d+)")
 
 
 def _window(start: int, until: int | None) -> str:
@@ -54,9 +65,26 @@ def _stage(authority: Authority) -> str:
     return f"{at}: {authority.effective_stage} ({seen})"
 
 
+def _milestone(hit: Hit) -> str:
+    """The claim line's milestone part (S10-R1, pinned; ADR-010 D1): " (latest milestone v1.22,
+    15 releases before 1.37)" when the KEP's latest milestone is before the target release,
+    " (latest milestone v1.38)" when it isn't, the milestone as written. Empty when the hit has
+    no milestone like v1.N, or no `authority` (no target)."""
+    milestone = hit.metadata.get("latest-milestone")
+    match = MILESTONE.match(milestone) if isinstance(milestone, str) else None
+    if match is None or hit.authority is None:
+        return ""
+    target = hit.authority.target_release
+    before = target - int(match[1])
+    if before <= 0:
+        return f" (latest milestone {milestone})"
+    releases = "release" if before == 1 else "releases"
+    return f" (latest milestone {milestone}, {before} {releases} before 1.{target})"
+
+
 def evidence_block(hit: Hit) -> str:
     """The hit as the model sees it: the id and windows line, the authority line, a KEP's claim
-    line and stage line, the text.
+    line (with its latest milestone) and stage line, the text.
 
     Windows are printed as the hit lists them, never merged. A hit with no `authority` (never
     one from `retrieve`) has no authority or stage line.
@@ -68,7 +96,7 @@ def evidence_block(hit: Hit) -> str:
     if hit.source_type == "kep":
         status = "none" if hit.claimed_status is None else hit.claimed_status
         stage = "none" if hit.claimed_stage is None else hit.claimed_stage
-        lines.append(f"claimed: {status}/{stage}")
+        lines.append(f"claimed: {status}/{stage}{_milestone(hit)}")
         if hit.authority is not None:
             lines.append(_stage(hit.authority))
     lines.append(hit.text)  # starts with its Source/Title/Document/Section header

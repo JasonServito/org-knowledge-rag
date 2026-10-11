@@ -335,7 +335,7 @@ Tasks:
   - `conflicts[]` on the answer and the eval rows, on every path; the rule-found block in the prompt; `ask` JSON; the trace.
   - Done when: hand-worked unit tests pass; retrieval prints S09's numbers; a demo `ask` shows KEP-4858's conflict.
   - Deps: T2.
-- [ ] **S10-T5 `[core]` Model-found conflicts.**
+- [x] **S10-T5 `[core]` Model-found conflicts.**
   - The answer model lists chunk pairs that disagree; ids checked on their own; kind and resolution by T3; D6 and the KEP milestone line in the prompt; the losing-side flag in the eval.
   - Done when: hand-worked unit tests pass; the smoke run keeps AC1–AC3 at 100%.
   - Deps: T3, T4.

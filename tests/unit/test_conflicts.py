@@ -1,5 +1,6 @@
 """S10-T2: the rule-found conflicts (ADR-010 D1; the S10-R1 contract's "T2 rules (pinned)").
 S10-T3: the kind and resolution of a pair (ADR-010 D2, ADR-003 D6; "T3 rules (pinned)").
+S10-T5: the model's pairs, checked on their own (ADR-010 D3; "T5 rules (pinned)").
 
 Every expected value is typed by hand from those rules, ADR-003 D2 and D6 and the real corpus
 lines; none is computed by the code under test. No database, no network: the hits, the KEP
@@ -15,8 +16,10 @@ import pytest
 from orgknow.db.models import Authority, Confidence, Hit, NewestVersion, Observation
 from orgknow.generation.conflicts import (
     Conflict,
+    ModelConflict,
     claim_mismatches,
     history_dates,
+    model_conflicts,
     pair_conflict,
 )
 
@@ -477,3 +480,103 @@ def test_valid_at_the_target(
     never = _pair_hit(2, "web:/docs/b/", 1, [(20, 21)])
 
     assert pair_conflict(hit, never, target, latest) == ("contradiction", resolution, prevails)
+
+
+# --- model_conflicts (S10-T5) ---------------------------------------------------------------------
+
+# The sitting's 2 real pairs, built as in the pair_conflict tests above, at 1.37: versioning.md
+# (tier 4) vs. the version-skew page (tier 2), both valid, so 7201 prevails by tier; the gate
+# page's old text (10419, 1.33-1.35) vs. its new text (10420, 1.36-now), one section, so 10420
+# prevails as the one valid. Chunks 101 and 102: two KEP-4858 hits (tier 3, 1.37-now).
+VERSIONING_ID = "sig-release:release-engineering/versioning.md"
+SKEW_ID = "web:/docs/setup/release/version-skew-policy/"
+GATE_ID = "gate:StrictIPCIDRValidation"
+PAIR_HITS = [
+    _pair_hit(7201, SKEW_ID, 2, [(28, None)], ("Supported versions",), "release_record"),
+    _pair_hit(10420, GATE_ID, 1, [(36, None)], (), "feature_gate_reference"),
+    _pair_hit(36383, VERSIONING_ID, 4, [(36, None)], ("Release versioning",), "governance_doc"),
+    _pair_hit(10419, GATE_ID, 1, [(33, 35)], (), "feature_gate_reference"),
+    _hit(101, heading_path=["Summary"]),
+    _hit(102, heading_path=["Motivation"]),
+]
+FOUR_VS_THREE = ModelConflict(
+    first=36383,
+    second=7201,
+    summary="versioning.md supports four minor releases; the skew page, three.",
+)
+GATE_EDIT = ModelConflict(first=10419, second=10420, summary="The gate was alpha; it is beta now.")
+KEP_4858_CLAIM = Conflict(
+    kind="claim_mismatch",
+    found_by="rule",
+    chunk_ids=[101, 102],
+    documents=["kep:4858"],
+    summary="kep:4858 claims stable; the feature-gate reference at 1.37 says beta.",
+    resolution="observed_beats_claimed",
+    prevails=None,
+)
+
+
+def test_valid_pairs_are_conflicts_with_their_kind_and_resolution_in_the_models_order() -> None:
+    kept, dropped = model_conflicts([FOUR_VS_THREE, GATE_EDIT], PAIR_HITS, [KEP_4858_CLAIM])
+
+    assert kept == [
+        Conflict(
+            kind="contradiction",
+            found_by="model",
+            chunk_ids=[36383, 7201],
+            documents=[VERSIONING_ID, SKEW_ID],  # the model's order, not the hits'
+            summary="versioning.md supports four minor releases; the skew page, three.",
+            resolution="lower_tier",
+            prevails=7201,
+        ),
+        Conflict(
+            kind="supersession",
+            found_by="model",
+            chunk_ids=[10419, 10420],
+            documents=[GATE_ID],  # one document, listed once
+            summary="The gate was alpha; it is beta now.",
+            resolution="valid_at_target",
+            prevails=10420,
+        ),
+    ]
+    assert dropped == []
+
+
+def test_bad_pairs_are_dropped_in_the_models_order() -> None:
+    outside = ModelConflict(first=36383, second=999, summary="999 wasn't retrieved.")
+    twice = ModelConflict(first=7201, second=7201, summary="One chunk twice.")
+    again = ModelConflict(first=7201, second=36383, summary="FOUR_VS_THREE again, reversed.")
+    rule_again = ModelConflict(first=102, second=101, summary="The rule's chunks, as a set.")
+
+    kept, dropped = model_conflicts(
+        [outside, twice, FOUR_VS_THREE, again, rule_again], PAIR_HITS, [KEP_4858_CLAIM]
+    )
+
+    assert [conflict.chunk_ids for conflict in kept] == [[36383, 7201]]
+    assert dropped == [outside, twice, again, rule_again]
+
+
+def test_a_pair_inside_a_rule_conflicts_3_chunks_isnt_a_duplicate() -> None:
+    # The rule conflict holds 101, 102 and 103: {101, 102} isn't that set. Both KEP-4858 hits
+    # are tier 3 and valid at 1.37, in 2 sections: a contradiction, unresolved.
+    three = KEP_4858_CLAIM.model_copy(update={"chunk_ids": [101, 102, 103]})
+    hits = [*PAIR_HITS, _hit(103, heading_path=["Proposal"])]
+    pair = ModelConflict(first=101, second=102, summary="The summary and motivation disagree.")
+
+    kept, dropped = model_conflicts([pair], hits, [three])
+
+    assert [(c.kind, c.resolution, c.prevails) for c in kept] == [
+        ("contradiction", "unresolved", None)
+    ]
+    assert dropped == []
+
+
+def test_with_no_target_release_every_pair_is_dropped() -> None:
+    # No hit has `authority` (never one from `retrieve`): nothing can resolve a pair.
+    hits = [hit.model_copy(update={"authority": None}) for hit in PAIR_HITS]
+
+    assert model_conflicts([FOUR_VS_THREE], hits, []) == ([], [FOUR_VS_THREE])
+
+
+def test_no_pairs_give_no_conflicts() -> None:
+    assert model_conflicts([], PAIR_HITS, [KEP_4858_CLAIM]) == ([], [])

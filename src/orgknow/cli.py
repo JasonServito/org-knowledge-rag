@@ -262,9 +262,9 @@ def _traced_generation(
 
     `answer` prompts, calls the model, validates and fills in, all in one call, so `generate`
     times that whole call and both observations are filled in from `answer.trace` afterwards: no
-    step runs twice. `generate`'s metadata logs the answer's conflicts (S10-T4); the rule-found
-    ones, `found`, are in its prompt. On a GenerationError, `generate` gets the error, the stop
-    reason and any usage the API reported.
+    step runs twice. `generate`'s metadata logs the answer's conflicts (S10-T4) and the model's
+    dropped pairs (S10-T5); the rule-found ones, `found`, are in its prompt. On a
+    GenerationError, `generate` gets the error, the stop reason and any usage the API reported.
     """
     with root.start_as_current_observation(
         name="generate",
@@ -299,6 +299,9 @@ def _traced_generation(
                 "stop_reason": trace.generation.stop_reason,
                 "effort": trace.effort,
                 "conflicts": [conflict.model_dump(mode="json") for conflict in result.conflicts],
+                "dropped_conflicts": [
+                    pair.model_dump(mode="json") for pair in trace.dropped_conflicts
+                ],
             },
         )
     root.start_observation(

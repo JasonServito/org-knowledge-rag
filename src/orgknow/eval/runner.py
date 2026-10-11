@@ -276,6 +276,10 @@ class Summary(BaseModel):
     # S10-T4: the rule-found conflicts over all rows, error rows included. None in a summary
     # written before S10.
     conflicts_rule: int | None = None
+    # S10-T5: the model-found conflicts over all rows, and the answers citing only the losing
+    # side of one (`checks.loser_only`). None in a summary written before S10-T5.
+    conflicts_model: int | None = None
+    loser_only_answers: int | None = None
 
 
 class RetrievalScores(BaseModel):
@@ -923,8 +927,9 @@ def summarize(
     """The run's totals: metric means over the answerable questions, for each check how many of
     the rows it applies to (not None) passed, the p95 latencies and the mean cost per question
     at the settings' prices (S08-T3), the S09 time counts over the rows' hits (S09-T3), router
-    accuracy over the answerable rows with a route (S09-T4), authority selection (S09-T7), and
-    the rule-found conflicts over all rows (S10-T4).
+    accuracy over the answerable rows with a route (S09-T4), authority selection (S09-T7), the
+    rule-found conflicts over all rows (S10-T4), and the model-found ones and the loser-only
+    answers (S10-T5).
 
     Authority selection needs each row's golden labels, by question id in `labels`, to find its
     first labeled hit: a row holds its label tiers, not its labels. None without `labels`."""
@@ -978,6 +983,8 @@ def summarize(
         ),
         authority=authority,
         conflicts_rule=sum(1 for row in rows for c in row.conflicts if c.found_by == "rule"),
+        conflicts_model=sum(1 for row in rows for c in row.conflicts if c.found_by == "model"),
+        loser_only_answers=sum(row.checks.loser_only is True for row in rows),
     )
 
 
@@ -985,29 +992,41 @@ def resummarize(folder: Path, settings: Settings) -> Summary:
     """`make eval-resummarize` (S08-T3): rebuild the folder's `summary.json` with `summarize` from
     its `questions.jsonl`, keeping the summary's name, golden hash, start time, authority
     selection (S09-T7: it needs the golden labels, which the rows don't hold; `run` counted it)
-    and rule-conflict count (S10-T4: rows written before S10 load with no conflicts, so a count
-    would say 0 where none was looked for); write it and return it. Nothing else in the folder
-    changes."""
+    and conflict counts (S10-T4, S10-T5: rows written before them load with no conflicts and no
+    `loser_only`, so a count would say 0 where none was looked for); write it and return it.
+    Nothing else in the folder changes."""
     path = folder / "summary.json"
     old = Summary.model_validate_json(path.read_text(encoding="utf-8"))
     lines = (folder / "questions.jsonl").read_text(encoding="utf-8").splitlines()
     rows = [QuestionRow.model_validate_json(line) for line in lines]
     summary = summarize(old.name, old.golden_sha256, old.started_at, rows, settings)
     summary = summary.model_copy(
-        update={"authority": old.authority, "conflicts_rule": old.conflicts_rule}
+        update={
+            "authority": old.authority,
+            "conflicts_rule": old.conflicts_rule,
+            "conflicts_model": old.conflicts_model,
+            "loser_only_answers": old.loser_only_answers,
+        }
     )
     path.write_text(summary.model_dump_json(indent=2) + "\n", encoding="utf-8")
     return summary
 
 
 def summary_line(summary: Summary) -> str:
-    """The summary in one line, for the terminal."""
+    """The summary in one line, for the terminal, ending with the conflict counts (S10-R1,
+    pinned): " Conflicts: {n} ({r} rule, {m} model), {k} loser-only answers."."""
 
     def number(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.3f}"
 
     def rate(rate: Rate) -> str:
         return f"{rate.pass_}/{rate.total}"
+
+    def count(value: int | None) -> str:
+        return "n/a" if value is None else str(value)
+
+    rule, model = summary.conflicts_rule, summary.conflicts_model
+    total = None if rule is None or model is None else rule + model
 
     return (
         f"{summary.questions} questions ({summary.answerable} answerable), "
@@ -1016,7 +1035,9 @@ def summary_line(summary: Summary) -> str:
         f"nDCG@10 {number(summary.ndcg)}. AC1 {rate(summary.ac1)}, AC2 {rate(summary.ac2)}, "
         f"AC3 {rate(summary.ac3)}, false refusals {summary.false_refusals.count}/"
         f"{summary.false_refusals.total}. Tokens: {summary.input_tokens:,} in, "
-        f"{summary.output_tokens:,} out. Mean latency {summary.latency_s_mean:.1f} s."
+        f"{summary.output_tokens:,} out. Mean latency {summary.latency_s_mean:.1f} s. "
+        f"Conflicts: {count(total)} ({count(rule)} rule, {count(model)} model), "
+        f"{count(summary.loser_only_answers)} loser-only answers."
     )
 
 

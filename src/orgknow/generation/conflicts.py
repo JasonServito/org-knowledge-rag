@@ -1,6 +1,6 @@
 """Conflicts between pieces of evidence (S10; ADR-010, ADR-003 D2 and D6): the model an answer's
-`conflicts[]` holds, and the conflicts code finds in stored facts before the answer (S10-T2,
-ADR-010 D1).
+`conflicts[]` holds, the pairs the answer model lists (`ModelConflict`, S10-T5), and the
+conflicts code finds in stored facts before the answer (S10-T2, ADR-010 D1).
 
 - `claim_mismatches`: a KEP's claimed stage, from its version valid at the target release, vs.
   the one stage its feature gates' rows give there.
@@ -9,6 +9,8 @@ ADR-010 D1).
 - `rule_conflicts`: both, on one question's hits. The only function here that reads the
   database; the two rules are pure.
 - `pair_conflict` (S10-T3, ADR-010 D2): the kind and resolution of two hits that disagree.
+- `model_conflicts` (S10-T5, ADR-010 D1 and D3): the pairs the answer model listed, checked on
+  their own, each resolved by `pair_conflict`.
 
 Both rules resolve as `observed_beats_claimed` (ADR-003 D6 rule 1): the observed stage, or the
 release date, wins over what the KEP says. A pair resolves by D6's rules 2-4: the hit valid at
@@ -23,7 +25,7 @@ from typing import Literal
 
 import psycopg
 from psycopg.rows import TupleRow
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from orgknow.db.lifecycle import kep_versions_at, observations
 from orgknow.db.models import Hit, NewestVersion, Observation
@@ -45,6 +47,15 @@ class Conflict(BaseModel):
     summary: str  # rule: the pinned wording; model: its sentence
     resolution: Resolution
     prevails: int | None  # the winning chunk (valid_at_target, lower_tier); None otherwise
+
+
+# A pair of chunks the answer model says disagree, in its structured output (`ModelAnswer`): the
+# chunk ids it gives, before code checks them (S10-T5). Comments, not docstrings, on this class:
+# pydantic would send a docstring to the model as the schema's description.
+class ModelConflict(BaseModel):
+    first: int = Field(description="The id of one chunk.")
+    second: int = Field(description="The id of a chunk that disagrees with it.")
+    summary: str = Field(description="One sentence: what the two chunks disagree about.")
 
 
 # A KEP history line (S10-R1, pinned): group 1 is the date D, group 2 the minor N of v1.N.
@@ -169,6 +180,50 @@ def pair_conflict(
     if a_rank == b_rank:
         return kind, "unresolved", None
     return kind, "lower_tier", a.chunk_id if a_rank < b_rank else b.chunk_id
+
+
+def model_conflicts(
+    pairs: Sequence[ModelConflict], hits: Sequence[Hit], rule_found: Sequence[Conflict]
+) -> tuple[list[Conflict], list[ModelConflict]]:
+    """The model's `pairs`, checked on their own (S10-T5, ADR-010 D3): the kept ones as
+    conflicts, in the model's order, and the dropped ones, for the trace.
+
+    A pair is dropped when it names one chunk twice, a chunk not in `hits`, or the chunks of a
+    conflict already kept: an earlier pair, in either order, or a rule-found conflict's chunk ids
+    (`rule_found`) as a set. A kept pair gets its kind, resolution and prevailing chunk from
+    `pair_conflict` at the hits' target release (their `authority.target_release`); with no
+    target (no hit has `authority`, never one from `retrieve`), nothing can resolve a pair, so
+    every pair is dropped.
+    """
+    target = next((h.authority.target_release for h in hits if h.authority is not None), None)
+    by_id = {hit.chunk_id: hit for hit in hits}
+    seen = [set(conflict.chunk_ids) for conflict in rule_found]  # the kept conflicts' chunks
+    kept: list[Conflict] = []
+    dropped: list[ModelConflict] = []
+    for pair in pairs:
+        ids = {pair.first, pair.second}
+        retrieved = pair.first in by_id and pair.second in by_id
+        if target is None or len(ids) < 2 or not retrieved or ids in seen:
+            dropped.append(pair)
+            continue
+        seen.append(ids)
+        first, second = by_id[pair.first], by_id[pair.second]
+        # The target is never past the latest release (`target_release` caps it), so an open
+        # window holds the target exactly when it opens by then: the target stands in for the
+        # latest release, and no database read is needed.
+        kind, resolution, prevails = pair_conflict(first, second, target, latest=target)
+        kept.append(
+            Conflict(
+                kind=kind,
+                found_by="model",
+                chunk_ids=[pair.first, pair.second],
+                documents=list(dict.fromkeys([first.canonical_id, second.canonical_id])),
+                summary=pair.summary,
+                resolution=resolution,
+                prevails=prevails,
+            )
+        )
+    return kept, dropped
 
 
 def _valid_at(hit: Hit, target: int, latest: int) -> bool:

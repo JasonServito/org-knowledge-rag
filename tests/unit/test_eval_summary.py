@@ -1,6 +1,7 @@
 """The summary's p95 latencies and cost per question (S08-T3), its stale and temporal counts
-(S09-T3), its authority selection (S09-T7), its rule-conflict count (S10-T4), and `make
-eval-resummarize`, from hand-built rows; `make eval-retrieval`'s timing line (S08-T4), time line
+(S09-T3), its authority selection (S09-T7), its rule-conflict count (S10-T4), its model-conflict
+and loser-only counts and the run's summary line (S10-T5), and `make eval-resummarize`, from
+hand-built rows; `make eval-retrieval`'s timing line (S08-T4), time line
 (S09-T3), authority line (S09-T7) and rule-conflict line (S10-T2), from hand-written values; and a
 row's conflicts on the answered and the error path (S10-T4), with retrieval and the rule-found
 conflicts replaced by hand-built ones.
@@ -154,6 +155,7 @@ def test_a_summary_without_the_new_fields_still_loads() -> None:
     assert (summary.stale, summary.temporal, summary.router) == (None,) * 3
     assert summary.authority is None
     assert summary.conflicts_rule is None  # S10-T4
+    assert (summary.conflicts_model, summary.loser_only_answers) == (None, None)  # S10-T5
 
 
 def test_a_row_written_before_s07_still_loads() -> None:
@@ -290,6 +292,8 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
         "router": None,
         "authority": None,
         "conflicts_rule": None,
+        "conflicts_model": None,  # S10-T5: kept, like the rule-conflict count
+        "loser_only_answers": None,
     }
     # Only the summary is written: the rows are unchanged, and there is no table.
     assert (folder / "questions.jsonl").read_text(encoding="utf-8") == _old_rows()
@@ -302,10 +306,17 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
 def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -> None:
     # A folder `run` wrote after S09-T7: its summary holds authority selection, which needs the
     # golden labels; the rows hold only the label tiers, so resummarize keeps the value. The same
-    # for the rule-conflict count (S10-T4): 5 stays 5, though these rows hold none.
+    # for the rule-conflict count (S10-T4): 5 stays 5, though these rows hold none; and for the
+    # model-conflict and loser-only counts (S10-T5): 4 and 1 stay.
     folder = tmp_path / "authority-20261010T100000Z"
     folder.mkdir()
-    counted = {**OLD_SUMMARY, "authority": {"pass": 9, "total": 9}, "conflicts_rule": 5}
+    counted = {
+        **OLD_SUMMARY,
+        "authority": {"pass": 9, "total": 9},
+        "conflicts_rule": 5,
+        "conflicts_model": 4,
+        "loser_only_answers": 1,
+    }
     (folder / "summary.json").write_text(json.dumps(counted), encoding="utf-8")
     (folder / "questions.jsonl").write_text(_old_rows(), encoding="utf-8")
 
@@ -313,9 +324,11 @@ def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -
 
     assert summary.authority == Rate(pass_=9, total=9)
     assert summary.conflicts_rule == 5
+    assert (summary.conflicts_model, summary.loser_only_answers) == (4, 1)
     written = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     assert written["authority"] == {"pass": 9, "total": 9}
     assert written["conflicts_rule"] == 5
+    assert (written["conflicts_model"], written["loser_only_answers"]) == (4, 1)
 
 
 @pytest.mark.parametrize(
@@ -597,6 +610,38 @@ def test_the_summary_counts_the_rule_conflicts_of_every_row() -> None:
     assert _summary(rows).conflicts_rule == 3
 
 
+def _flagged(row: QuestionRow, loser_only: bool | None) -> QuestionRow:
+    checks = row.checks.model_copy(update={"loser_only": loser_only})
+    return row.model_copy(update={"checks": checks})
+
+
+def test_the_summary_counts_the_model_conflicts_and_the_loser_only_answers() -> None:
+    # Model conflicts: 2 + 1 = 3 (CLAIM isn't one). Loser-only answers: the 2 rows flagged True;
+    # False and None (an error row) aren't counted.
+    rows = [
+        _flagged(_row(5.0).model_copy(update={"conflicts": [CLAIM, MODEL, MODEL]}), True),
+        _flagged(_row(5.0).model_copy(update={"conflicts": [MODEL]}), True),
+        _flagged(_row(5.0), False),
+        _flagged(_row(5.0, error="GenerationError: cut off"), None),
+    ]
+
+    summary = _summary(rows)
+
+    assert (summary.conflicts_model, summary.loser_only_answers) == (3, 2)
+
+
+def test_the_summary_line_ends_with_the_conflict_counts() -> None:
+    # 1 rule + 3 model = 4 conflicts, 2 loser-only answers (as in the test above).
+    rows = [
+        _flagged(_row(5.0).model_copy(update={"conflicts": [CLAIM, MODEL, MODEL]}), True),
+        _flagged(_row(5.0).model_copy(update={"conflicts": [MODEL]}), True),
+    ]
+
+    assert runner.summary_line(_summary(rows)).endswith(
+        " Mean latency 5.0 s. Conflicts: 4 (1 rule, 3 model), 2 loser-only answers."
+    )
+
+
 KEP_4858 = "What are the release stages of strict IP/CIDR validation (KEP-4858)?"
 
 
@@ -655,6 +700,7 @@ def test_an_answered_row_holds_the_rule_conflicts_the_prompt_showed(
         answer="Beta at 1.37.",
         evidence=[1],
         insufficient_evidence_reason=None,
+        conflicts=[],
     )
     generator = FakeGenerator(output)
 

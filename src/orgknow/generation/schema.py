@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from orgknow.db.models import Confidence
-from orgknow.generation.conflicts import Conflict
+from orgknow.generation.conflicts import Conflict, ModelConflict
 
 AnswerStatus = Literal["answered", "insufficient_evidence"]
 
@@ -22,6 +22,11 @@ class ModelAnswer(BaseModel):
     evidence: list[int] = Field(description="The ids of the chunks that support the answer.")
     insufficient_evidence_reason: str | None = Field(
         description="Why the evidence can't answer the question; null when answered."
+    )
+    # S10-T5 (ADR-010 D1). No default, like every field here: the API's schema lists them all as
+    # required.
+    conflicts: list[ModelConflict] = Field(
+        description="Pairs of chunks whose texts disagree; empty when none."
     )
 
 
@@ -70,6 +75,9 @@ class AnswerTrace(BaseModel):
     generation: Generation  # the raw output stays here, even when it was rejected
     rejection: str | None  # the rejection reason; None: the citations passed
     rejected_ids: list[int]  # cited ids outside the retrieved set
+    # The model's pairs not in the answer (S10-T5, ADR-010 D3): those `model_conflicts` dropped,
+    # or all of them when the answer was rejected.
+    dropped_conflicts: list[ModelConflict] = []
 
 
 class Answer(BaseModel):
@@ -80,7 +88,8 @@ class Answer(BaseModel):
     answer: str
     evidence: list[Evidence]
     # The conflicts found in the hits (S10-T4, ADR-010 D3): the rule-found ones on every path
-    # with hits. A default, so answers saved before S10 still load, with none.
+    # with hits, then the model-found ones the checks kept (S10-T5), unless the answer was
+    # rejected. A default, so answers saved before S10 still load, with none.
     conflicts: list[Conflict] = []
     insufficient_evidence_reason: str | None
     model: str

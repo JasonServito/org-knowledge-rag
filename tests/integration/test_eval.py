@@ -368,6 +368,7 @@ def _refusing() -> FakeGenerator:
             answer="",
             evidence=[],
             insufficient_evidence_reason="Not covered.",
+            conflicts=[],
         )
     )
 
@@ -392,6 +393,7 @@ def test_a_run_writes_the_pinned_results_format(
                 answer="Follow page B.",
                 evidence=[chunk_ids["b usage"]],
                 insufficient_evidence_reason=None,
+                conflicts=[],
             ),
             CUT_OFF,  # q02: an ask error, recorded as a row
             ModelAnswer(
@@ -399,6 +401,7 @@ def test_a_run_writes_the_pinned_results_format(
                 answer="",
                 evidence=[],
                 insufficient_evidence_reason="The sources don't cover it.",
+                conflicts=[],
             ),
         ]
     )
@@ -565,7 +568,13 @@ def test_a_run_writes_the_pinned_results_format(
             "ndcg": pytest.approx(0.693426, abs=1e-6),
             "distinct_sections": 3,
         },
-        "checks": {"ac1": True, "ac2": True, "ac3": None, "false_refusal": False},
+        "checks": {
+            "ac1": True,
+            "ac2": True,
+            "ac3": None,
+            "false_refusal": False,
+            "loser_only": False,
+        },
         "usage": USAGE,
         "error": None,
     }
@@ -582,7 +591,13 @@ def test_a_run_writes_the_pinned_results_format(
         "answer": None,
         "conflicts": [],
         "metrics": {"recall": 1.0, "hit": 1, "mrr": 1.0, "ndcg": 1.0, "distinct_sections": 3},
-        "checks": {"ac1": None, "ac2": None, "ac3": None, "false_refusal": None},
+        "checks": {
+            "ac1": None,
+            "ac2": None,
+            "ac3": None,
+            "false_refusal": None,
+            "loser_only": None,
+        },
         "usage": {"input_tokens": 500, "output_tokens": 16000, "thinking_tokens": 15000},
         "error": "GenerationError: no usable answer from the model (stop reason: max_tokens)",
     }
@@ -607,7 +622,13 @@ def test_a_run_writes_the_pinned_results_format(
         },
         "conflicts": [],
         "metrics": None,
-        "checks": {"ac1": None, "ac2": True, "ac3": True, "false_refusal": None},
+        "checks": {
+            "ac1": None,
+            "ac2": True,
+            "ac3": True,
+            "false_refusal": None,
+            "loser_only": False,
+        },
         "usage": USAGE,
         "error": None,
     }
@@ -651,6 +672,8 @@ def test_a_run_writes_the_pinned_results_format(
         "router": None,
         "authority": None,
         "conflicts_rule": 0,  # S10-T4: no KEP among the hits
+        "conflicts_model": 0,  # S10-T5: the fake model lists no pairs
+        "loser_only_answers": 0,
     }
     assert len(generator.calls) == 3
 

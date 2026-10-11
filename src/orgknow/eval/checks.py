@@ -1,5 +1,6 @@
-"""Answer checks: score one question's answer against AC1-AC3 (product spec), and flag a false
-refusal (S06-R1 pinned formats).
+"""Answer checks: score one question's answer against AC1-AC3 (product spec), flag a false
+refusal (S06-R1 pinned formats), and flag an answer citing only the losing side of a model-found
+conflict (S10-T5, ADR-010 D3).
 
 Pure: a question, its hits and its answer in, a record out. No database, no network. The
 answer is None when the ask failed (an error row).
@@ -22,6 +23,9 @@ class AnswerChecks(BaseModel):
     ac2: bool | None  # every cited chunk was retrieved for this question
     ac3: bool | None  # an unanswerable question got `insufficient_evidence` with a reason
     false_refusal: bool | None  # an answerable question got `insufficient_evidence`
+    # S10-T5: the answer cites only the losing side of a model-found conflict. None in older
+    # folders.
+    loser_only: bool | None = None
 
 
 def check_answer(question: Question, hits: Sequence[Hit], answer: Answer | None) -> AnswerChecks:
@@ -32,6 +36,7 @@ def check_answer(question: Question, hits: Sequence[Hit], answer: Answer | None)
         ac2=_ac2(hits, answer),
         ac3=_ac3(question, answer),
         false_refusal=_false_refusal(question, answer),
+        loser_only=_loser_only(answer),
     )
 
 
@@ -73,3 +78,18 @@ def _false_refusal(question: Question, answer: Answer | None) -> bool | None:
     if not question.answerable or answer is None:
         return None
     return answer.answer_status == "insufficient_evidence"
+
+
+def _loser_only(answer: Answer | None) -> bool | None:
+    """When there is an answer: whether, for some model-found conflict with a prevailing chunk,
+    the evidence cites the other chunk but not the prevailing one (ADR-010 D3)."""
+    if answer is None:
+        return None
+    cited = {citation.chunk_id for citation in answer.evidence}
+    return any(
+        conflict.found_by == "model"
+        and conflict.prevails is not None
+        and conflict.prevails not in cited
+        and any(chunk_id in cited for chunk_id in conflict.chunk_ids)
+        for conflict in answer.conflicts
+    )
