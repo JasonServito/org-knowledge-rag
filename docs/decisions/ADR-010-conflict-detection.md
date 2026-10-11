@@ -29,7 +29,7 @@
 - **Resolution:**
   - Rule conflicts → `observed_beats_claimed`: the observed stage, or the release date, wins.
   - A pair → if exactly one chunk has a release window containing the target release, it prevails (`valid_at_target`). Otherwise, if the tiers differ, the lower tier number prevails (`lower_tier`); a superseded proposal, which has no tier, loses to any tier. Otherwise `unresolved`.
-- **The prompt states the same rules,** so the answer text and the list agree.
+- **The prompt states the same rules and the release they settle at** ("Settle conflicts at release 1.N." before the question), so the answer text and the list agree.
 
 ### D3. Output and checks
 
@@ -37,10 +37,12 @@
 - **Rule-found conflicts are attached on every path:** an answer, a model's `insufficient_evidence`, an answer rejected for a bad citation, and the eval's error row.
 - **Conflict ids are checked on their own.** A pair naming a chunk outside the retrieved set, the same chunk twice, or a duplicate of a kept conflict is dropped and logged in the trace. It never rejects the answer.
 - **The eval flags an answer that cites only the losing side** of a resolved model-found pair: it cites the losing chunk but not the prevailing one.
+- **The list is measured against conflict set v0** (ADR-007 D4): precision, recall and AC4 per seed.
 
 ### D4. When to change course
 
-- **Switch rule:** if the model misses a model-found seed in any of S10-T8's 3 runs, or 2+ answers cite only the losing side, a later run adds a separate detector call on a cheaper model. Whether to run a one-off comparison first (~$0.25) is decided in the S10-R2 sitting.
+- **Switch rule:** if the model misses a model-found seed that search retrieved, in any of S10-T8's 3 runs, or 2+ answers cite only the losing side, a later run adds a separate detector call on a cheaper model. A seed that search missed doesn't count: a separate detector sees the same 10 results.
+- **The one-off comparison** (~$0.25) runs only if the switch rule fires, as the first step of that later run.
 - **KEP-2572 fallback:** if S10-T8 misses seed KEP-2572 in any run, a later run adds a rule that flags a KEP still claiming an in-progress status 2+ releases past its latest milestone. It's a small pure function, much cheaper than the switch.
 
 ## Alternatives considered
@@ -57,7 +59,7 @@
 
 - **Conflict detection is measured only through answers.** Changing the model-found part means a paid eval (~$4 for 3 runs). The rule-found part is free to check, since `make eval-retrieval` prints it.
 - **Retrieval is unchanged:** the same hits, scores and order. CURRENT questions can't show old vs. new, because superseded text is filtered out before ranking (ADR-003 D4).
-- **The model's conflict recall is unknown until S10-T8.** AC4's seeds split between rules (KEP-4858, KEP-2579) and the model (`versioning.md`, KEP-2572).
+- **The model's conflict recall is unknown until S10-T8.** AC4 is end to end, on 4 seeds fixed without looking at their results: q18 (KEP-4858), q01 (KEP-2572), q08 (KEP-2579's date) and c01 (`versioning.md`'s "every three months"). Each seed reports whether search retrieved it; KEP-2579 is checked on its date only.
 - **S11's grader** sees the rule-found conflicts before the answer, but not the model-found ones. Revisit with S11's design.
 - **Revisit triggers:** the switch rule (D4); a new source type with stage claims; the S11 graph.
 
