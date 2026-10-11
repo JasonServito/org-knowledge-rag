@@ -35,6 +35,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **BM25** | The standard ranking for word search: a rare word (high IDF, inverse document frequency) counts more than a common one, and repeating a word helps less each time. Postgres's built-in `ts_rank` has neither; BM25 needs an extension. |
 | **Chunking (structure-aware)** | Splitting documents into retrievable pieces at their headings, so each chunk is one section with its heading path. Code blocks and HTML tables are never cut; an oversize list or pipe table is cut between items or rows (S05). |
 | **Citation validation** | A plain-code check that every chunk id the model cites was retrieved for this question. One bad id rejects the answer (ADR-006). |
+| **Conflict set** | The answer key for conflict detection: every disagreement among each eval question's fixed top-10 results, written before the runs, with 4 seed cases (ADR-007 D4). Precision = flagged conflicts that are in it; recall = its conflicts that search retrieved and the system flagged. |
 | **Cosine distance** | 1 − the cosine similarity of two vectors: 0 = same direction, 1 = unrelated, 2 = opposite. pgvector's `<=>` operator. |
 | **Cross-encoder (reranker)** | Scores a query and document *together*. More accurate but slower; used on a small candidate set. |
 | **Dense retrieval** | Finding chunks whose embedding vectors are close to the query's embedding. |

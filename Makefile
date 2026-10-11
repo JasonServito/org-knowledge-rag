@@ -1,6 +1,7 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed ingest lifecycle ingest-report reset-corpus embed \
-	eval-check eval-sections eval-retrieval eval-routes eval-smoke eval eval-table eval-resummarize
+	eval-check eval-sections eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table \
+	eval-resummarize
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -107,13 +108,28 @@ eval-sections:
 eval-retrieval:
 	uv run python -m orgknow.eval retrieval
 
+# Check the conflict set (EVAL_CONFLICTS_PATH, default eval/golden_set/conflicts-v0.yaml; ADR-007
+# D4): validate it against the golden set, and check every side entry against the dev database (an
+# entry matching no stored text is an error). Then retrieve in RETRIEVAL_MODE for every golden
+# question and the set's new questions, from their stored vectors and routes, find the rule-found
+# conflicts, and print: the set's counts, how many conflicts and seeds search retrieved (reachable),
+# and the rule-found conflicts' precision and recall (S10-T6). Free: no Voyage or Anthropic call (a
+# missing vector or route is an error, filled by `make eval-routes`), and it writes nothing. Exits 1
+# with no conflict file. The free check before a paid `make eval`. Needs `make up`.
+# Example: EVAL_CONFLICTS_PATH=tests/fixtures/conflicts/demo-sample.yaml make eval-conflicts
+eval-conflicts:
+	uv run python -m orgknow.eval conflicts
+
 # Route every golden question (all of them, answerable or not) that has no stored route in
 # EVAL_ROUTES_DIR/<ROUTER_MODEL>.json (ADR-009 D3): the router's mode and time scope per question,
 # keyed like the question vectors. Then print how many were routed and already stored, the route
 # time's p50 and p95, and the cost. PAID: one ROUTER_MODEL call per missing route (needs
 # ANTHROPIC_API_KEY then; v0's 43 cost about $0.19 with claude-opus-5-5 at effort low); a re-run
 # makes 0. Each route is saved as it arrives, so a failure midway keeps the ones paid for. The file
-# records the router prompt's hash: a file made with another prompt is an error.
+# records the router prompt's hash: a file made with another prompt is an error. When the conflict
+# set (EVAL_CONFLICTS_PATH) exists, its new questions are routed too, and those with no stored
+# vector (EVAL_VECTORS_DIR) are embedded in one Voyage request (PAID: needs VOYAGE_API_KEY then; a
+# re-run makes 0), so `make eval-conflicts` can retrieve for them.
 eval-routes:
 	uv run python -m orgknow.eval routes
 
@@ -129,9 +145,11 @@ eval-routes:
 eval-smoke:
 	uv run python -m orgknow.eval run --smoke
 
-# The same for every question of the golden set. PAID: one Anthropic call per question (S04: about
-# $0.02-0.04 each; in temporal and authority modes, plus one router call per question with no stored
-# route), so run it only when asked.
+# The same for every question of the golden set, plus the conflict set's new questions when it
+# exists: their rows go to conflict_questions.jsonl, and the summary scores every row's conflicts
+# against the set (S10-T6). PAID: one Anthropic call per question (S04: about $0.02-0.04 each; in
+# temporal and authority modes, plus one router call per question with no stored route), so run it
+# only when asked.
 eval:
 	uv run python -m orgknow.eval run
 

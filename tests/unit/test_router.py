@@ -256,6 +256,8 @@ def test_eval_routes_fills_the_missing_routes_then_makes_no_call(
         anthropic_api_key="test-key",
         eval_golden_path=DEMO_GOLDEN,
         eval_routes_dir=tmp_path,
+        # No conflict set (S10-T6), whatever the repo holds: only the golden questions.
+        eval_conflicts_path=tmp_path / "no-conflicts.yaml",
     )
 
     assert eval_main.main(["routes"], settings) == 0

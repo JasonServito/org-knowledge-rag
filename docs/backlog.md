@@ -343,7 +343,7 @@ Tasks:
   - "Settle conflicts at release 1.N." in the prompt, so the answer text and the code's list settle at the same release (S10-R2 decision 4).
   - Done when: hand-worked unit tests pass; T8's run 1 keeps AC1–AC3 at 100%.
   - Deps: T5.
-- [ ] **S10-T6 `[core]` Conflict set format, loader and metrics.**
+- [x] **S10-T6 `[core]` Conflict set format, loader and metrics.**
   - ADR-007 D4's format and label check; precision, recall and AC4 per seed in the eval, the summary and the table; `make eval-conflicts` (free).
   - Done when: hand-worked unit tests pass; `make eval-conflicts` on the demo sample prints the R2 contract's lines.
   - Deps: T4.

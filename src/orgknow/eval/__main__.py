@@ -23,10 +23,18 @@
 
 In rerank, temporal and authority modes, `run` and `retrieval` load the cross-encoder once, before
 the question loop, and time the load (S08-T2).
+- `conflicts`: check the conflict set (EVAL_CONFLICTS_PATH, ADR-007 D4) against the golden set and
+  the stored texts, retrieve in RETRIEVAL_MODE for every golden question and the set's new
+  questions, from their stored vectors and routes, and print the set's counts, how many conflicts
+  and seeds search retrieved, and the rule-found conflicts' precision and recall (S10-T6). Free:
+  no Voyage or Anthropic call; a missing vector or route is an error. Writes nothing. Exits 1 with
+  no conflict file.
 - `routes`: route every golden question (all of them, answerable or not) with no stored route in
   EVAL_ROUTES_DIR/<ROUTER_MODEL>.json, saving each route as it comes (S09-T2, ADR-009 D3), then
   print how many, the route time's p50 and p95, and the cost. Paid: one ROUTER_MODEL call per
-  missing route; the Anthropic key is needed only then.
+  missing route; the Anthropic key is needed only then. With a conflict file, its new questions
+  are routed too, and those with no stored vector are embedded in one Voyage request (S10-T6);
+  the Voyage key is needed only then.
 - `table`: rebuild the ablation table from every results folder (`table.py`).
 - `resummarize`: rebuild the `summary.json` of every results folder that has one and a
   `questions.jsonl`, from its saved rows (S08-T3), so an older folder gains the newer summary
@@ -39,6 +47,7 @@ import argparse
 import sys
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import anthropic
@@ -48,6 +57,15 @@ from orgknow.cli import load_reranker
 from orgknow.db.eval import canonical_ids, document_texts
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.eval import runner
+from orgknow.eval.conflicts import (
+    ConflictFile,
+    ConflictSetError,
+    load_conflict_file,
+    reachable_line,
+    rule_line,
+    seeds_line,
+    set_line,
+)
 from orgknow.eval.golden import (
     GoldenSetError,
     check_labels,
@@ -141,6 +159,8 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
             runner.run(
                 conn, embedder, generator, settings, smoke, name, reranker, load_s, threads, router
             )
+    except ConflictSetError as error:  # before GoldenSetError, which it extends
+        return _invalid(settings.eval_conflicts_path, error)
     except GoldenSetError as error:
         for line in error.errors:
             print(f"error: {settings.eval_golden_path}: {line}", file=sys.stderr)
@@ -179,33 +199,88 @@ def retrieval(settings: Settings) -> int:
     return 0
 
 
+def conflicts(settings: Settings) -> int:
+    """`make eval-conflicts`: print the conflict set's line, how many of its conflicts and seeds
+    search retrieved, and the rule-found conflicts' precision and recall; 1 on an error, or with
+    no conflict file (checked before the reranker loads)."""
+    path = settings.eval_conflicts_path
+    if not path.is_file():
+        print(f"error: Conflict set: none ({path} not found).", file=sys.stderr)
+        return 1
+    try:
+        reranker, _ = _load_reranker(settings)
+    except OSError as error:
+        return _load_failed(error)
+    try:
+        with psycopg.connect(settings.database_url) as conn:
+            check = runner.score_conflicts_only(conn, settings, reranker)
+    except ConflictSetError as error:  # before GoldenSetError, which it extends
+        return _invalid(path, error)
+    except GoldenSetError as error:
+        return _invalid(settings.eval_golden_path, error)
+    except runner.EvalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    print(set_line(check.path, check.sha256, check.conflict_set, check.golden_questions))
+    print(reachable_line(check.counts))
+    print(seeds_line(check.counts))
+    print(rule_line(check.flagged, check.counts))
+    return 0
+
+
 def routes(settings: Settings) -> int:
-    """`make eval-routes`: route each golden question with no stored route, then print the routes
-    line; 1 on an error. Routes made before an error stay saved."""
-    golden_path = settings.eval_golden_path
+    """`make eval-routes`: route each golden question, and each new question of the conflict set
+    when its file exists, with no stored route, then print the routes line; then embed the new
+    questions with no stored vector, in one Voyage request, and print the vectors line. 1 on an
+    error. Routes made before an error stay saved."""
+    golden_path, conflicts_path = settings.eval_golden_path, settings.eval_conflicts_path
+    conflict_file: ConflictFile | None = None
     try:
         golden = load_golden_file(golden_path)
+        if conflicts_path.is_file():
+            ids = [question.id for question in golden.questions]
+            conflict_file = load_conflict_file(conflicts_path, ids)
+    except ConflictSetError as error:  # before GoldenSetError, which it extends
+        return _invalid(conflicts_path, error)
     except GoldenSetError as error:
-        for line in error.errors:
-            print(f"error: {golden_path}: {line}", file=sys.stderr)
-        return 1
-    # The key is needed only when a route is missing: the runner says so if one is.
+        return _invalid(golden_path, error)
+    new = [] if conflict_file is None else [q.question for q in conflict_file.questions]
+    # Each key is needed only when a route or a vector is missing: the runner says so if one is.
     router = None
     if settings.anthropic_api_key:
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
         router = ClaudeRouter(client, settings)
+    embedder = None
+    if settings.voyage_api_key:
+        embedder = VoyageEmbedder(
+            settings.voyage_api_url, settings.voyage_api_key, settings.embedding_model
+        )
     path = settings.eval_routes_dir / f"{settings.router_model}.json"
-    questions = [question.question for question in golden.questions]
+    vectors_path = settings.eval_vectors_dir / f"{settings.embedding_model}.json"
+    questions = [question.question for question in golden.questions] + new
     try:
         stored = runner.load_routes(path)
         already = sum(runner.question_key(question) in stored for question in questions)
         times = runner.route_missing(questions, stored, router, path)
+        tokens = (0, 0) if router is None else (router.input_tokens, router.output_tokens)
+        print(runner.routes_line(settings, times, already, *tokens))
+        if conflict_file is not None:
+            vectors = runner.load_vectors(vectors_path)
+            embedded = runner.embed_missing(new, vectors, embedder)
+            if embedded:
+                runner.save_vectors(vectors_path, vectors)
+            print(runner.vectors_line(vectors_path, embedded, len(new)))
     except runner.EvalError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    tokens = (0, 0) if router is None else (router.input_tokens, router.output_tokens)
-    print(runner.routes_line(settings, times, already, *tokens))
     return 0
+
+
+def _invalid(path: Path, error: GoldenSetError) -> int:
+    """Print each line of an invalid golden or conflict file's error, naming the file; return 1."""
+    for line in error.errors:
+        print(f"error: {path}: {line}", file=sys.stderr)
+    return 1
 
 
 def table(settings: Settings) -> int:
@@ -260,7 +335,14 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     commands.add_parser(
         "retrieval", help="score retrieval alone from the stored question vectors (free)"
     )
-    commands.add_parser("routes", help="route every golden question with no stored route (paid)")
+    commands.add_parser(
+        "conflicts", help="check the conflict set and score the rule-found conflicts (free)"
+    )
+    commands.add_parser(
+        "routes",
+        help="route every golden and conflict-set question with no stored route, and embed the "
+        "conflict set's new questions with no vector (paid)",
+    )
     commands.add_parser("table", help="rebuild the ablation table from every results folder")
     commands.add_parser(
         "resummarize", help="rebuild every results folder's summary.json from its saved rows"
@@ -286,6 +368,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         return resummarize(settings)
     if args.command == "routes":
         return routes(settings)
+    if args.command == "conflicts":
+        return conflicts(settings)
     return table(settings)
 
 

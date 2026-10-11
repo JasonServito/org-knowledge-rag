@@ -34,6 +34,11 @@ keyed the same way: `route_missing` (`make eval-routes`) routes only questions w
 temporal and authority modes (S09-T4, S09-T7), `run` fills the missing routes too, and both `run`
 and `score_retrieval_only` give each question its stored route to `retrieve`; `router_line`
 reports the routes against the golden modes and windows.
+
+The conflict set (S10-T6, ADR-007 D4; `conflicts.py`): `run` checks it after the golden set, runs
+its new questions in full runs (rows in `conflict_questions.jsonl`), and `summarize` scores every
+row's conflicts against it. `score_conflicts_only` (`make eval-conflicts`) checks it, retrieves for
+its whole pool from stored vectors and routes, and scores the rule-found conflicts: free.
 """
 
 import hashlib
@@ -56,6 +61,19 @@ from orgknow.db.models import Authority, Hit, TemporalFilter
 from orgknow.db.releases import list_releases
 from orgknow.embeddings.embedder import DIMENSIONS, Embedder, EmbedResult, InputType
 from orgknow.eval.checks import AnswerChecks, check_answer
+from orgknow.eval.conflicts import (
+    ConflictCounts,
+    ConflictSet,
+    NewQuestion,
+    SeedResult,
+    ac4_text,
+    check_sides,
+    load_conflict_file,
+    rate_text,
+    score_conflicts,
+    set_line,
+    side_line,
+)
 from orgknow.eval.golden import (
     GoldenSet,
     Label,
@@ -280,6 +298,30 @@ class Summary(BaseModel):
     # side of one (`checks.loser_only`). None in a summary written before S10-T5.
     conflicts_model: int | None = None
     loser_only_answers: int | None = None
+    # S10-T6: the conflict metrics against the conflict set (ADR-007 D4), over the golden rows and
+    # the set's new questions' rows: precision overall and by who found the conflict, recall over
+    # the reachable conflicts overall and by kind, the conflicts search didn't retrieve, and AC4
+    # with each seed's result. None with no conflict set, and in a summary written before S10-T6.
+    conflict_precision: Rate | None = None
+    conflict_precision_rule: Rate | None = None
+    conflict_precision_model: Rate | None = None
+    conflict_recall: Rate | None = None
+    conflict_recall_rule: Rate | None = None
+    conflict_recall_texts: Rate | None = None
+    conflict_unreachable: int | None = None
+    ac4: Rate | None = None
+    ac4_seeds: list[SeedResult] | None = None
+
+
+# The summary fields `resummarize` keeps from the old summary: `run` counted them with what the
+# rows don't hold (the golden labels, the conflict set), or rows written before them can't tell
+# "none found" from "not looked for".
+KEPT_FIELDS = (
+    *("authority", "conflicts_rule", "conflicts_model", "loser_only_answers"),
+    *("conflict_precision", "conflict_precision_rule", "conflict_precision_model"),
+    *("conflict_recall", "conflict_recall_rule", "conflict_recall_texts"),
+    *("conflict_unreachable", "ac4", "ac4_seeds"),
+)
 
 
 class RetrievalScores(BaseModel):
@@ -295,6 +337,17 @@ class RetrievalScores(BaseModel):
     router: RouterStats | None  # temporal and authority modes only (S09-T4)
     # Each answerable question's id and its rule-found conflicts (S10-T2), in file order.
     rule_conflicts: list[tuple[str, list[Conflict]]]
+
+
+class ConflictCheck(BaseModel):
+    """What `score_conflicts_only` returns for `make eval-conflicts` to print (S10-T6)."""
+
+    path: Path
+    sha256: str  # of the conflict file's bytes
+    conflict_set: ConflictSet
+    golden_questions: int
+    flagged: list[str]  # the questions holding a rule-found conflict, in run order
+    counts: ConflictCounts
 
 
 def golden_window(question: Question) -> GoldenWindow | None:
@@ -499,6 +552,34 @@ def check_golden(
     return golden, counts
 
 
+def check_conflicts(
+    conn: psycopg.Connection[TupleRow], golden: GoldenSet, path: Path
+) -> ConflictSet:
+    """Load and validate the conflict file against the golden question ids, then check its side
+    entries against the stored texts; return the conflict set, its documents resolved (S10-T6).
+
+    Raises ConflictSetError for an invalid file, and EvalError when an entry matches no stored
+    text, naming each such entry with its count.
+    """
+    conflict_file = load_conflict_file(path, [question.id for question in golden.questions])
+    conflict_set, counts = check_sides(conn, conflict_file)
+    unmatched = [count for count in counts if count.texts == 0]
+    if unmatched:
+        entries = "; ".join(side_line(count) for count in unmatched)
+        noun = "side entry matches" if len(unmatched) == 1 else "side entries match"
+        raise EvalError(f"{path}: {len(unmatched)} {noun} no stored text: {entries}")
+    return conflict_set
+
+
+def vectors_line(path: Path, embedded: int, total: int) -> str:
+    """How many of `total` questions were embedded into the vector file at `path`, in one
+    request or none."""
+    return (
+        f"Question vectors ({path}): {embedded} of {total} embedded. "
+        f"Voyage requests: {1 if embedded else 0}."
+    )
+
+
 def run(
     conn: psycopg.Connection[TupleRow],
     embedder: Embedder | None,
@@ -517,9 +598,15 @@ def run(
     torch's thread count. Temporal and authority modes (S09-T4, S09-T7) route, with `router`, each
     question with no stored route, saving each, then retrieve each question with its route.
 
-    Raises GoldenSetError for an invalid golden file, and EvalError when a label matches no
-    stored text, a vector is missing with no embedder, embedding fails, or a route is missing
-    with no router or routing fails: all before any answer call.
+    With a conflict file (EVAL_CONFLICTS_PATH, S10-T6), the summary scores the rows' conflicts
+    against it, and a full run also runs the file's new questions, embedded and routed with the
+    golden ones; their rows go to `conflict_questions.jsonl`, so the golden rows don't change.
+    With none, the run says so and goes on.
+
+    Raises GoldenSetError for an invalid golden file, ConflictSetError for an invalid conflict
+    file, and EvalError when a label or a conflict's side entry matches no stored text, a vector
+    is missing with no embedder, embedding fails, or a route is missing with no router or routing
+    fails: all before any answer call.
     """
     started_at = _now()
     git_sha, git_dirty = _git_state()  # the code the run starts on
@@ -533,36 +620,47 @@ def run(
         f"Golden set {golden_path} ({golden_sha256[:8]}): {len(questions)} questions"
         f"{' (smoke)' if smoke else ''}. Labels: {len(counts)}. Unmatched: 0."
     )
+    conflicts_path = settings.eval_conflicts_path
+    conflict_set = None
+    if conflicts_path.is_file():
+        conflict_set = check_conflicts(conn, golden, conflicts_path)
+        sha256 = hashlib.sha256(conflicts_path.read_bytes()).hexdigest()
+        print(set_line(conflicts_path, sha256, conflict_set, len(golden.questions)))
+    else:
+        print(f"Conflict set: none ({conflicts_path} not found).")
+    # The conflict set's new questions run in full runs only (S10-R2, Claude's call 4).
+    new_questions = []
+    if conflict_set is not None and not smoke:
+        new_questions = [_new_question(question) for question in conflict_set.questions]
+    every = [*questions, *new_questions]
 
     vectors_path = settings.eval_vectors_dir / f"{settings.embedding_model}.json"
     vectors = load_vectors(vectors_path)
-    embedded = embed_missing([q.question for q in questions], vectors, embedder)
+    embedded = embed_missing([q.question for q in every], vectors, embedder)
     if embedded:
         save_vectors(vectors_path, vectors)
-    print(
-        f"Question vectors ({vectors_path}): {embedded} of {len(questions)} embedded. "
-        f"Voyage requests: {1 if embedded else 0}."
-    )
+    print(vectors_line(vectors_path, embedded, len(every)))
     routed_mode = settings.retrieval_mode in ("temporal", "authority")
     routes: dict[str, Route] = {}  # none outside temporal and authority modes
     if routed_mode:
         routes_path = _routes_path(settings)
         routes = load_routes(routes_path)
-        routed = route_missing([q.question for q in questions], routes, router, routes_path)
-        print(f"Question routes ({routes_path}): {len(routed)} of {len(questions)} routed.")
+        routed = route_missing([q.question for q in every], routes, router, routes_path)
+        print(f"Question routes ({routes_path}): {len(routed)} of {len(every)} routed.")
     tiers = document_tiers(conn, questions)
 
     # Created before the first ask, so a name clash stops the run before it costs anything.
     folder = settings.eval_results_dir / f"{name}-{started_at:%Y%m%dT%H%M%SZ}"
     folder.mkdir(parents=True)
     stored = StoredVectors(settings.embedding_model, vectors)
-    rows = []
-    for question in questions:
+    every_row = []
+    for question in every:
         route = routes.get(question_key(question.question))
         row = _run_question(question, conn, stored, generator, settings, reranker, route, tiers)
         status = row.answer.answer_status if row.answer else row.error
         print(f"{row.id}  {status}  {row.latency_s:.1f} s")
-        rows.append(row)
+        every_row.append(row)
+    rows, new_rows = every_row[: len(questions)], every_row[len(questions) :]
 
     # The 3 modes that load the reranker.
     rerank_mode = settings.retrieval_mode in ("rerank", "temporal", "authority")
@@ -602,15 +700,39 @@ def run(
         rerank_load_s=rerank_load_s,
     )
     labels = {question.id: question.labels for question in questions}
-    summary = summarize(name, golden_sha256, started_at, rows, settings, labels)
+    summary = summarize(
+        name, golden_sha256, started_at, rows, settings, labels, conflict_set, new_rows
+    )
     (folder / "run.json").write_text(run_info.model_dump_json(indent=2) + "\n", encoding="utf-8")
     (folder / "questions.jsonl").write_text(
         "".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8"
     )
+    if new_rows:
+        (folder / "conflict_questions.jsonl").write_text(
+            "".join(row.model_dump_json() + "\n" for row in new_rows), encoding="utf-8"
+        )
     (folder / "summary.json").write_text(summary.model_dump_json(indent=2) + "\n", encoding="utf-8")
     print(f"Results: {folder}")
     print(summary_line(summary))
+    if new_rows:
+        print(conflict_questions_line(new_rows, settings))
     return folder
+
+
+def _new_question(question: NewQuestion) -> Question:
+    """A conflict set's new question, as `_run_question` runs it: answerable, with no labels, so
+    its row has no metrics and gets the answerable checks (S10-R2). Built without validation: its
+    `c` id doesn't fit the golden id pattern, and its two fields were validated by the loader."""
+    return Question.model_construct(
+        id=question.id,
+        question=question.question,
+        mode=None,
+        answerable=True,
+        expected_answer="",
+        release_window=None,
+        smoke=False,
+        labels=[],
+    )
 
 
 def _run_question(
@@ -753,6 +875,58 @@ def score_retrieval_only(
         current_mrr=_mean(current_mrr),
         router=router_stats(records) if records else None,
         rule_conflicts=conflicts,
+    )
+
+
+def score_conflicts_only(
+    conn: psycopg.Connection[TupleRow], settings: Settings, reranker: Reranker | None = None
+) -> ConflictCheck:
+    """`make eval-conflicts` (S10-T6): check the conflict file (EVAL_CONFLICTS_PATH) against the
+    golden set and the stored texts, then retrieve, in the settings' mode, for every question of
+    the pool (every golden question, then the file's new questions) with its stored vector and
+    route, find each one's rule-found conflicts, and score them against the set. No Voyage call,
+    no Anthropic call, nothing written: the model-found conflicts need a paid run.
+
+    Raises GoldenSetError, ConflictSetError and EvalError as `run` does, and EvalError when a
+    question has no stored vector, or in temporal and authority modes no stored route: both are
+    filled by `make eval-routes`. Rerank, temporal and authority modes need `reranker`.
+    """
+    golden, _ = check_golden(conn, settings.eval_golden_path)
+    path = settings.eval_conflicts_path
+    conflict_set = check_conflicts(conn, golden, path)
+    pool = [(q.id, q.question) for q in golden.questions]
+    pool += [(q.id, q.question) for q in conflict_set.questions]
+    vectors_path = settings.eval_vectors_dir / f"{settings.embedding_model}.json"
+    vectors = load_vectors(vectors_path)
+    missing = [qid for qid, question in pool if question_key(question) not in vectors]
+    if missing:
+        raise EvalError(
+            f"no stored vector for {', '.join(missing)} in {vectors_path}: eval-conflicts never "
+            "calls Voyage (`make eval-routes` embeds the conflict set's new questions)"
+        )
+    routes: dict[str, Route] = {}  # none outside temporal and authority modes
+    if settings.retrieval_mode in ("temporal", "authority"):
+        routes_path = _routes_path(settings)
+        routes = load_routes(routes_path)
+        unrouted = [qid for qid, question in pool if question_key(question) not in routes]
+        if unrouted:
+            raise EvalError(
+                f"no stored route for {', '.join(unrouted)} in {routes_path}: eval-conflicts "
+                "never calls the router (`make eval-routes` routes missing questions)"
+            )
+    stored = StoredVectors(settings.embedding_model, vectors)
+    scored = []
+    for qid, question in pool:
+        route = routes.get(question_key(question))
+        hits = retrieve(question, stored, conn, settings, reranker, route)
+        scored.append((qid, hits, rule_conflicts(conn, hits, settings)))
+    return ConflictCheck(
+        path=path,
+        sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        conflict_set=conflict_set,
+        golden_questions=len(golden.questions),
+        flagged=[qid for qid, _, found in scored if found],
+        counts=score_conflicts(conflict_set.conflicts, scored),
     )
 
 
@@ -923,27 +1097,30 @@ def summarize(
     rows: Sequence[QuestionRow],
     settings: Settings,
     labels: Mapping[str, Sequence[Label]] | None = None,
+    conflict_set: ConflictSet | None = None,
+    new_rows: Sequence[QuestionRow] = (),
 ) -> Summary:
     """The run's totals: metric means over the answerable questions, for each check how many of
     the rows it applies to (not None) passed, the p95 latencies and the mean cost per question
     at the settings' prices (S08-T3), the S09 time counts over the rows' hits (S09-T3), router
     accuracy over the answerable rows with a route (S09-T4), authority selection (S09-T7), the
-    rule-found conflicts over all rows (S10-T4), and the model-found ones and the loser-only
-    answers (S10-T5).
+    rule-found conflicts (S10-T4), the model-found ones and the loser-only answers (S10-T5), and,
+    with a conflict set, the conflict metrics (S10-T6).
 
     Authority selection needs each row's golden labels, by question id in `labels`, to find its
-    first labeled hit: a row holds its label tiers, not its labels. None without `labels`."""
+    first labeled hit: a row holds its label tiers, not its labels. None without `labels`.
+
+    `rows` are the golden questions'; `new_rows` the conflict set's new questions'. The conflict
+    counts and metrics read both; every other field reads the golden rows only."""
     metrics = [row.metrics for row in rows if row.metrics is not None]
     refusals = _rate(row.checks.false_refusal for row in rows)
     usages = [row.usage for row in rows if row.usage is not None]
-    # US dollars per million tokens. Output tokens include reasoning (ADR-006).
-    in_price = settings.generation_price_input_usd_per_mtok
-    out_price = settings.generation_price_output_usd_per_mtok
+    every = [*rows, *new_rows]
     authority = None
     if labels is not None:
         by_labels = [(row.mode, labels[row.id], row.label_tiers, row.hits) for row in rows]
         authority = _rate_of(authority_count(by_labels))
-    return Summary(
+    summary = Summary(
         name=name,
         golden_sha256=golden_sha256,
         started_at=started_at,
@@ -964,9 +1141,7 @@ def summarize(
         latency_s_mean=sum(row.latency_s for row in rows) / len(rows),
         latency_s_p95=_p95([row.latency_s for row in rows]),
         retrieve_s_p95=_p95([row.retrieve_s for row in rows if row.retrieve_s is not None]),
-        cost_usd_mean=_mean(
-            [(u.input_tokens * in_price + u.output_tokens * out_price) / 1e6 for u in usages]
-        ),
+        cost_usd_mean=_mean([_cost(usage, settings) for usage in usages]),
         # A row's hits are its top K, as retrieval returned them.
         stale=_count(stale_count([(row.mode, row.hits) for row in rows])),
         temporal=_rate_of(temporal_count([(row.release_window, row.hits) for row in rows])),
@@ -982,9 +1157,28 @@ def summarize(
             )
         ),
         authority=authority,
-        conflicts_rule=sum(1 for row in rows for c in row.conflicts if c.found_by == "rule"),
-        conflicts_model=sum(1 for row in rows for c in row.conflicts if c.found_by == "model"),
-        loser_only_answers=sum(row.checks.loser_only is True for row in rows),
+        conflicts_rule=sum(1 for row in every for c in row.conflicts if c.found_by == "rule"),
+        conflicts_model=sum(1 for row in every for c in row.conflicts if c.found_by == "model"),
+        loser_only_answers=sum(row.checks.loser_only is True for row in every),
+    )
+    if conflict_set is None:
+        return summary
+    counts = score_conflicts(
+        conflict_set.conflicts, [(row.id, row.hits, row.conflicts) for row in every]
+    )
+    surfaced = sum(seed.surfaced for seed in counts.seeds)
+    return summary.model_copy(
+        update={
+            "conflict_precision": _rate_of(counts.precision),
+            "conflict_precision_rule": _rate_of(counts.precision_rule),
+            "conflict_precision_model": _rate_of(counts.precision_model),
+            "conflict_recall": _rate_of(counts.recall),
+            "conflict_recall_rule": _rate_of(counts.recall_rule),
+            "conflict_recall_texts": _rate_of(counts.recall_texts),
+            "conflict_unreachable": len(counts.unreachable),
+            "ac4": Rate(pass_=surfaced, total=len(counts.seeds)),
+            "ac4_seeds": counts.seeds,
+        }
     )
 
 
@@ -993,28 +1187,25 @@ def resummarize(folder: Path, settings: Settings) -> Summary:
     its `questions.jsonl`, keeping the summary's name, golden hash, start time, authority
     selection (S09-T7: it needs the golden labels, which the rows don't hold; `run` counted it)
     and conflict counts (S10-T4, S10-T5: rows written before them load with no conflicts and no
-    `loser_only`, so a count would say 0 where none was looked for); write it and return it.
-    Nothing else in the folder changes."""
+    `loser_only`, so a count would say 0 where none was looked for), and its conflict metrics
+    (S10-T6: `run` scored them against the conflict set, which this doesn't re-read, so a folder
+    written before S10 keeps None in each); write it and return it. Nothing else in the folder
+    changes."""
     path = folder / "summary.json"
     old = Summary.model_validate_json(path.read_text(encoding="utf-8"))
     lines = (folder / "questions.jsonl").read_text(encoding="utf-8").splitlines()
     rows = [QuestionRow.model_validate_json(line) for line in lines]
     summary = summarize(old.name, old.golden_sha256, old.started_at, rows, settings)
-    summary = summary.model_copy(
-        update={
-            "authority": old.authority,
-            "conflicts_rule": old.conflicts_rule,
-            "conflicts_model": old.conflicts_model,
-            "loser_only_answers": old.loser_only_answers,
-        }
-    )
+    summary = summary.model_copy(update={field: getattr(old, field) for field in KEPT_FIELDS})
     path.write_text(summary.model_dump_json(indent=2) + "\n", encoding="utf-8")
     return summary
 
 
 def summary_line(summary: Summary) -> str:
     """The summary in one line, for the terminal, ending with the conflict counts (S10-R1,
-    pinned): " Conflicts: {n} ({r} rule, {m} model), {k} loser-only answers."."""
+    pinned): " Conflicts: {n} ({r} rule, {m} model), {k} loser-only answers.", then the conflict
+    metrics with a conflict set (S10-R2, pinned): " Conflict precision 0.850 (17 of 20), recall
+    0.800 (16 of 20 reachable), AC4 3 of 4 (q08: not retrieved)." with nothing after it."""
 
     def number(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.3f}"
@@ -1028,7 +1219,7 @@ def summary_line(summary: Summary) -> str:
     rule, model = summary.conflicts_rule, summary.conflicts_model
     total = None if rule is None or model is None else rule + model
 
-    return (
+    line = (
         f"{summary.questions} questions ({summary.answerable} answerable), "
         f"{summary.errors} errors. Recall@10 {number(summary.recall)}, "
         f"Hit@10 {number(summary.hit)}, MRR {number(summary.mrr)}, "
@@ -1039,6 +1230,32 @@ def summary_line(summary: Summary) -> str:
         f"Conflicts: {count(total)} ({count(rule)} rule, {count(model)} model), "
         f"{count(summary.loser_only_answers)} loser-only answers."
     )
+    precision, recall = summary.conflict_precision, summary.conflict_recall
+    if precision is None or recall is None or summary.ac4_seeds is None:  # no conflict set
+        return line
+    return (
+        f"{line} Conflict precision {rate_text(precision.pass_, precision.total)}, recall "
+        f"{rate_text(recall.pass_, recall.total, ' reachable')}, AC4 {ac4_text(summary.ac4_seeds)}."
+    )
+
+
+def conflict_questions_line(rows: Sequence[QuestionRow], settings: Settings) -> str:
+    """`Conflict questions: 2 (c01 c02), 0 errors, cost $N.` (S10-R2, pinned): the conflict set's
+    new questions, after the summary line, with their errors and their total cost at the
+    settings' prices, which the summary's golden-only cost leaves out."""
+    cost = sum(_cost(row.usage, settings) for row in rows if row.usage is not None)
+    errors = sum(row.error is not None for row in rows)
+    ids = " ".join(row.id for row in rows)
+    return f"Conflict questions: {len(rows)} ({ids}), {errors} errors, cost ${cost:.4f}."
+
+
+def _cost(usage: TokenUsage, settings: Settings) -> float:
+    """One answer's cost in US dollars at the GENERATION_PRICE_* prices, per million tokens.
+    Output tokens include reasoning (ADR-006)."""
+    return (
+        usage.input_tokens * settings.generation_price_input_usd_per_mtok
+        + usage.output_tokens * settings.generation_price_output_usd_per_mtok
+    ) / 1e6
 
 
 def _mean(values: Sequence[float]) -> float | None:
@@ -1065,7 +1282,7 @@ def _count(parts: tuple[int, int] | None) -> Count | None:
 
 
 def _rate_of(parts: tuple[int, int] | None) -> Rate | None:
-    """A time metric's (passed, total) as a `Rate`; None stays None."""
+    """A metric's (passed, total) as a `Rate`; None stays None."""
     return None if parts is None else Rate(pass_=parts[0], total=parts[1])
 
 

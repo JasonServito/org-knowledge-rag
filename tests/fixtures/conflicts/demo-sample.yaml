@@ -1,0 +1,42 @@
+# A demo conflict set for `make eval-conflicts` (S10-T6), not conflict set v0: the 5 conflicts the
+# S10-R2 run contract pins, on golden set v0's questions. k01-k04 are the 4 seeds (k04 stands in
+# for c01's versioning.md seed, on q21, which retrieves both sides); k05 isn't a seed. Each entry
+# was checked against the dev database (`make eval-sections`), and each note against the stored
+# text and the KEP version valid at the question's target release.
+version: demo
+questions: []
+conflicts:
+  - id: k01
+    question: q18
+    kind: claim_mismatch
+    seed: true
+    note: "KEP-4858 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says beta."
+    first: [{document: "kep:4858"}]
+  - id: k02
+    question: q01
+    kind: texts
+    seed: true
+    note: "KEP-2572 still claims implementable/alpha (latest milestone v1.22); the docs say three releases a year is the policy in force."
+    first: [{document: "kep:2572"}]
+    second: [{document: "web:/releases/release/"}, {document: "web:/docs/setup/release/"}]
+  - id: k03
+    question: q08
+    kind: history_date
+    seed: true
+    note: "KEP-2579 says v1.23's beta was released 2021-11-03; v1.23 was released 2021-12-07."
+    first:
+      - {document: "kep:2579", section: "KEP-2579: Pod Security Admission Control > Implementation History"}
+  - id: k04
+    question: q21
+    kind: texts
+    seed: true
+    note: "versioning.md says the project supports \"four minor releases at a time\"; the version-skew policy says it maintains release branches for \"the most recent three minor releases\"."
+    first:
+      - document: "sig-release:release-engineering/versioning.md"
+        section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"
+    second: [{document: "web:/docs/setup/release/version-skew-policy/"}]
+  - id: k05
+    question: q32
+    kind: claim_mismatch
+    note: "KEP-3299 claims stable (latest milestone v1.29); the 1.28 feature-gate reference says beta."
+    first: [{document: "kep:3299"}]

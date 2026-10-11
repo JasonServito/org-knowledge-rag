@@ -156,6 +156,9 @@ def test_a_summary_without_the_new_fields_still_loads() -> None:
     assert summary.authority is None
     assert summary.conflicts_rule is None  # S10-T4
     assert (summary.conflicts_model, summary.loser_only_answers) == (None, None)  # S10-T5
+    # S10-T6: the conflict metrics.
+    assert (summary.conflict_precision, summary.conflict_recall, summary.ac4) == (None,) * 3
+    assert (summary.conflict_unreachable, summary.ac4_seeds) == (None, None)
 
 
 def test_a_row_written_before_s07_still_loads() -> None:
@@ -294,6 +297,16 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
         "conflicts_rule": None,
         "conflicts_model": None,  # S10-T5: kept, like the rule-conflict count
         "loser_only_answers": None,
+        # S10-T6: the conflict metrics, kept: a folder written before S10 keeps None.
+        "conflict_precision": None,
+        "conflict_precision_rule": None,
+        "conflict_precision_model": None,
+        "conflict_recall": None,
+        "conflict_recall_rule": None,
+        "conflict_recall_texts": None,
+        "conflict_unreachable": None,
+        "ac4": None,
+        "ac4_seeds": None,
     }
     # Only the summary is written: the rows are unchanged, and there is no table.
     assert (folder / "questions.jsonl").read_text(encoding="utf-8") == _old_rows()
@@ -306,8 +319,9 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
 def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -> None:
     # A folder `run` wrote after S09-T7: its summary holds authority selection, which needs the
     # golden labels; the rows hold only the label tiers, so resummarize keeps the value. The same
-    # for the rule-conflict count (S10-T4): 5 stays 5, though these rows hold none; and for the
-    # model-conflict and loser-only counts (S10-T5): 4 and 1 stay.
+    # for the rule-conflict count (S10-T4): 5 stays 5, though these rows hold none; for the
+    # model-conflict and loser-only counts (S10-T5): 4 and 1 stay; and for the conflict metrics
+    # (S10-T6), scored against a conflict set the rows don't hold.
     folder = tmp_path / "authority-20261010T100000Z"
     folder.mkdir()
     counted = {
@@ -316,6 +330,13 @@ def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -
         "conflicts_rule": 5,
         "conflicts_model": 4,
         "loser_only_answers": 1,
+        "conflict_precision": {"pass": 17, "total": 20},
+        "conflict_recall": {"pass": 16, "total": 20},
+        "conflict_unreachable": 1,
+        "ac4": {"pass": 3, "total": 4},
+        "ac4_seeds": [
+            {"conflict_id": "k03", "question_id": "q08", "retrieved": False, "surfaced": False}
+        ],
     }
     (folder / "summary.json").write_text(json.dumps(counted), encoding="utf-8")
     (folder / "questions.jsonl").write_text(_old_rows(), encoding="utf-8")
@@ -325,6 +346,11 @@ def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -
     assert summary.authority == Rate(pass_=9, total=9)
     assert summary.conflicts_rule == 5
     assert (summary.conflicts_model, summary.loser_only_answers) == (4, 1)
+    assert summary.conflict_precision == Rate(pass_=17, total=20)
+    assert summary.conflict_recall == Rate(pass_=16, total=20)
+    assert (summary.conflict_unreachable, summary.ac4) == (1, Rate(pass_=3, total=4))
+    assert summary.ac4_seeds is not None
+    assert [seed.conflict_id for seed in summary.ac4_seeds] == ["k03"]
     written = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
     assert written["authority"] == {"pass": 9, "total": 9}
     assert written["conflicts_rule"] == 5
