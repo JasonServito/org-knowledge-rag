@@ -398,17 +398,25 @@ At most 3 asks; the Langfuse trace links go in the brief.
 
 ### Run S09-R2: authority, and the S09 eval run
 
-- **Status:** PR open (T5–T7 done; T8 and the retro parked)
+- **Status:** PR open; resumed 2026-10-10 for T8 and the retro (resume decisions below)
 - **Branch:** `s09-r2-authority`
 - **Tasks, in this order:** S09-T5 (gate stages) → S09-T6 (tiers per hit) → S09-T7 (`authority` mode and metric) → S09-T8 (the S09 eval run).
 - **Closes the slice:** yes, once the retro (`/slice-retro`) follows.
-- **Parked:** S09-T8: Anthropic credit balance too low. Run 1 of 3 completed (`authority-20261010T112851Z`, $1.36); run 2 (`authority-20261010T113710Z`) returned 400 "credit balance is too low" from q23 (21 error rows, $0.67). Spent $2.03. Both folders and the table line are kept, local only (stash "parked S09-T8").
+- **Parked:** S09-T8: Anthropic credit balance too low. Run 1 of 3 completed (`authority-20261010T112851Z`, $1.36); run 2 (`authority-20261010T113710Z`) returned 400 "credit balance is too low" from q23 (21 error rows, $0.67). Spent $2.03. Both folders and the table line are kept, local only (stash "parked S09-T8"). Unparked at resume (R1–R3).
 - **Parked:** the retro, because exit check 6 (the S09 row, write-up and thresholds) needs T8.
 - **Goal (plain words):**
   - Record each feature gate's stage at each release, as that release's own docs gave it.
   - Give every search result a trust tier (1 = official docs … 6 = blog). A KEP counts as shipped once one of its gates appears in the reference.
   - Add an `authority` mode: per question type, nudge trusted sources up and weak ones down, after the reranker; and score whether "now" questions put the most trusted correct source first.
   - Run the paid eval 3 times in the final mode, write the row, and set the S09 thresholds.
+
+#### Resume decisions (2026-10-10, after the run; the developer, interactive)
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| R1 | **Anthropic credit:** US$9.96 at resume (console, after a top-up). Low line: under US$5. Every check-in shows the estimated balance (US$9.96 minus the spend tools report) | A US$10 or US$3 line | About one full 3-run eval (~US$4.10) of headroom |
+| R2 | **Run 2 is dropped** (it stays only in stash "parked S09-T8"); run 1 (`authority-20261010T112851Z`) is kept if the resumed code retrieves the same hits for all 43 questions; then 2 more paid runs (~US$2.73) | 3 fresh runs (~US$4.10); keeping run 2 | Run 2's 21 error rows would skew AC3, errors and p95 |
+| R3 | **Apply the 5 review answers before the paid runs:** (a) a superseded proposal is never boosted, the WHY rule included; (b) ADR-003's Consequences line: the multipliers and the synonym list live in config; tiers are a fixed rule by source type; (c) migration 0006's high check also needs `stage IS NOT NULL`; (d) a KEP's stage is observed only when every gate it names has a row at R, all high and giving one stage (else its claim, low); (e) near-ties after rounding: no change | Apply after T8; leave for the S10 sitting | None changes a v0 result: 0 of run 1's 65 observed KEP hits fall in the 8 partially observed KEP × release pairs; 0 superseded KEPs in v0's WHY pools (T7 probe). Fix (c) is free before merge (0006 isn't on main) |
 
 #### Sitting evidence (2026-10-10)
 
