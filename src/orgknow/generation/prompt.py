@@ -1,5 +1,6 @@
 """The prompt for the answer step: a fixed system prompt, then one evidence block per hit, then
-the conflicts code found in the hits, if any (S10-T4).
+the conflicts code found in the hits, if any (S10-T4), then the release to settle conflicts at
+(S10-T5b).
 
 Each block's first line gives the chunk id and every release window of the text (S04-R2
 decision 4), its second the hit's authority tier (S09-T6); a KEP block adds the status and stage
@@ -29,9 +30,9 @@ saying what is missing.
 - Never state a rationale, motive or history that the evidence doesn't contain.
 - If two chunks disagree (two sources, or an older and a newer version of one text), list the \
 pair in `conflicts` with one sentence on what differs, and say so in the answer. Settle it this \
-way: an observed stage beats a KEP's claim; a chunk valid at the asked-about release beats one \
-that isn't; otherwise the lower tier number wins; with equal tiers, say it is unresolved. \
-Conflicts found by code are listed after the evidence: don't list them again.
+way: an observed stage beats a KEP's claim; a chunk valid at the release named before the \
+question beats one that isn't; otherwise the lower tier number wins; with equal tiers, say it is \
+unresolved. Conflicts found by code are listed after the evidence: don't list them again.
 """
 
 # A KEP's latest milestone, as its kep.yaml writes it ("v1.22", or "1.17"): group 1 is the minor
@@ -122,7 +123,14 @@ def conflicts_block(conflicts: Sequence[Conflict]) -> str:
 
 def user_prompt(question: str, hits: Sequence[Hit], conflicts: Sequence[Conflict] = ()) -> str:
     """The user message: every evidence block, nearest first, then the rule-found `conflicts`'
-    block when there is at least one, then the question."""
+    block when there is at least one, then the settle line, then the question.
+
+    The settle line (S10-R2, pinned) names the hits' `authority.target_release` (one per
+    question), the release ADR-003 D6's rules settle at in code too; no hit with `authority`
+    gives no line.
+    """
     blocks = "\n\n".join(evidence_block(hit) for hit in hits)
     found = f"\n\n{conflicts_block(conflicts)}" if conflicts else ""
-    return f"Evidence:\n\n{blocks}{found}\n\nQuestion: {question}"
+    target = next((h.authority.target_release for h in hits if h.authority is not None), None)
+    settle = "" if target is None else f"\n\nSettle conflicts at release 1.{target}."
+    return f"Evidence:\n\n{blocks}{found}{settle}\n\nQuestion: {question}"

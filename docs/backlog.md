@@ -339,7 +339,7 @@ Tasks:
   - The answer model lists chunk pairs that disagree; ids checked on their own; kind and resolution by T3; D6 and the KEP milestone line in the prompt; the losing-side flag in the eval.
   - Done when: hand-worked unit tests pass; the smoke run keeps AC1–AC3 at 100%.
   - Deps: T3, T4.
-- [ ] **S10-T5b `[core]` The release to settle conflicts at.**
+- [x] **S10-T5b `[core]` The release to settle conflicts at.**
   - "Settle conflicts at release 1.N." in the prompt, so the answer text and the code's list settle at the same release (S10-R2 decision 4).
   - Done when: hand-worked unit tests pass; T8's run 1 keeps AC1–AC3 at 100%.
   - Deps: T5.

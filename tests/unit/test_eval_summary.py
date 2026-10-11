@@ -712,7 +712,7 @@ def test_an_answered_row_holds_the_rule_conflicts_the_prompt_showed(
     [(_, prompt)] = generator.calls
     assert prompt.endswith(
         "\n\nConflicts found by code:\n- chunk 1: s Resolved: observed beats claimed.\n\n"
-        f"Question: {KEP_4858}"
+        f"Settle conflicts at release 1.37.\n\nQuestion: {KEP_4858}"
     )
 
 

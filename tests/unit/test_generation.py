@@ -7,7 +7,9 @@ KEP-2579's sitting values: at 1.37 stable (claimed, not observed), at 1.22 alpha
 3 at both. The rule-found conflicts on every path and their prompt block are the S10-R1 contract's
 ("T4 rules (pinned)"); the model-found ones, the system prompt's new sentences and the claim line's
 milestone are its "T5 rules (pinned)", with the sitting's real pair (versioning.md vs. the
-version-skew page, S10-T3). None is computed by the code under test. No test calls a network.
+version-skew page, S10-T3). The settle line and the system prompt's rule that points to it are
+the S10-R2 contract's ("Pinned: the settle line (T5b)"). None is computed by the code under test.
+No test calls a network.
 """
 
 import json
@@ -360,14 +362,15 @@ def test_the_system_prompt_explains_the_tiers_and_the_stage_line() -> None:
 
 
 def test_the_system_prompts_last_bullet_asks_for_conflicts_and_states_adr_003_d6() -> None:
-    # The S10-R1 contract's pinned bullet, word for word, as the prompt's last line.
+    # The S10-R1 contract's pinned bullet, word for word, as the prompt's last line, with the
+    # S10-R2 contract's new rule ("Pinned: the settle line (T5b)").
     assert SYSTEM_PROMPT.endswith(
         "\n- If two chunks disagree (two sources, or an older and a newer version of one text), "
         "list the pair in `conflicts` with one sentence on what differs, and say so in the "
         "answer. Settle it this way: an observed stage beats a KEP's claim; a chunk valid at the "
-        "asked-about release beats one that isn't; otherwise the lower tier number wins; with "
-        "equal tiers, say it is unresolved. Conflicts found by code are listed after the "
-        "evidence: don't list them again.\n"
+        "release named before the question beats one that isn't; otherwise the lower tier "
+        "number wins; with equal tiers, say it is unresolved. Conflicts found by code are listed "
+        "after the evidence: don't list them again.\n"
     )
 
 
@@ -450,7 +453,9 @@ def test_the_claim_line_shows_the_latest_milestone(
     assert [text for text in lines if text.startswith("claimed:")] == [line]
 
 
-def test_the_prompt_sent_holds_every_block_then_the_question(settings: Settings) -> None:
+def test_the_prompt_sent_holds_every_block_the_settle_line_then_the_question(
+    settings: Settings,
+) -> None:
     fake = FakeGenerator(_answered(551))
 
     answer(QUESTION, [_docs_hit(), _kep_hit(release_windows=[(25, None)])], fake, settings)
@@ -465,7 +470,8 @@ def test_the_prompt_sent_holds_every_block_then_the_question(settings: Settings)
             "[chunk 4916] valid in releases: 1.25\N{EN DASH}now\nauthority: tier 3\n"
             "claimed: implemented/stable\nstage at 1.37: stable (claimed, not observed)\n"
             + KEP_TEXT
-            + "\n\nQuestion: What enforces pod security standards in-tree?",
+            + "\n\nSettle conflicts at release 1.37."
+            "\n\nQuestion: What enforces pod security standards in-tree?",
         )
     ]
 
@@ -614,6 +620,7 @@ def test_the_prompt_lists_a_rule_conflict_on_2_chunks_after_the_evidence(
             "Conflicts found by code:\n"
             "- chunks 101, 102: kep:4858 claims stable (latest milestone v1.38); the feature-gate "
             "reference at 1.37 says beta. Resolved: observed beats claimed."
+            "\n\nSettle conflicts at release 1.37."
             "\n\nQuestion: What enforces pod security standards in-tree?",
         )
     ]
@@ -628,6 +635,7 @@ def test_the_prompt_names_a_conflict_on_1_chunk_and_lists_each_conflict() -> Non
         "2021-12-07. Resolved: observed beats claimed.\n"
         "- chunks 101, 102: kep:4858 claims stable (latest milestone v1.38); the feature-gate "
         "reference at 1.37 says beta. Resolved: observed beats claimed."
+        "\n\nSettle conflicts at release 1.37."
         "\n\nQuestion: What enforces pod security standards in-tree?"
     )
 
@@ -635,6 +643,34 @@ def test_the_prompt_names_a_conflict_on_1_chunk_and_lists_each_conflict() -> Non
 def test_with_no_rule_conflict_the_prompt_has_no_conflict_block() -> None:
     assert user_prompt(QUESTION, [_docs_hit(205)], []) == (
         "Evidence:\n\n[chunk 205] valid in releases: 1.30\N{EN DASH}now\nauthority: tier 1\n"
+        + PSA_TEXT
+        + "\n\nSettle conflicts at release 1.37."
+        "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
+
+
+# --- The settle line (S10-T5b): the release conflicts are settled at, before the question --------
+
+
+def test_the_settle_line_names_the_hits_target_release() -> None:
+    # A HISTORY question that settles at 1.20 (7 of v0's 43 settle before 1.37, the S10-R2 sitting).
+    at_20 = Authority(target_release=20, tier=1, effective_stage=None, stage_confidence=None)
+
+    prompt = user_prompt(QUESTION, [_docs_hit(205, release_windows=[(20, None)], authority=at_20)])
+
+    assert prompt == (
+        "Evidence:\n\n[chunk 205] valid in releases: 1.20\N{EN DASH}now\nauthority: tier 1\n"
+        + PSA_TEXT
+        + "\n\nSettle conflicts at release 1.20."
+        "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
+
+
+def test_with_no_authority_the_prompt_has_no_settle_line() -> None:
+    prompt = user_prompt(QUESTION, [_docs_hit(205, authority=None)])
+
+    assert prompt == (
+        "Evidence:\n\n[chunk 205] valid in releases: 1.30\N{EN DASH}now\n"
         + PSA_TEXT
         + "\n\nQuestion: What enforces pod security standards in-tree?"
     )
