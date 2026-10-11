@@ -419,7 +419,7 @@ HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --smoke --name conflict-smoke
 - **Tasks, in this order:**
   - **Part 1:** S10-T5b (the settle line) → S10-T6 (format, loader, metrics) → S10-T7a (Claude's draft).
   - **Pause:** S10-T7 `[human]`, the developer's sign-off, committed on this branch.
-  - **Part 2 (`/run-bundle` resumes):** S10-T8 (the eval run) → the retro (`/slice-retro`, as the last commit).
+  - **Part 2 (`/run-bundle` resumes):** S10-T8 (`run.json` records the conflict file, then the eval run) → the retro (`/slice-retro`, as the last commit).
 - **Closes the slice:** yes, after part 2.
 - **Part 1 ends** with T8 and the retro parked ("needs S10-T7, a human task"), the PR open, one Greptile review, and a check-in pointing to the sheet.
 - **Goal (plain words):**
@@ -492,6 +492,15 @@ On the dev database and the S09 run `authority-20261011T051924Z` (43 questions �
 6. **The table gains 3 columns.**
 7. **T7a's merge rule and split rate** (pinned below).
 8. **The sheet's sample** (pinned below).
+
+#### Decisions at the part-1 review (2026-10-11)
+
+Made by the developer after part 1 (PR #43), interactively.
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| R1 | **Keep the contract's merge key** (same question, kind and set of documents). When several disputed items are one fact, the developer keeps one per question at T7, and Claude merges their sources | Group passes by overlapping sources | Both keys leave the split rate above 0.20 (0.526 vs. 0.354), so precision is provisional either way. The overlap rule glued distinct facts (T7a review; Greptile on PR #43) |
+| R2 | **`run.json` records the conflict file:** `conflicts_path` and `conflicts_sha256`, None without a file and in older folders. Built and tested as T8's first step, before its free gate (~10 lines, 1 unit test, free). The table still groups rows by the golden file | T8's write-up copies the hash by hand | The key will change after T8 (fixes after the judging, S11's labels), so each score must name the key it used |
 
 #### Pinned: the conflict set (ADR-007 D4)
 
@@ -624,6 +633,7 @@ With every conflict reachable, the line is just `Reachable: 5 of 5.` The flagged
 
 #### Pinned: T8
 
+0. **Record the conflict file (decision R2):** `RunInfo` gains `conflicts_path: str | None = None` and `conflicts_sha256: str | None = None`, after `golden_sha256`; `run` fills them when the file exists. A unit test checks both, and that an older `run.json` loads with None.
 1. **Free gate:**
    - Postgres; `make check`.
    - `HF_HUB_OFFLINE=1 make eval-retrieval` prints the S09/R1 lines exactly (R1's "Pinned: output formats").
