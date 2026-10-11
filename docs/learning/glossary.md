@@ -10,16 +10,18 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **`canonical_id`** | A stable identity for a document across versions, renames and branches (ADR-002 D4). |
 | **`claimed_status` / `claimed_stage`** | What a KEP's `kep.yaml` *says* its status or stage is. Stored as a claim, because it's often stale. |
 | **Claim mismatch** | A conflict where the claimed status disagrees with the observed stage. Surfaced, never silently resolved. |
+| **Conflict detection** | Finding where retrieved evidence disagrees and recording it in the answer's `conflicts[]` instead of leaving it to the model's prose (ADR-010). Code compares stored facts (`claim_mismatch`, `history_date`); the answer model flags texts that disagree; code settles each by fixed rules (ADR-003 D6) or marks it unresolved. |
 | **Content hash** | A hash of normalized document content. The same hash means no new version (ADR-002 D2). |
 | **Effective stage** | Observed stage if known, otherwise claimed stage with low confidence, otherwise unknown (ADR-003 D2). |
 | **Feature gate** | A named on/off switch for a Kubernetes feature, with a lifecycle stage per release (alpha, beta, stable, deprecated). The feature-gate reference lists each gate's stage ranges; `observed_lifecycle` keeps the stage each release's own reference gives (S09). |
 | **KEP** | Kubernetes Enhancement Proposal: a design + decision + tracking document per feature or process change. |
 | **Manifest** | `config/corpus_manifest.yaml`. It defines which repos, paths and releases are in the corpus. |
 | **Normalization** | Stripping meaning-free differences (whitespace, reviewer lists) before hashing. |
-| **Observed stage** | A feature's lifecycle stage per release, as that release's own feature-gate reference shows it (`observed_lifecycle`, S09). The CHANGELOG as a second source is deferred to S10 (ADR-003 D2). |
+| **Observed stage** | A feature's lifecycle stage per release, as that release's own feature-gate reference shows it (`observed_lifecycle`, S09). The CHANGELOG isn't a second source in Phase 1 (ADR-003, changed in the S10-R1 sitting). |
 | **Query mode** | CURRENT, HISTORY, CHANGE or WHY. Determines filters and authority adjustments. |
 | **Release-aligned snapshot** | The state of each in-scope file captured once per Kubernetes release (ADR-002 D1). |
 | **Rename detection (similarity threshold)** | git pairs a deleted file with an added file when their contents are at least N% similar (`R081` means 81%). A lower threshold finds more renames but also pairs unrelated files. Declared signals, such as a site's redirects, are an alternative. |
+| **Supersession** | A conflict between an older and a newer version of the same section of one document. The version valid at the asked-about release wins (ADR-010 D2). |
 | **Temporal confusion** | An answer that mixes facts from different releases, or states an old release's fact as current. Retrieval that ignores release windows invites it (S09). |
 | **Validity window** | The release range and date range during which a document version was the live version. |
 

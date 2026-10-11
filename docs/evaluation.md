@@ -413,6 +413,57 @@ What the runs show:
 - **Input tokens: 260,127 per run, +6,322 (+2.5%) over rerank**, identical in all 3 runs. Output was 15,984–16,210 tokens, of which 634–746 were reasoning.
 - **Each run took 7 min 54 s to 8 min 15 s** and cost $1.36 ($4.09 for the 3).
 
+## Conflicts
+
+S10-R1, 2026-10-11 (UTC). Every answer now carries `conflicts[]` (ADR-010). Retrieval is unchanged, so this section shows what the conflict step finds, not a new retrieval score. Conflict precision and recall need conflict set v0 (S10-T6, T7); the paid 3-run eval is S10-T8.
+
+**The rule line, free.** `HF_HUB_OFFLINE=1 make eval-retrieval` in authority mode prints S09's lines exactly, plus:
+
+```
+Rule conflicts: 5 claim_mismatch (q16 q17 q18 q19 q32), 0 history_date
+```
+
+- **q16–q19:** KEP-4858 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says beta.
+- **q32:** KEP-3299 at 1.28, found only because the claim comes from the KEP version valid at the target release.
+- **Taking each hit's own version instead** gives 6 (q16 q17 q18 q19 q44 q45): KEP-3299 is missed, and q44, q45 are false (an old version claims alpha, observed stable). The sitting predicted q36 and q44; q36 appears under a different reading of "the hit's own version" (any hit's claim vs. all its hits' gates).
+- **Only 36 answerable questions run,** so q20 and q48 (KEP-4858 too) aren't in the line.
+- **history_date fires in hybrid mode only:** `RETRIEVAL_MODE=hybrid` gives `4 claim_mismatch (q16 q17 q18 q19), 1 history_date (q08)`, KEP-2579's "v1.23 … 2021-11-03" (released 2021-12-07, 34 days off).
+
+**The smoke run, paid.** `conflict-smoke-20261011T083501Z`: 13 questions, 1 run, `git_dirty: true` (run before the T5 commit, on T4's commit `3b6738d` plus T5's uncommitted code).
+
+| Measure | conflict-smoke | S09 run 3, same 13 questions |
+|---|---|---|
+| Hits | identical (130 of 130, by rank) | — |
+| AC1, AC2, AC3 | 10/10, 13/13, 3/3 | 10/10, 13/13, 3/3 |
+| False refusals | 0 of 10 | 0 of 10 |
+| Conflicts | 6: 2 rule, 4 model | not recorded |
+| Loser-only answers | 0 | — |
+| Input / output tokens | 78,851 / 6,218 | 71,316 / 4,180 |
+| Cost per question | $0.0338 | $0.0284 |
+| p95 latency (the slowest of 13) | 16.3 s | 11.9 s |
+
+The conflicts found:
+
+| Question | Kind | Found by | Chunks (prevails in bold) | Resolution |
+|---|---|---|---|---|
+| q01 | contradiction | model | **7600** (release page, tier 2) vs. 33023 (KEP-1498) | lower_tier |
+| q01 | contradiction | model | **7600** vs. 33441 (KEP-2572, seed) | lower_tier |
+| q13 | supersession | model | 15760 (old KEP-2799) vs. **16072** (current) | valid_at_target |
+| q13 | supersession | model | 15864 (older KEP-2799) vs. **16072** | valid_at_target |
+| q16 | claim_mismatch | rule | 5 KEP-4858 chunks | observed_beats_claimed |
+| q18 | claim_mismatch | rule | 8 KEP-4858 chunks | observed_beats_claimed |
+
+- **The model's pairs are real disagreements:** "about three times per year" vs. "every 3 months"; KEP-2799's GA planned for 1.26, then 1.29, then 1.30.
+- **Cost +$0.0054 per question (+19%):** the conflicts field and the rules in the prompt add input; listing pairs adds output (+49%).
+- **Latency:** one run of 13, so its p95 is the slowest question (q01). T8's 3 runs of 43 measure it against the 23 s ceiling.
+
+**The demo asks (live, authority mode):**
+
+- **"When was Pod Security Admission's beta released?"** Route CHANGE, no filter. A `history_date` on `kep:2579`: "says v1.23 was released 2021-11-03; the releases table says 2021-12-07". The answer says the release date wins.
+- **"How many Kubernetes minor releases are supported at the same time?"** Route CURRENT. A model `contradiction`: the version-skew page (7201, tier 2, prevails) says three, `versioning.md` (36383, tier 4) says four. The answer says three.
+- **"What are the release stages of strict IP/CIDR validation (KEP-4858)?"** KEP-4858's `claim_mismatch`, as above.
+- **"Is KEP-2572's three-releases-per-year cadence implemented?"** Missed: all 10 hits were KEP-2572 chunks, so there was no docs page to pair it with. The smoke run's q01 did pair KEP-2572 with the release page.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
