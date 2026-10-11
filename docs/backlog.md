@@ -347,7 +347,7 @@ Tasks:
   - ADR-007 D4's format and label check; precision, recall and AC4 per seed in the eval, the summary and the table; `make eval-conflicts` (free).
   - Done when: hand-worked unit tests pass; `make eval-conflicts` on the demo sample prints the R2 contract's lines.
   - Deps: T4.
-- [ ] **S10-T7a `[core]` Draft conflict set v0.**
+- [x] **S10-T7a `[core]` Draft conflict set v0.**
   - Every disagreement among the 10 results of each golden question and the 2 new questions, plus the 4 seeds; 3 independent passes; the spot-check sheet.
   - Done when: the loader's check passes on the draft; the split rate is reported.
   - Deps: T6.
