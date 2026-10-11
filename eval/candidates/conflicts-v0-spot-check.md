@@ -23,9 +23,10 @@ one found by only 1 pass is *disputed* and is listed below for you to keep or dr
 - **Agreement check:** a split rate above 0.20, or a disagreement you find missing in
   the whole question (item 5), makes precision provisional: T8's write-up then gives each
   unmatched flagged conflict a verdict and reports precision both ways. **The split rate is above 0.20, so precision is already provisional.**
-- **The draft:** 55 conflicts (4 seeds): claim_mismatch 7, history_date 2, texts 46.
+- **The draft:** 62 conflicts (4 seeds): claim_mismatch 7, history_date 2, texts 53.
 - **Disputed:** 25.
-- **Your time:** 35 items, about 90 minutes.
+- **Groups holding 2+ facts:** 7 (section 4b: one pass's conflicts are kept separate; say if another pass's fact should be added).
+- **Your time:** 42 items, about 105 minutes.
 
 For each item, check: (1) the two sides really give different values for the same fact, (2) the
 note quotes both values right, (3) the sides name the right sources. Mark ✅ or write what's
@@ -180,7 +181,7 @@ Your verdict:
 
 Drawn with one `random.Random(20261011)`: one non-seed conflict of each kind, then 1 more.
 
-## k23 · q20 · claim_mismatch
+## k24 · q20 · claim_mismatch
 
 **Question q20:** How many production clusters store non-canonical IP addresses in etcd? (settles at release 1.37)
 
@@ -197,7 +198,7 @@ Your verdict:
 
 ---
 
-## k54 · c02 · history_date
+## k61 · c02 · history_date
 
 **Question c02:** When was Pod Security Admission's beta released? (settles at release 1.37)
 
@@ -216,28 +217,21 @@ Your verdict:
 
 ---
 
-## k29 · q23 · texts
+## k32 · q23 · texts
 
 **Question q23:** Before v1.28, how many minor versions older than kube-apiserver could the kubelet be? (settles at release 1.27)
 
 **Kind:** `texts`
 
-**Note:** The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the version skew section says kube-proxy 'may be up to two' (1.27) or 'up to three' (1.28+) 'minor versions older or newer than the kubelet instance it runs alongside'. Also: The 1.27 version skew policy says kube-proxy 'may be up to two minor versions older or newer than the kubelet instance it runs alongside'; the 1.28+ version says 'up to three minor versions older or newer'.
+**Note:** The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the version skew section says kube-proxy 'may be up to two' (1.27) or 'up to three' (1.28+) 'minor versions older or newer than the kubelet instance it runs alongside'.
 
 - **Drawn as:** texts within one document. Found by passes 1, 2, 3.
-- **Merged:** 4 pass conflicts have the same question, kind and documents, so the merge made them one conflict (its note joins the notes of the pass with the most of them, with "Also:"). Their notes:
-  - pass1:k035: The older upgrade order says kube-proxy "must be the same minor version as kubelet"; the 1.27 skew policy says kube-proxy may be up to two minor versions older or newer than its kubelet, and the newer policy says up to three.
-  - pass2:k031: The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the version skew section says kube-proxy 'may be up to two' (1.27) or 'up to three' (1.28+) 'minor versions older or newer than the kubelet instance it runs alongside'.
-  - pass2:k032: The 1.27 version skew policy says kube-proxy 'may be up to two minor versions older or newer than the kubelet instance it runs alongside'; the 1.28+ version says 'up to three minor versions older or newer'.
-  - pass3:k028: The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the supported-skew section says kube-proxy 'may be up to two [later: three] minor versions older or newer than the kubelet'.
+- **From a group holding 2+ facts:** pass 2's conflicts there are separate draft conflicts (k32, k33); see section 4b.
 
 - **First side:**
   - `web:/docs/setup/release/version-skew-policy/` › `Supported component upgrade order > kube-proxy`
     - rank 6, chunk 7154, releases 1.20–1.20: * kube-proxy must be the same minor version as kubelet on the node. * kube-proxy must not be newer than kube-apiserver. * kube-proxy must be at most two minor versions older than kube-apiserver. Example: If kube-proxy version is {{< ske…
     - rank 7, chunk 7187, releases 1.21–1.26: * kube-proxy must be the same minor version as kubelet on the node. * kube-proxy must not be newer than kube-apiserver. * kube-proxy must be at most two minor versions older than kube-apiserver. Example: If kube-proxy version is {{< ske…
-  - `web:/docs/setup/release/version-skew-policy/` › `Supported version skew > kube-proxy`
-    - rank 3, chunk 7204, releases 1.28–now: * kube-proxy must not be newer than kube-apiserver. * kube-proxy may be up to three minor versions older than kube-apiserver (kube-proxy < 1.25 may only be up to two minor versions older than kube-apiserver). * kube-proxy may be up to three minor versio…
-    - rank 5, chunk 7192, releases 1.27–1.27: kube-proxy must not be newer than kube-apiserver, and may be up to two minor versions older. kube-proxy may be up to two minor versions older or newer than the kubelet instance it runs alongside. Example: * kube-apiserver is at {{< skew cur…
 - **Second side:**
   - `web:/docs/setup/release/version-skew-policy/` › `Supported version skew > kube-proxy`
     - rank 3, chunk 7204, releases 1.28–now: * kube-proxy must not be newer than kube-apiserver. * kube-proxy may be up to three minor versions older than kube-apiserver (kube-proxy < 1.25 may only be up to two minor versions older than kube-apiserver). * kube-proxy may be up to three minor versio…
@@ -247,51 +241,56 @@ Your verdict:
 
 ---
 
-## k34 · q26 · texts
+## k35 · q25 · texts
 
-**Question q26:** Why did Kubernetes extend patch support for minor releases from 9 months to about a year? (settles at release 1.37)
+**Question q25:** When were the legacy apt.kubernetes.io and yum.kubernetes.io package repositories frozen, and when were they removed? (settles at release 1.37)
 
 **Kind:** `texts`
 
-**Note:** KEP-1498's summary sets patch support at '1 year' and its history says '1.19 release and newer will have 1 year support'; its proposal says 'extend the Kubernetes support cadence from 9 months to 14 months' and KEP-3744 says 'up to 14 months'.
+**Note:** Older versions of the pkgs.k8s.io blog say 'The existing packages in the legacy repositories will be available for the foreseeable future'; the newer version, the deprecation announcement and the v1.29 blog say the legacy repositories go away (in 'January of 2024' / 'went away on March 4, 2024').
 
-- **Drawn as:** texts across two or more documents. Found by passes 2, 3.
+- **Drawn as:** texts across two or more documents. Found by passes 1, 2, 3.
+- **From a group holding 2+ facts:** pass 2's conflicts there are separate draft conflicts (k34, k35); see section 4b.
 
 - **First side:**
-  - `kep:1498` › `Kubernetes Yearly Support Period > Summary`
-    - rank 8, chunk 33022, releases 1.20–now: The goal of this KEP is to increase patch-fix support for each Kubernetes release from the current 9 months to 1 year. The primary motivation is to address an end-user request: Business cycles (financial, certification, sales, vacation, HR and others) are overwhelmingly annual, leading …
-  - `kep:1498` › `Kubernetes Yearly Support Period > Implementation History`
-    - rank 10, chunk 33041, releases 1.20–now: …support additionally for 1.18, 1.17, and 1.16 - k-dev list discussion regarding move of this KEP to implementable - implemented state: * 1.19 release and newer will have 1 year support as per this KEP * barring any other changes outside this KEP's implemented state, 1.18 and prior will continue to have the 9 months or N-3 support that was the n…
+  - `web:/blog/2023/08/15/pkgs-k8s-io-introduction/` › `What you need to know about the new package repositories? (Updated on August 31, 2023)`
+    - rank 7, chunk 42191, releases 1.28–1.28: …project only to the community-owned repositories as of the September 13, 2023 cut-off point. Check out the deprecation announcement for more details about this change. - The existing packages in the legacy repositories will be available for the foreseeable future. However, the Kubernetes project can't provide any guarantees on how long is that going to be. The deprecated legacy repositories, and their contents, might be removed a…
+  - `web:/blog/2023/08/15/pkgs-k8s-io-introduction/` › `What you need to know about the new package repositories?`
+    - rank 8, chunk 42215, releases 1.28–1.29: …project only to the community-owned repositories as of the September 13, 2023 cut-off point. Check out the deprecation announcement for more details about this change. - The existing packages in the legacy repositories will be available for the foreseeable future. However, the Kubernetes project can't provide any guarantees on how long is that going to be. The deprecated legacy repositories, and their contents, might be removed a…
+    - rank 9, chunk 42276, releases 1.29–now: …itories have been deprecated as of August 31, 2023, and frozen as of September 13, 2023. Check out the deprecation announcement for more details about this change.~~ - ~~The existing packages in the legacy repositories will be available for the foreseeable future. However, the Kubernetes project can't provide any guarantees on how long is that going to be. The deprecated legacy repositories, and their contents, might be removed a…
+    - rank 10, chunk 42250, releases 1.29–1.29: …itories have been deprecated as of August 31, 2023, and frozen as of September 13, 2023. Check out the deprecation announcement for more details about this change.~~ - ~~The existing packages in the legacy repositories will be available for the foreseeable future. However, the Kubernetes project can't provide any guarantees on how long is that going to be. The deprecated legacy repositories, and their contents, might be removed a…
 - **Second side:**
-  - `kep:1498` › `Kubernetes Yearly Support Period > Proposal`
-    - rank 9, chunk 33027, releases 1.20–now: The proposal is to extend the Kubernetes support cadence from 9 months to 14 months. The 14 months proposed here is essentially 12 months of support and 2 months of upgrade period. NOTE: This follows and formalizes today’s practice of retaining patch br…
-  - `kep:3744` › `KEP-3744: Stay on supported go versions > Motivation`
-    - rank 3, chunk 33747, releases 1.26–now: …ernetes minor versions 3 times a year. * This can be misaligned with new go minor releases by 1-3 months. * Support each Kubernetes minor version with patch releases for up to 14 months, including fixes for CVEs, dependency updates, and fixes for critical bugs. The time to adopt new go minor versions and align with a Kubernetes release means Kubernetes …
+  - `web:/blog/2023/08/15/pkgs-k8s-io-introduction/` › `What you need to know about the new package repositories?`
+    - rank 8, chunk 42215, releases 1.28–1.29: …project only to the community-owned repositories as of the September 13, 2023 cut-off point. Check out the deprecation announcement for more details about this change. - The existing packages in the legacy repositories will be available for the foreseeable future. However, the Kubernetes project can't provide any guarantees on how long is that going to be. The deprecated legacy repositories, and their contents, might be removed a…
+    - rank 9, chunk 42276, releases 1.29–now: …itories have been deprecated as of August 31, 2023, and frozen as of September 13, 2023. Check out the deprecation announcement for more details about this change.~~ - ~~The existing packages in the legacy repositories will be available for the foreseeable future. However, the Kubernetes project can't provide any guarantees on how long is that going to be. The deprecated legacy repositories, and their contents, might be removed a…
+    - rank 10, chunk 42250, releases 1.29–1.29: …itories have been deprecated as of August 31, 2023, and frozen as of September 13, 2023. Check out the deprecation announcement for more details about this change.~~ - ~~The existing packages in the legacy repositories will be available for the foreseeable future. However, the Kubernetes project can't provide any guarantees on how long is that going to be. The deprecated legacy repositories, and their contents, might be removed a…
+  - `web:/blog/2023/08/31/legacy-package-repository-deprecation/` › `(intro, before the first heading)`
+    - rank 2, chunk 42530, releases 1.29–1.30: …r to learn what does this mean for you as an user or distributor, and what steps you may need to take. ℹ️ Update (March 26, 2024): _the legacy Google-hosted repositories went away on March 4, 2024. It's not possible to install Kubernetes packages from the legacy Google-hosted package repositories any longer._
+    - rank 4, chunk 42500, releases 1.28–1.29: Authors: Bob Killen (Google), Chris Short (AWS), Jeremy Rickard (Microsoft), Marko Mudrinić (Kubermatic), Tim Bannister (The Scale Factory) On August 15, 2023, the Kubernetes project announced the general availability of the community-owned package repositories for Debian and RPM packages available at pkgs.k8s.io. The new package reposito…
+    - rank 5, chunk 42545, releases 1.30–now: …r to learn what does this mean for you as an user or distributor, and what steps you may need to take. ℹ️ Update (March 26, 2024): _the legacy Google-hosted repositories went away on March 4, 2024. It's not possible to install Kubernetes packages from the legacy Google-hosted package repositories any longer._
+  - `web:/blog/2023/08/31/legacy-package-repository-deprecation/` › `Timeline of changes`
+    - rank 3, chunk 42549, releases 1.29–now: _(updated on March 26, 2024)_ - 15th August 2023: Kubernetes announces a new, community-managed source for Linux software packages of Kubernetes components - 31st August 2023: _(this announcement)_ Kubernetes formally deprecates the legacy package repositories - 13th September 2023 (approximately): Kubernetes will freeze the legacy packag…
+  - `web:/blog/2023/12/13/kubernetes-v1-29-release/` › `Graduations, deprecations and removals for Kubernetes v1.29 > Deprecations and removals > Legacy Linux package repositories`
+    - rank 1, chunk 43096, releases 1.29–now: …kage repositories for Debian and RPM packages, available at https://pkgs.k8s.io. These legacy repositories were frozen in September of 2023, and will go away entirely in January of 2024. If you are currently relying on them, you must migrate. _This deprecation is not directly related to the v1.29 release._ For more details, including how these changes m…
 
 Your verdict: 
 
 ---
 
-## k22 · q19 · texts
+## k22 · q19 · claim_mismatch
 
 **Question q19:** Why did Kubernetes tighten validation of IP addresses and CIDRs in API fields? (settles at release 1.37)
 
-**Kind:** `texts`
+**Kind:** `claim_mismatch`
 
-**Note:** KEP-4858's older Affected Fields says ipaddr and servicecidr "already have stricter semantics than we propose here (they require canonical form for IPv6 values)"; its newer Affected Fields says they "already have the semantics we propose here", and its Goals require canonical IPv6 form for new fields.
+**Note:** KEP-4858's version valid at 1.37 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says StrictIPCIDRValidation is beta.
 
 - **Drawn as:** 1 more random conflict. Found by passes 1, 2, 3.
 
-- **First side:**
-  - `kep:4858` › `KEP-4858: IP/CIDR Validation Improvements > Proposal > Affected Fields`
-    - rank 8, chunk 30886, releases 1.32–1.35: …in discovery: - endpointslice.endpoints[].addresses[] - in resource: - resourceclaim.status.devices[].networkData.ips[] ipaddr.metadata.name and servicecidr.spec.cidrs[] already have stricter semantics than we propose here (they require canonical form for IPv6 values), so while their validation functions will be updated to make better use of shared code, their semantics will not actually change. resourceclaim.status.devices[].networkD…
-    - rank 9, chunk 30998, releases 1.35–now: …in discovery: - endpointslice.endpoints[].addresses[] - in resource: - resourceclaim.status.devices[].networkData.ips[] ipaddr.metadata.name and servicecidr.spec.cidrs[] already have the semantics we propose here, so while their validation functions will be updated to make better use of shared code, their semantics will not actually change. Similarly, resourceclaim.status.devices…
-- **Second side:**
-  - `kep:4858` › `KEP-4858: IP/CIDR Validation Improvements > Proposal > Affected Fields`
-    - rank 8, chunk 30886, releases 1.32–1.35: …in discovery: - endpointslice.endpoints[].addresses[] - in resource: - resourceclaim.status.devices[].networkData.ips[] ipaddr.metadata.name and servicecidr.spec.cidrs[] already have stricter semantics than we propose here (they require canonical form for IPv6 values), so while their validation functions will be updated to make better use of shared code, their semantics will not actually change. resourceclaim.status.devices[].networkD…
-    - rank 9, chunk 30998, releases 1.35–now: …in discovery: - endpointslice.endpoints[].addresses[] - in resource: - resourceclaim.status.devices[].networkData.ips[] ipaddr.metadata.name and servicecidr.spec.cidrs[] already have the semantics we propose here, so while their validation functions will be updated to make better use of shared code, their semantics will not actually change. Similarly, resourceclaim.status.devices…
-  - `kep:4858` › `KEP-4858: IP/CIDR Validation Improvements > Motivation > Goals`
-    - rank 2, chunk 30993, releases 1.35–now: - Update the validation of all IP-valued and CIDR-valued API fields in core (k8s.io/api) types to require stricter validation, to avoid potential security problems with ambiguously-parsable IPs/CIDRs. - Don't require pre-existing invalid fields to be fixed on unrelated updates. E.g., if an existing Service has clusterIP: 172.030.099.099, …
+- From the database: `kep:4858`'s version valid at 1.37 (releases 1.37–now) claims **implemented/stable**, latest milestone v1.38; its gates ['StrictIPCIDRValidation']; the feature-gate reference at 1.37: **`StrictIPCIDRValidation` beta (high)**.
+- `kep:4858` among the results: ranks 2, 3, 4, 7, 8, 9, 10.
+- The gate page among the results, rank 5, chunk 10420, releases 1.36–now: stages: - stage: alpha defaultValue: false fromVersion: '1.33' toVersion: '1.35' - stage: beta defaultValue: true fromVersion: '1.36' Use stricter validation for fields containing IP addresses and CIDR values. In particular, with this feature gate enabled, octets within IPv4 addresses are not allowed to have any leading…
+- The gate page among the results, rank 6, chunk 10419, releases 1.33–1.35: stages: - stage: alpha defaultValue: false fromVersion: '1.33' Use stricter validation for fields containing IP addresses and CIDR values. In particular, with this feature gate enabled, octets within IPv4 addresses are not allowed to have any leading 0s, and IPv4-mapped IPv6 values (e.g. ::ffff:192.168.0.1) are forbidde…
 
 Your verdict: 
 
@@ -1314,6 +1313,417 @@ Your verdict:
 
 ---
 
+# 4b. Groups holding 2+ facts
+
+These groups (same question, kind and documents) hold 2+ different facts. To keep agreeing sources
+off opposite sides, the draft keeps the conflicts of the pass with the most of them (ties: the
+lowest-numbered pass), each with its own sides and note. The other passes' conflicts are listed so
+you can add a fact that pass lacked: write keep, or add and the pass:id, and copy its YAML.
+
+## q02 · texts · draft k07, k08
+
+**Question q02:** What was the Kubernetes release cadence before 2021?
+
+Found by passes 1, 2, 3. The draft keeps pass 1's conflicts:
+
+- **k07** (from pass1:k004): KEP-2572's proposed 3-release schedule has 2021's third release run from August 30 (week 35) to December 14 (week 50); the cadence blog's schedule has 1.23 run from August 23 to December 07.
+- **k08** (from pass1:k005): KEP-2572 still claims implementable/alpha (latest milestone v1.22); the cadence blog says the KEP was merged on April 23, 2021 and Kubernetes will follow a three releases per year cadence starting with 1.22.
+
+The other passes' conflicts in this group:
+
+- **pass2:k004:** The cadence blog's schedule has 1.23 starting 'August 23' and releasing 'December 07'; KEP-2572's proposed 3-release schedule has the third 2021 release (1.23) starting 'August 30' and releasing 'December 14'.
+
+  ```yaml
+    - id: kNN
+      question: q02
+      kind: texts
+      note: "The cadence blog's schedule has 1.23 starting 'August 23' and releasing 'December 07'; KEP-2572's proposed 3-release schedule has the third 2021 release (1.23) starting 'August 30' and releasing 'December 14'."
+      first:
+        - {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "What's changing and when"}
+      second:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal"}
+  ```
+
+- **pass3:k004:** The cadence blog's schedule puts the 1.23 release cycle at 'August 23' to 'December 07'; KEP-2572's proposed 3-release schedule puts the third 2021 release at 'August 30' to 'December 14'.
+
+  ```yaml
+    - id: kNN
+      question: q02
+      kind: texts
+      note: "The cadence blog's schedule puts the 1.23 release cycle at 'August 23' to 'December 07'; KEP-2572's proposed 3-release schedule puts the third 2021 release at 'August 30' to 'December 14'."
+      first:
+        - {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "What's changing and when"}
+      second:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal"}
+  ```
+
+Your verdict (keep, or add pass:id): 
+
+---
+
+## q21 · texts · draft k26, k27
+
+**Question q21:** How long does a Kubernetes minor release receive patch support?
+
+Found by passes 1, 2, 3. The draft keeps pass 3's conflicts:
+
+- **k26** (from pass3:k021): The Releases page, version skew policy, Release Manager Handbook, cherry-pick doc and KEP-1498 history say 1.19+ releases get 'approximately 1 year' of patch support; the Patch Releases page says 'roughly fourteen (14) months', KEP-3744 'up to 14 months' and the versioning doc 'approximately fourteen months'.
+- **k27** (from pass3:k022): KEP-1498's Motivation says each minor release has patch support 'for approximately 9 months'; the current release docs say approximately 1 year (1.19 and newer) or roughly 14 months.
+
+The other passes' conflicts in this group:
+
+- **pass1:k030:** KEP-1498 says each minor release has patch support for approximately 9 months; the releases page, version skew policy, release manager handbook and cherry-pick guide say approximately 1 year for 1.19 and newer, and the patch releases page, KEP-3744 and versioning.md say about 14 months.
+
+  ```yaml
+    - id: kNN
+      question: q21
+      kind: texts
+      note: "KEP-1498 says each minor release has patch support for approximately 9 months; the releases page, version skew policy, release manager handbook and cherry-pick guide say approximately 1 year for 1.19 and newer, and the patch releases page, KEP-3744 and versioning.md say about 14 months."
+      first:
+        - {document: "kep:1498", section: "Kubernetes Yearly Support Period > Motivation"}
+      second:
+        - {document: "web:/docs/setup/release/", section: ""}
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported versions"}
+        - {document: "web:/releases/patch-releases/", section: "Support Period"}
+        - {document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}
+        - {document: "sig-release:release-engineering/handbooks/release-manager.md", section: "Release Manager Handbook > Patch release management"}
+        - {document: "sig-release:release-engineering/versioning.md", section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"}
+        - {document: "community:contributors/devel/sig-release/cherry-picks.md", section: "Overview > Cherry Picks for Unsupported Releases"}
+        - {document: "kep:1498", section: "Kubernetes Yearly Support Period > Implementation History"}
+  ```
+
+- **pass2:k024:** The Releases page, the version skew policy, the Release Manager Handbook, the cherry-pick guide and KEP-1498's history say minor releases get 'approximately 1 year' of patch support; the Patch Releases page says 'roughly fourteen (14) months', KEP-3744 'up to 14 months' and the release versioning doc 'approximately fourteen months'.
+
+  ```yaml
+    - id: kNN
+      question: q21
+      kind: texts
+      note: "The Releases page, the version skew policy, the Release Manager Handbook, the cherry-pick guide and KEP-1498's history say minor releases get 'approximately 1 year' of patch support; the Patch Releases page says 'roughly fourteen (14) months', KEP-3744 'up to 14 months' and the release versioning doc 'approximately fourteen months'."
+      first:
+        - {document: "web:/docs/setup/release/", section: ""}
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported versions"}
+        - {document: "sig-release:release-engineering/handbooks/release-manager.md", section: "Release Manager Handbook > Patch release management"}
+        - {document: "community:contributors/devel/sig-release/cherry-picks.md", section: "Overview > Cherry Picks for Unsupported Releases"}
+        - {document: "kep:1498", section: "Kubernetes Yearly Support Period > Implementation History"}
+      second:
+        - {document: "web:/releases/patch-releases/", section: "Support Period"}
+        - {document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}
+        - {document: "sig-release:release-engineering/versioning.md", section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"}
+  ```
+
+Your verdict (keep, or add pass:id): 
+
+---
+
+## q23 · texts · draft k30, k31
+
+**Question q23:** Before v1.28, how many minor versions older than kube-apiserver could the kubelet be?
+
+Found by passes 1, 2, 3. The draft keeps pass 1's conflicts:
+
+- **k30** (from pass1:k033): The older version skew policy says kubelet "may be up to two minor versions older" than kube-apiserver (and the upgrade order leaves kubelets at most two minors behind); the newer policy says "up to three minor versions older", and the v1.28 blog says the skew expands from n-2 to n-3.
+- **k31** (from pass1:k034): The older version skew policy says kube-proxy "may be up to two minor versions older" ("at most two minor versions older") than kube-apiserver; the newer policy says "up to three minor versions older", and the v1.28 blog says node components move from n-2 to n-3.
+
+The other passes' conflicts in this group:
+
+- **pass2:k029:** Older versions of the version skew policy say kubelet 'may be up to two minor versions older' than kube-apiserver (and the upgrade-order section lets kubelets be left at -1 or -2); the 1.28+ version says 'up to three minor versions older', and the v1.28 blog says the skew expands 'from n-2 to n-3'.
+
+  ```yaml
+    - id: kNN
+      question: q23
+      kind: texts
+      note: "Older versions of the version skew policy say kubelet 'may be up to two minor versions older' than kube-apiserver (and the upgrade-order section lets kubelets be left at -1 or -2); the 1.28+ version says 'up to three minor versions older', and the v1.28 blog says the skew expands 'from n-2 to n-3'."
+      first:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kubelet"}
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kubelet"}
+      second:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kubelet"}
+        - {document: "web:/blog/2023/08/15/kubernetes-v1-28-release/", section: "What's New (Major Themes) > Changes to supported skew between control plane and node versions"}
+  ```
+
+- **pass2:k030:** The 1.27 version skew policy and the upgrade-order section say kube-proxy 'may be up to two minor versions older' / 'must be at most two minor versions older' than kube-apiserver; the 1.28+ version says 'up to three minor versions older', and the v1.28 blog says node components including kube-proxy move 'from n-2 to n-3'.
+
+  ```yaml
+    - id: kNN
+      question: q23
+      kind: texts
+      note: "The 1.27 version skew policy and the upgrade-order section say kube-proxy 'may be up to two minor versions older' / 'must be at most two minor versions older' than kube-apiserver; the 1.28+ version says 'up to three minor versions older', and the v1.28 blog says node components including kube-proxy move 'from n-2 to n-3'."
+      first:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kube-proxy"}
+      second:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}
+        - {document: "web:/blog/2023/08/15/kubernetes-v1-28-release/", section: "What's New (Major Themes) > Changes to supported skew between control plane and node versions"}
+  ```
+
+- **pass3:k026:** Older version skew policy text says kubelet 'may be up to two minor versions older' than kube-apiserver (and the upgrade-order section lets kubelets stay at -1 or -2); the 1.28+ text says 'up to three minor versions older', and the 1.28 release blog says skew expands 'from n-2 to n-3'.
+
+  ```yaml
+    - id: kNN
+      question: q23
+      kind: texts
+      note: "Older version skew policy text says kubelet 'may be up to two minor versions older' than kube-apiserver (and the upgrade-order section lets kubelets stay at -1 or -2); the 1.28+ text says 'up to three minor versions older', and the 1.28 release blog says skew expands 'from n-2 to n-3'."
+      first:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kubelet"}
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kubelet"}
+      second:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kubelet"}
+        - {document: "web:/blog/2023/08/15/kubernetes-v1-28-release/", section: "What's New (Major Themes) > Changes to supported skew between control plane and node versions"}
+  ```
+
+- **pass3:k027:** Older version skew policy text says kube-proxy 'may be up to two minor versions older' than kube-apiserver (and two older or newer than kubelet); the 1.28+ text says 'up to three minor versions' for both, matching the 1.28 blog's n-3.
+
+  ```yaml
+    - id: kNN
+      question: q23
+      kind: texts
+      note: "Older version skew policy text says kube-proxy 'may be up to two minor versions older' than kube-apiserver (and two older or newer than kubelet); the 1.28+ text says 'up to three minor versions' for both, matching the 1.28 blog's n-3."
+      first:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kube-proxy"}
+      second:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}
+        - {document: "web:/blog/2023/08/15/kubernetes-v1-28-release/", section: "What's New (Major Themes) > Changes to supported skew between control plane and node versions"}
+  ```
+
+Your verdict (keep, or add pass:id): 
+
+---
+
+## q23 · texts · draft k32, k33
+
+**Question q23:** Before v1.28, how many minor versions older than kube-apiserver could the kubelet be?
+
+Found by passes 1, 2, 3. The draft keeps pass 2's conflicts:
+
+- **k32** (from pass2:k031): The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the version skew section says kube-proxy 'may be up to two' (1.27) or 'up to three' (1.28+) 'minor versions older or newer than the kubelet instance it runs alongside'.
+- **k33** (from pass2:k032): The 1.27 version skew policy says kube-proxy 'may be up to two minor versions older or newer than the kubelet instance it runs alongside'; the 1.28+ version says 'up to three minor versions older or newer'.
+
+The other passes' conflicts in this group:
+
+- **pass1:k035:** The older upgrade order says kube-proxy "must be the same minor version as kubelet"; the 1.27 skew policy says kube-proxy may be up to two minor versions older or newer than its kubelet, and the newer policy says up to three.
+
+  ```yaml
+    - id: kNN
+      question: q23
+      kind: texts
+      note: "The older upgrade order says kube-proxy \"must be the same minor version as kubelet\"; the 1.27 skew policy says kube-proxy may be up to two minor versions older or newer than its kubelet, and the newer policy says up to three."
+      first:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kube-proxy"}
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}
+      second:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}
+  ```
+
+- **pass3:k028:** The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the supported-skew section says kube-proxy 'may be up to two [later: three] minor versions older or newer than the kubelet'.
+
+  ```yaml
+    - id: kNN
+      question: q23
+      kind: texts
+      note: "The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the supported-skew section says kube-proxy 'may be up to two [later: three] minor versions older or newer than the kubelet'."
+      first:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kube-proxy"}
+      second:
+        - {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}
+  ```
+
+Your verdict (keep, or add pass:id): 
+
+---
+
+## q25 · texts · draft k34, k35
+
+**Question q25:** When were the legacy apt.kubernetes.io and yum.kubernetes.io package repositories frozen, and when were they removed?
+
+Found by passes 1, 2, 3. The draft keeps pass 2's conflicts:
+
+- **k34** (from pass2:k033): The v1.29 release blog says the legacy package repositories 'will go away entirely in January of 2024'; the deprecation announcement's update and timeline and the pkgs.k8s.io blog say they 'went away on March 4, 2024'.
+- **k35** (from pass2:k034): Older versions of the pkgs.k8s.io blog say 'The existing packages in the legacy repositories will be available for the foreseeable future'; the newer version, the deprecation announcement and the v1.29 blog say the legacy repositories go away (in 'January of 2024' / 'went away on March 4, 2024').
+
+The other passes' conflicts in this group:
+
+- **pass1:k037:** The v1.29 release blog says the legacy repositories "will go away entirely in January of 2024" and the original pkgs.k8s.io announcement says their packages "will be available for the foreseeable future"; the updated deprecation and pkgs.k8s.io posts say the legacy repositories went away on March 4, 2024.
+
+  ```yaml
+    - id: kNN
+      question: q25
+      kind: texts
+      note: "The v1.29 release blog says the legacy repositories \"will go away entirely in January of 2024\" and the original pkgs.k8s.io announcement says their packages \"will be available for the foreseeable future\"; the updated deprecation and pkgs.k8s.io posts say the legacy repositories went away on March 4, 2024."
+      first:
+        - {document: "web:/blog/2023/12/13/kubernetes-v1-29-release/", section: "Graduations, deprecations and removals for Kubernetes v1.29 > Deprecations and removals > Legacy Linux package repositories"}
+        - {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories? (Updated on August 31, 2023)"}
+        - {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories?"}
+      second:
+        - {document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: ""}
+        - {document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: "Timeline of changes"}
+        - {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories?"}
+  ```
+
+- **pass3:k029:** The 1.29 release blog says the legacy repositories 'will go away entirely in January of 2024'; the deprecation blog's update and timeline and the pkgs.k8s.io post say they 'went away on March 4, 2024'.
+
+  ```yaml
+    - id: kNN
+      question: q25
+      kind: texts
+      note: "The 1.29 release blog says the legacy repositories 'will go away entirely in January of 2024'; the deprecation blog's update and timeline and the pkgs.k8s.io post say they 'went away on March 4, 2024'."
+      first:
+        - {document: "web:/blog/2023/12/13/kubernetes-v1-29-release/", section: "Graduations, deprecations and removals for Kubernetes v1.29 > Deprecations and removals > Legacy Linux package repositories"}
+      second:
+        - {document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: ""}
+        - {document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: "Timeline of changes"}
+        - {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories?"}
+  ```
+
+Your verdict (keep, or add pass:id): 
+
+---
+
+## q27 · texts · draft k40, k41
+
+**Question q27:** What did the SIG Release feedback survey on the three-releases-per-year cadence find?
+
+Found by passes 1, 2, 3. The draft keeps pass 1's conflicts:
+
+- **k40** (from pass1:k041): KEP-2572's Motivation says Kubernetes "currently releases 4 times per year"; its Non-Goals say SIG Release currently produces minor releases "every four months", its Risks say Kubernetes effectively moved to 3 releases per year in 2020, and the cadence blog and 1.23 release interview say three releases per year.
+- **k41** (from pass1:k042): KEP-2572 still claims implementable/alpha (latest milestone v1.22); the cadence blog and the 1.23 release interview say the move to three releases per year was made and is followed.
+
+The other passes' conflicts in this group:
+
+- **pass2:k039:** KEP-2572's motivation says Kubernetes 'currently releases 4 times per year'; KEP-2572's non-goals say minor releases currently come 'every four months', its risks section says Kubernetes 'effectively moved to a 3 release per year cadence in 2020', and the cadence blog and 1.23 interview describe three releases a year.
+
+  ```yaml
+    - id: kNN
+      question: q27
+      kind: texts
+      note: "KEP-2572's motivation says Kubernetes 'currently releases 4 times per year'; KEP-2572's non-goals say minor releases currently come 'every four months', its risks section says Kubernetes 'effectively moved to a 3 release per year cadence in 2020', and the cadence blog and 1.23 interview describe three releases a year."
+      first:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation"}
+      second:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation > Non-Goals > Accelerated release cycles"}
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > Risks and Mitigations > Unprepared Kubernetes Users"}
+        - {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}
+        - {document: "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/", section: ""}
+  ```
+
+- **pass2:k040:** KEP-2572 says maintained patch release streams 'right now can overlap up to 4'; the 1.23 release interview says 'we support the last three releases' and the cadence blog speaks of 'previous three releases being supported'.
+
+  ```yaml
+    - id: kNN
+      question: q27
+      kind: texts
+      note: "KEP-2572 says maintained patch release streams 'right now can overlap up to 4'; the 1.23 release interview says 'we support the last three releases' and the cadence blog speaks of 'previous three releases being supported'."
+      first:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories > SIG Release members"}
+      second:
+        - {document: "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/", section: ""}
+        - {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}
+  ```
+
+- **pass3:k036:** KEP-2572's Motivation says Kubernetes 'currently releases 4 times per year'; its Non-Goals section says minor releases come 'every four months', its Risks section that Kubernetes 'effectively moved to a 3 release per year cadence in 2020', and the 1.23 interview and cadence blog say three releases a year.
+
+  ```yaml
+    - id: kNN
+      question: q27
+      kind: texts
+      note: "KEP-2572's Motivation says Kubernetes 'currently releases 4 times per year'; its Non-Goals section says minor releases come 'every four months', its Risks section that Kubernetes 'effectively moved to a 3 release per year cadence in 2020', and the 1.23 interview and cadence blog say three releases a year."
+      first:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation"}
+      second:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation > Non-Goals > Accelerated release cycles"}
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > Risks and Mitigations > Unprepared Kubernetes Users"}
+        - {document: "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/", section: ""}
+        - {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}
+  ```
+
+- **pass3:k037:** KEP-2572 says maintained patch release streams 'right now can overlap up to 4'; the 1.23 release interview says 'we support the last three releases' and the cadence blog says 'the previous three releases being supported'.
+
+  ```yaml
+    - id: kNN
+      question: q27
+      kind: texts
+      note: "KEP-2572 says maintained patch release streams 'right now can overlap up to 4'; the 1.23 release interview says 'we support the last three releases' and the cadence blog says 'the previous three releases being supported'."
+      first:
+        - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories > SIG Release members"}
+      second:
+        - {document: "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/", section: ""}
+        - {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}
+  ```
+
+Your verdict (keep, or add pass:id): 
+
+---
+
+## q30 · texts · draft k42, k43
+
+**Question q30:** How do I configure the kube-apiserver to use more than one authorization webhook?
+
+Found by passes 1, 2, 3. The draft keeps pass 1's conflicts:
+
+- **k42** (from pass1:k043): KEP-3221 says cluster administrators "can only enable one webhook" in the authorization chain (kube-apiserver "only allows specifying a single webhook"); the authorization docs say authorization chains "can include multiple webhooks" through the authorization config file.
+- **k43** (from pass1:k044): KEP-3221's example AuthorizationConfiguration uses apiVersion apiserver.config.k8s.io/v1beta1 and connectionInfo type "KubeConfig"; the authorization docs' example uses apiserver.config.k8s.io/v1 and type "KubeConfigFile" (valid values KubeConfigFile, InClusterConfig).
+
+The other passes' conflicts in this group:
+
+- **pass2:k041:** KEP-3221 says administrators 'can only enable one webhook as a part of the authorization chain' and that 'kube-apiserver only allows specifying a single webhook'; the Authorization docs say Kubernetes 'lets you configure authorization chains that can include multiple webhooks' (the example has two Webhook authorizers), and KEP-3221's design 'will allow multiple authorizers of type "Webhook"'.
+
+  ```yaml
+    - id: kNN
+      question: q30
+      kind: texts
+      note: "KEP-3221 says administrators 'can only enable one webhook as a part of the authorization chain' and that 'kube-apiserver only allows specifying a single webhook'; the Authorization docs say Kubernetes 'lets you configure authorization chains that can include multiple webhooks' (the example has two Webhook authorizers), and KEP-3221's design 'will allow multiple authorizers of type \"Webhook\"'."
+      first:
+        - {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Summary"}
+        - {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Proposal > User Stories > Story 1: Protecting installed CRDs"}
+      second:
+        - {document: "web:/docs/reference/access-authn-authz/authorization/", section: "Authorization modes > Configuring the API Server using an authorization config file"}
+        - {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Design Details"}
+  ```
+
+- **pass2:k042:** KEP-3221's example AuthorizationConfiguration uses connectionInfo 'type: KubeConfig' and the CEL path 'request.user.groups'; the Authorization docs' example uses 'type: KubeConfigFile' and 'request.groups'.
+
+  ```yaml
+    - id: kNN
+      question: q30
+      kind: texts
+      note: "KEP-3221's example AuthorizationConfiguration uses connectionInfo 'type: KubeConfig' and the CEL path 'request.user.groups'; the Authorization docs' example uses 'type: KubeConfigFile' and 'request.groups'."
+      first:
+        - {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Proposal > User Stories > Story 2: Preventing unnecessarily nested webhooks"}
+      second:
+        - {document: "web:/docs/reference/access-authn-authz/authorization/", section: "Authorization modes > Configuring the API Server using an authorization config file > Example configuration"}
+  ```
+
+- **pass3:k039:** KEP-3221 says admins 'can only enable one webhook' and kube-apiserver 'only allows specifying a single webhook'; the Authorization page says authorization chains 'can include multiple webhooks' via the authorization config file.
+
+  ```yaml
+    - id: kNN
+      question: q30
+      kind: texts
+      note: "KEP-3221 says admins 'can only enable one webhook' and kube-apiserver 'only allows specifying a single webhook'; the Authorization page says authorization chains 'can include multiple webhooks' via the authorization config file."
+      first:
+        - {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Summary"}
+        - {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Proposal > User Stories > Story 1: Protecting installed CRDs"}
+      second:
+        - {document: "web:/docs/reference/access-authn-authz/authorization/", section: "Authorization modes > Configuring the API Server using an authorization config file"}
+  ```
+
+- **pass3:k040:** KEP-3221's example config uses 'apiVersion: apiserver.config.k8s.io/v1beta1' and connectionInfo 'type: KubeConfig'; the Authorization page's example uses 'apiserver.config.k8s.io/v1' and 'type: KubeConfigFile'.
+
+  ```yaml
+    - id: kNN
+      question: q30
+      kind: texts
+      note: "KEP-3221's example config uses 'apiVersion: apiserver.config.k8s.io/v1beta1' and connectionInfo 'type: KubeConfig'; the Authorization page's example uses 'apiserver.config.k8s.io/v1' and 'type: KubeConfigFile'."
+      first:
+        - {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Proposal > User Stories > Story 2: Preventing unnecessarily nested webhooks"}
+      second:
+        - {document: "web:/docs/reference/access-authn-authz/authorization/", section: "Authorization modes > Configuring the API Server using an authorization config file > Example configuration"}
+  ```
+
+Your verdict (keep, or add pass:id): 
+
+---
+
 # 5. One whole question
 
 Drawn with `random.Random(20261011).choice` over the 45 pool ids, sorted: **q32**.
@@ -1345,9 +1755,9 @@ Read its 10 results below and check that every disagreement among them is in the
 
 **The draft's conflicts for this question:**
 
-- k38 (claim_mismatch): KEP-3299's version valid at 1.28 claims stable (latest milestone v1.29); the 1.28 feature-gate reference says KMSv2 is beta.
-- k39 (texts): CHANGELOG-1.28 says to "Set --feature-gates=KMSv1=true to use the deprecated KMSv1 feature"; the KMSv1 gate reference says the gate defaulted to true in 1.28 and only to false from 1.29.
-- k40 (texts): The KMS v2 improvements blog says KMS v1 "is currently in beta as of version v1.12"; the KMSv1 gate reference and CHANGELOG-1.28 say KMS v1 is deprecated from 1.28.
+- k45 (claim_mismatch): KEP-3299's version valid at 1.28 claims stable (latest milestone v1.29); the 1.28 feature-gate reference says KMSv2 is beta.
+- k46 (texts): CHANGELOG-1.28 says to "Set --feature-gates=KMSv1=true to use the deprecated KMSv1 feature"; the KMSv1 gate reference says the gate defaulted to true in 1.28 and only to false from 1.29.
+- k47 (texts): The KMS v2 improvements blog says KMS v1 "is currently in beta as of version v1.12"; the KMSv1 gate reference and CHANGELOG-1.28 say KMS v1 is deprecated from 1.28.
 
 Your verdict (missing: none, or a list): 
 
@@ -1362,10 +1772,10 @@ Seed k01 q18: ✅/❌
 Seed k02 q01: ✅/❌
 Seed k03 q08: ✅/❌
 Seed k04 c01: ✅/❌
-k23 q20 (claim_mismatch): ✅/❌
-k54 c02 (history_date): ✅/❌
-k29 q23 (texts within one document): ✅/❌
-k34 q26 (texts across two or more documents): ✅/❌
+k24 q20 (claim_mismatch): ✅/❌
+k61 c02 (history_date): ✅/❌
+k32 q23 (texts within one document): ✅/❌
+k35 q25 (texts across two or more documents): ✅/❌
 k22 q19 (1 more random conflict): ✅/❌
 d01 q01 (disputed): keep/drop
 d02 q01 (disputed): keep/drop
@@ -1392,6 +1802,13 @@ d22 q26 (disputed): keep/drop
 d23 q26 (disputed): keep/drop
 d24 q34 (disputed): keep/drop
 d25 q45 (disputed): keep/drop
+Group q02 (k07, k08, 2+ facts): keep / add <pass:id>
+Group q21 (k26, k27, 2+ facts): keep / add <pass:id>
+Group q23 (k30, k31, 2+ facts): keep / add <pass:id>
+Group q23 (k32, k33, 2+ facts): keep / add <pass:id>
+Group q25 (k34, k35, 2+ facts): keep / add <pass:id>
+Group q27 (k40, k41, 2+ facts): keep / add <pass:id>
+Group q30 (k42, k43, 2+ facts): keep / add <pass:id>
 Whole question q32: missing: none / <list>
 Anthropic console balance (Plans & Billing): US$____
 ```
