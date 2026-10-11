@@ -444,6 +444,8 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T7: authority mode's weights are null outside it.
             "authority_boost": None,
             "authority_demote": None,
+            # S10-T2: the rule-found conflicts' date tolerance, in every mode (the default).
+            "history_date_tolerance_days": 7,
             "generation_model": "claude-opus-5-5",
             "generation_effort": "medium",
             "generation_max_tokens": 16000,

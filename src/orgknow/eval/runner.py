@@ -13,8 +13,9 @@ crash. No Langfuse trace: the results folder is the record.
 `score_retrieval_only` (S07-T3, `make eval-retrieval`) runs the same label check and retrieval,
 from stored vectors only, and scores the hits with no answer call: free, and it writes nothing. It
 also times each question's retrieval (S08-T4), which `timing_line` reports, counts the S09 time
-metrics (S09-T3), which `time_line` reports, and authority selection and the CURRENT questions'
-MRR (S09-T7), which `authority_line` reports.
+metrics (S09-T3), which `time_line` reports, authority selection and the CURRENT questions' MRR
+(S09-T7), which `authority_line` reports, and each question's rule-found conflicts (S10-T2), which
+`conflict_line` reports.
 
 Both read each labeled document's tier (S09-T7): its newest version's, at the latest release.
 `run` writes each question's label tiers in its row, so the summary can count authority selection.
@@ -72,6 +73,7 @@ from orgknow.eval.metrics import (
     stale_count,
     temporal_count,
 )
+from orgknow.generation.conflicts import Conflict, rule_conflicts
 from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
 from orgknow.retrieval.authority import kep_gates, tier
@@ -114,6 +116,8 @@ class RunSettings(BaseModel):
     # S09-T7: authority mode's weights; None in other modes and older folders.
     authority_boost: float | None = None
     authority_demote: float | None = None
+    # S10-T2: the rule-found conflicts' date tolerance, in every mode; None in older folders.
+    history_date_tolerance_days: int | None = None
     generation_model: str
     generation_effort: str
     generation_max_tokens: int
@@ -277,6 +281,8 @@ class RetrievalScores(BaseModel):
     authority: Rate | None
     current_mrr: float | None  # the mean MRR of the golden CURRENT questions; None with none
     router: RouterStats | None  # temporal and authority modes only (S09-T4)
+    # Each answerable question's id and its rule-found conflicts (S10-T2), in file order.
+    rule_conflicts: list[tuple[str, list[Conflict]]]
 
 
 def golden_window(question: Question) -> GoldenWindow | None:
@@ -576,6 +582,7 @@ def run(
             history_window_slack=settings.history_window_slack if routed_mode else None,
             authority_boost=settings.authority_boost if authority_mode else None,
             authority_demote=settings.authority_demote if authority_mode else None,
+            history_date_tolerance_days=settings.history_date_tolerance_days,
             generation_model=settings.generation_model,
             generation_effort=settings.generation_effort,
             generation_max_tokens=settings.generation_max_tokens,
@@ -665,8 +672,9 @@ def score_retrieval_only(
     file order, each question's retrieve time in seconds (S08-T4: the wall time of the
     `retrieve` call, rerank included), the stale and temporal counts (S09-T3) and authority
     selection (S09-T7) over the top K hits, as `summarize` counts them, the CURRENT questions'
-    mean MRR, and in temporal and authority modes the routes' counts for `router_line` (S09-T4;
-    None in other modes). No Voyage call, no Anthropic call, nothing written.
+    mean MRR, in temporal and authority modes the routes' counts for `router_line` (S09-T4;
+    None in other modes), and each question's rule-found conflicts (S10-T2, `rule_conflicts` on
+    its hits). No Voyage call, no Anthropic call, nothing written.
 
     Raises GoldenSetError and EvalError as `run` does, and EvalError when a question has no
     stored vector, or in temporal and authority modes no stored route: this command never embeds
@@ -701,6 +709,7 @@ def score_retrieval_only(
     by_labels: list[AuthorityQuestion] = []  # for authority selection
     current_mrr: list[float] = []  # the CURRENT questions' MRR
     records: list[tuple[Question, RouteRecord]] = []  # for the router line
+    conflicts: list[tuple[str, list[Conflict]]] = []  # for the rule-conflict line
     for question in questions:
         route = routes.get(question_key(question.question))
         if route is not None:
@@ -708,6 +717,7 @@ def score_retrieval_only(
         start = time.monotonic()
         hits = retrieve(question.question, stored, conn, settings, reranker, route)
         retrieve_s.append(time.monotonic() - start)
+        conflicts.append((question.id, rule_conflicts(conn, hits, settings)))
         metrics = score_retrieval(question, hits, settings.retrieval_top_k)
         if metrics is not None:  # always: an answerable question has labels (ADR-007)
             scores.append(metrics)
@@ -726,6 +736,7 @@ def score_retrieval_only(
         authority=_rate_of(authority_count(by_labels)),
         current_mrr=_mean(current_mrr),
         router=router_stats(records) if records else None,
+        rule_conflicts=conflicts,
     )
 
 
@@ -768,8 +779,8 @@ def router_stats(records: Sequence[tuple[Question, RouteRecord]]) -> RouterStats
 def retrieval_report(settings: Settings, scores: Sequence[RetrievalMetrics]) -> str:
     """`make eval-retrieval`'s first two lines (S07-R1, S08-R1, S09-R1, S09-R2, pinned formats):
     the mode and its settings, then the metric means over the answerable questions. `time_line`,
-    `authority_line`, `router_line` (temporal and authority modes only) and `timing_line`
-    follow."""
+    `authority_line`, `router_line` (temporal and authority modes only), `conflict_line` and
+    `timing_line` follow."""
     hybrid = (
         f"candidates {settings.retrieval_candidates}, k {settings.rrf_k}, "
         f"width {settings.hnsw_ef_search}"
@@ -874,6 +885,19 @@ def router_line(stats: RouterStats) -> str:
         f"({stats.extra} extra)  Plans: {stats.current_only} current-only, "
         f"{stats.windowed} windowed, {stats.unfiltered} unfiltered"
     )
+
+
+def conflict_line(conflicts: Sequence[tuple[str, Sequence[Conflict]]]) -> str:
+    """`make eval-retrieval`'s rule-conflict line (S10-R1, pinned format), after the router line
+    (after the authority line in the modes with no route): per rule kind, how many conflicts (one
+    per KEP, or per history line, per question), then the ids of the questions holding one, in
+    `conflicts`' order. A kind with none has no list."""
+    parts = []
+    for kind in ("claim_mismatch", "history_date"):
+        count = sum(1 for _, found in conflicts for conflict in found if conflict.kind == kind)
+        ids = [qid for qid, found in conflicts if any(c.kind == kind for c in found)]
+        parts.append(f"{count} {kind} ({' '.join(ids)})" if ids else f"{count} {kind}")
+    return f"Rule conflicts: {', '.join(parts)}"
 
 
 def summarize(

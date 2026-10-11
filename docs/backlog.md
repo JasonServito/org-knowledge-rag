@@ -325,7 +325,7 @@ Tasks:
 - **Metrics to move:** conflict precision and recall on conflict set v0 (thresholds set in T8); AC4 passes (4 of 4 seeds). Retrieval metrics unchanged. Plus an ablation row.
 
 - [x] **S10-T1 `[core]` ADR-010: conflict detection method.** Decided in the S10-R1 sitting (2026-10-11).
-- [ ] **S10-T2 `[core]` KEP metadata conflicts.**
+- [x] **S10-T2 `[core]` KEP metadata conflicts.**
   - `claim_mismatch` (the claim of the KEP version valid at the target release vs. its observed stage) and `history_date` (a KEP "v1.N … released" line vs. the `releases` table), on each question's hits.
   - Done when: hand-worked unit tests pass; `make eval-retrieval` prints the sitting's rule-conflict line.
 - [ ] **S10-T3 `[core]` Kind and resolution of a pair.**

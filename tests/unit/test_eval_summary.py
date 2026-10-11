@@ -1,7 +1,7 @@
 """The summary's p95 latencies and cost per question (S08-T3), its stale and temporal counts
 (S09-T3), its authority selection (S09-T7), and `make eval-resummarize`, from hand-built rows; and
-`make eval-retrieval`'s timing line (S08-T4), time line (S09-T3) and authority line (S09-T7), from
-hand-written values.
+`make eval-retrieval`'s timing line (S08-T4), time line (S09-T3), authority line (S09-T7) and
+rule-conflict line (S10-T2), from hand-written values.
 
 Every expected value is by hand: a nearest-rank p95 is the value at sorted index
 ceil(n * 0.95) - 1 (0-based), a median of an even count is the mean of the 2 middle values, a
@@ -27,12 +27,14 @@ from orgknow.eval.runner import (
     RouterStats,
     Summary,
     authority_line,
+    conflict_line,
     resummarize,
     router_line,
     summarize,
     time_line,
     timing_line,
 )
+from orgknow.generation.conflicts import Conflict, ConflictKind
 from orgknow.generation.schema import TokenUsage
 from orgknow.retrieval.router import TimeScope
 from orgknow.settings import Settings
@@ -502,3 +504,49 @@ def test_the_authority_line(
     authority: Rate | None, current_mrr: float | None, expected: str
 ) -> None:
     assert authority_line(authority, current_mrr) == expected
+
+
+# `make eval-retrieval`'s rule-conflict line (S10-T2, pinned format). The conflicts are hand-built:
+# the line reads only their kinds.
+
+
+def _conflict(kind: ConflictKind) -> Conflict:
+    return Conflict(
+        kind=kind,
+        found_by="rule",
+        chunk_ids=[1],
+        documents=["kep:4858"],
+        summary="s",
+        resolution="observed_beats_claimed",
+        prevails=None,
+    )
+
+
+CLAIM, HISTORY = _conflict("claim_mismatch"), _conflict("history_date")
+
+
+@pytest.mark.parametrize(
+    ("conflicts", "expected"),
+    [
+        # The run contract's pinned line: one claim_mismatch in each of 5 questions, in file order.
+        (
+            [
+                ("q01", []),
+                *[(qid, [CLAIM]) for qid in ("q16", "q17", "q18", "q19")],
+                ("q21", []),
+                ("q32", [CLAIM]),
+            ],
+            "Rule conflicts: 5 claim_mismatch (q16 q17 q18 q19 q32), 0 history_date",
+        ),
+        # A question with 2 claim mismatches counts 2 and is listed once; both kinds listed.
+        (
+            [("q05", [CLAIM, HISTORY]), ("q07", [CLAIM, CLAIM])],
+            "Rule conflicts: 3 claim_mismatch (q05 q07), 1 history_date (q05)",
+        ),
+        # None at all, and no questions.
+        ([("q01", [])], "Rule conflicts: 0 claim_mismatch, 0 history_date"),
+        ([], "Rule conflicts: 0 claim_mismatch, 0 history_date"),
+    ],
+)
+def test_the_rule_conflict_line(conflicts: list[tuple[str, list[Conflict]]], expected: str) -> None:
+    assert conflict_line(conflicts) == expected

@@ -157,7 +157,8 @@ class Authority(BaseModel):
 
 class NewestVersion(BaseModel):
     """A document's newest version (latest date window), as much as its tier reads (S09-T6): for
-    the golden labels' tiers (S09-T7)."""
+    the golden labels' tiers (S09-T7). Also its newest version valid at a release, for a KEP's
+    claim and its gates (S10-T2: `kep_versions_at`)."""
 
     canonical_id: str
     source_type: str
