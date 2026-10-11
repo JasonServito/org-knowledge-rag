@@ -119,7 +119,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S10-R1: rule-found and model-found conflicts
 
-- **Status:** planned
+- **Status:** PR open
 - **Branch:** `s10-r1-conflicts`
 - **Tasks, in this order:** S10-T2 (KEP metadata conflicts) → S10-T3 (kind and resolution of a pair) → S10-T4 (conflicts in the answer) → S10-T5 (model-found conflicts). T1 (ADR-010) was decided in the sitting.
 - **Closes the slice:** no. T6 (format and metrics), T7 (`[human]` labels) and T8 (the paid eval) follow in R2.
