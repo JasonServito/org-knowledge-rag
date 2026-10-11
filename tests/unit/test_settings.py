@@ -161,9 +161,9 @@ def test_hybrid_retrieval_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> 
 
     settings = Settings(_env_file=None, database_url="x")
 
-    # S07-R1 decision 3; the mode is rerank since S08-T5's eval passed the improvement rule and
-    # the p95 ceiling (S08-R1 decision 4, docs/evaluation.md).
-    assert settings.retrieval_mode == "rerank"
+    # S07-R1 decision 3; the mode is authority since S09-T8's eval (S09-R2 decision 10,
+    # docs/evaluation.md).
+    assert settings.retrieval_mode == "authority"
     assert settings.retrieval_candidates == 20
     assert settings.rrf_k == 60
     assert settings.hnsw_ef_search == 100
@@ -313,9 +313,9 @@ def test_authority_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     settings = Settings(_env_file=None, database_url="x")
 
-    # S09-R2 decision 3: boost 1.25, demote 0.8. The default mode stays rerank until S09-T8.
+    # S09-R2 decision 3: boost 1.25, demote 0.8. The default mode is authority since S09-T8.
     assert (settings.authority_boost, settings.authority_demote) == (1.25, 0.8)
-    assert settings.retrieval_mode == "rerank"
+    assert settings.retrieval_mode == "authority"
 
 
 def test_authority_mode_and_the_weights_range_ends_are_accepted() -> None:

@@ -37,7 +37,7 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 
 | # | Criterion | How it's tested |
 |---|---|---|
-| AC1 | 100% of answered responses have ≥ 1 citation. Each citation resolves to a stored chunk with source URL, release/date, `source_type` and tier. | Eval harness schema check. Tier joins citations in S09 (S04-R2 decision 5); until then the check covers the other fields (S06-R1 sitting, decision 4) |
+| AC1 | 100% of answered responses have ≥ 1 citation. Each citation resolves to a stored chunk with source URL, release/date, `source_type` and tier. | Eval harness schema check. Since S09-T6 it also requires each citation's tier, or the superseded-proposal flag for a withdrawn, rejected or replaced KEP (S04-R2 decision 5; S09-R2) |
 | AC2 | 0 fabricated citations: no chunk IDs or URLs that aren't in the retrieved evidence | Eval harness |
 | AC3 | All seed UNANSWERABLE questions return `insufficient_evidence` with a reason. This includes the 4 gated-Google-Doc cases. | Golden set |
 | AC4 | On the 4 seed conflict cases, the answer surfaces the conflict (claimed vs. observed, or old vs. new) rather than asserting one side | Golden set, conflict subset |
@@ -66,10 +66,15 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 | False refusals | 2–3 of 36 | No more than the baseline's range |
 | p95 latency, as the eval measures it (retrieve + answer; the question vector is stored) | 9.4–11.3 s | ≤ 23 s (2× the baseline) |
 | Cost per question (mean) | $0.029 | ≤ $0.06 (2× the baseline) |
+| Stale-result rate (lower is better) | 0.390 (39 of 100 CURRENT hits) | ≤ 0.01 (S09: 0 of 100; 1/100 = 0.01) |
+| Temporal accuracy | 0.344 (31 of 90 dated HISTORY hits) | ≥ 0.51 (S09: 47 of 90; 46/90 = 0.511, rounded down) |
+| Authority-selection accuracy | 0.333 (3 of 9 CURRENT questions) | ≥ 0.88 (S09: 9 of 9; 8/9 = 0.889, rounded down) |
+| Router accuracy | n/a (no router) | ≥ 0.90, i.e. ≥ 33 of 36 (ADR-009; S09: 35 of 36) |
 
 - **A stage improves its target metric (AC7)** when that metric rises by at least 0.03 (about one question's worth), no other retrieval metric drops by more than 0.03, and AC1–AC3 stay at or above, and false refusals at or below, the baseline's 3-run range. A paired statistical test is the upgrade once a golden set passes ~100 questions.
 - **The +0.08 targets are about 3 questions' worth**, one rule for every metric. Hybrid search and reranking gains on this corpus are unknown, so a target that proves too easy or out of reach is revised in writing.
-- **Metrics not measured yet get their threshold in the slice that first measures them:** stale-result rate, temporal accuracy, authority-selection accuracy and router accuracy (S09); conflict precision/recall (S10); faithfulness once a grader exists.
+- **The 4 S09 rows come from the final S09 mode, not the dense baseline** (S09-R2 decision 5; S09-T8, 2026-10-11): `authority`'s result over its 3 runs, loosened by one unit of its own count (1 hit or 1 question), rounded to 2 decimals toward the loose side. Router accuracy keeps ADR-009's ≥ 0.90. Their dense column is from `make eval-retrieval` (free).
+- **Metrics not measured yet get their threshold in the slice that first measures them:** conflict precision/recall (S10); faithfulness once a grader exists.
 
 ## Golden set v0
 

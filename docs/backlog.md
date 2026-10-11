@@ -316,7 +316,7 @@ Tasks:
   - An `authority` mode: ×1.25 / ×0.8 on the reranker's probability, per ADR-003 D4; the metric with CURRENT MRR beside it.
   - Done when: hand-worked unit tests pass; `make eval-retrieval` prints the sitting's numbers in all 5 modes; the flipped-tier check matches.
   - Deps: T4, T6.
-- [ ] **S09-T8 `[commodity]` S09 eval run.** A free gate first, then 3 paid runs, the row, the write-up, the S09 metric thresholds (by the R2 sitting's rule). Deps: T7.
+- [x] **S09-T8 `[commodity]` S09 eval run.** A free gate first, then 3 paid runs, the row, the write-up, the S09 metric thresholds (by the R2 sitting's rule). Deps: T7.
 
 ### ⬜ S10 Conflict detection *(Stage 7)*
 

@@ -30,8 +30,9 @@ class Settings(BaseSettings):
     corpus_cache_dir: Path = Path("~/corpus_cache/org-knowledge-rag")
     # The manifest `scopes:` entry `make ingest` reads (S05-R1: `full`; `s04` is kept).
     ingest_scope: str = "full"
-    # KEP claim synonyms, applied to claimed_status and claimed_stage. ADR-003 D5 allows only
-    # this one; any other unknown value is stored as written.
+    # Status synonyms (ADR-003 D5), applied to KEP claims (claimed_status and claimed_stage) and
+    # to the feature-gate stages `make lifecycle` reads. ADR-003 D5 allows only this one; any
+    # other unknown value is stored as written.
     claim_synonyms: dict[str, str] = {"GA": "stable"}
     # The largest chunk body, in tokens estimated as characters / 4 (S04-R1 decision 5). A longer
     # list or pipe table is cut between items or rows (S05-R3 decision 1); any other longer block
@@ -60,9 +61,9 @@ class Settings(BaseSettings):
     # whole fused pool, reordered by a cross-encoder), `temporal` (rerank, with both searches
     # filtered by the question's route: ADR-009, ADR-003 D4) or `authority` (temporal, with the
     # reranked pool reordered by the route's authority weights: ADR-003 D4 as changed in S09-R2).
-    # `rerank` since S08-T5's eval passed the improvement rule and the p95 latency ceiling (S08-R1
-    # decision 4, docs/evaluation.md); it stays the default until S09-T8's eval.
-    retrieval_mode: Literal["dense", "hybrid", "rerank", "temporal", "authority"] = "rerank"
+    # `authority` since S09-T8's eval passed the improvement rule against rerank (S09-R2 decision
+    # 10 chose it over temporal; docs/evaluation.md); `rerank` from S08-T5's eval before it.
+    retrieval_mode: Literal["dense", "hybrid", "rerank", "temporal", "authority"] = "authority"
     # Hybrid, rerank, temporal and authority: how many texts each search, dense and lexical,
     # returns before fusion (decision 3).
     retrieval_candidates: int = Field(default=20, ge=1, le=1000)
