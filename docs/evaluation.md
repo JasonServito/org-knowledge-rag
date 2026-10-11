@@ -361,7 +361,7 @@ S09-T8, 2026-10-10 and 2026-10-11 (UTC). Rerank plus both S09 stages:
 | Cost per question | $0.032 | $0.0316–0.0317 | $0.031 ($0.0307–0.0309) |
 | Errors | 0 | none | 0 |
 
-Rerank's stale, temporal, authority and CURRENT MRR values are from `make eval-retrieval` (free; the same hits as its paid runs, which predate these metrics).
+Rerank's stale, temporal, authority and CURRENT MRR values are from `make eval-retrieval` (free). It gives the same 4 retrieval metrics as rerank's paid runs, which predate these metrics; their hits weren't compared one by one.
 
 **The improvement rule** against rerank, on the 3-run means, with the 3 S09 metrics as the targets (S09-R2, pinned T8). Changes are computed before rounding.
 
@@ -424,7 +424,7 @@ What the runs show:
 - **Authority selection is n/a for the same runs.** Their rows don't record label tiers or hit tiers (S09-T7). `make eval-retrieval` scores it for any mode, free.
 - **The dense baseline's run 3 says `git_dirty: true`.** Its only changed tracked file was the ablation table, which run 2 had just rewritten. The code was the same commit.
   - Since S07 the dirty check ignores `eval/results/`. All 3 hybrid runs and all 3 rerank runs say `git_dirty: false`.
-- **v0 isn't a clean test of hybrid or rerank.** v1 is the clean test.
+- **v0 isn't a clean test of hybrid, rerank or authority.** v1 is the clean test.
   - Hybrid: about 30 retrieval configurations were tried on v0 in the S07 sitting before this one was chosen, so part of the +0.060 MRR may fit v0 only.
   - Rerank: ~9 setups (3 models × 3 pool sizes) were tried on v0 in the S08 sitting, and Recall@10 was named the target after they were seen, so part of the +0.134 Recall@10 may fit v0 only.
   - Authority: the filter's ±1 release slack (against the exact window, S09-R1) and the weights (4 variants, S09-R2) were chosen on v0, so part of the S09 gains may fit v0 only.

@@ -284,7 +284,7 @@ Tasks:
   - Done when: the row and its spread are committed; `docs/evaluation.md` states pass or fail per condition with numbers.
   - Deps: T2, T3.
 
-### 🟨 S09 Temporal and authority-aware retrieval *(Stage 6)*
+### ✅ S09 Temporal and authority-aware retrieval *(Stage 6)*
 
 - **Outcome:** query modes plus validity filtering plus ADR-003 authority adjustments.
 - **Slice doc:** `docs/slices/S09-temporal-authority.md`
@@ -318,7 +318,7 @@ Tasks:
   - Deps: T4, T6.
 - [x] **S09-T8 `[commodity]` S09 eval run.** A free gate first, then 3 paid runs, the row, the write-up, the S09 metric thresholds (by the R2 sitting's rule). Deps: T7.
 
-### ⬜ S10 Conflict detection *(Stage 7)*
+### 🟨 S10 Conflict detection *(Stage 7)*
 
 - **Outcome:** `conflicts[]` populated from deterministic sources (`claim_mismatch`, supersession) plus a cross-document check.
 - **Metrics:** conflict precision/recall on the 4 seed conflict cases and more. AC4 passes.

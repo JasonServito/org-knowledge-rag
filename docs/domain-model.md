@@ -105,6 +105,26 @@ Changed by migration `0003` (S04-R1 sitting, decision 4): **one vector per uniqu
 
 **Search index** (migration `0004`, S04-T5): `embeddings_embedding_hnsw_idx`, HNSW on `embedding` with `vector_cosine_ops`, so it serves cosine distance `<=>`. pgvector's default build settings (`m` 16, `ef_construction` 64). It is approximate: on 20 real queries it returned the exact top 10 (200 of 200). One index holds every model's vectors; the search filters by model.
 
+### `observed_lifecycle`
+
+Added by migration `0006` (S09-T5, ADR-003 D2): each feature gate's stage at each minor release, as that release's own feature-gate reference gives it. `make lifecycle` rebuilds it whole, in one transaction; `make ingest` runs the same step after chunking.
+
+| Column | Type | Notes |
+|---|---|---|
+| `gate` | `text` NOT NULL | The gate's name as that release writes it. No aliasing across renames |
+| `release` | `smallint` NOT NULL → `releases (minor)` | The minor release |
+| `stage` | `text` | `alpha`, `beta`, `stable` or `deprecated`. NULL when the ranges covering the release give 2+ stages, or a range has an unparseable bound. A value outside the vocabulary is kept as written (e.g. `True`) |
+| `status_confidence` | `text` NOT NULL | `high` or `low` (CHECK). `high` needs a non-NULL stage from the vocabulary (CHECK; `stage IS NOT NULL` since resume decision R3c) |
+| | PK `(gate, release)` | One fact per gate per release (S09-R2 decision 6) |
+
+- **Where a release's rows come from:**
+  - 1.20–1.28: the table rows of the `feature-gates` and `feature-gates-removed` page versions valid at that release. A gate on both pages gets both pages' rows.
+  - 1.29+: each `gate:` document's `stages` list, in its version valid at that release.
+- **No row** when no range covers the release, e.g. a gate removed after GA.
+- **Read by** `observations(conn, gates, until_release)`, for each hit's tier and a KEP's effective stage (S09-T6).
+- **Size:** 3,295 rows over 1.20–1.37, 35 of them low.
+- `make reset-corpus` leaves the table in place until the next `make ingest` rebuilds it.
+
 ### Chunk header
 
 Every chunk's `text` is a header, a blank line, then the body. The header holds only fields that are the same in every version of a document (S04-R1 sitting, decision 4):

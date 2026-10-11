@@ -1,9 +1,9 @@
 # S09: Temporal and authority-aware retrieval
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 6 (project-specific metadata retrieval: query modes, temporal/version logic, authority)
 - **Started:** 2026-10-09
-- **Finished:**
+- **Finished:** 2026-10-10
 
 ## Outcome
 
@@ -398,7 +398,7 @@ At most 3 asks; the Langfuse trace links go in the brief.
 
 ### Run S09-R2: authority, and the S09 eval run
 
-- **Status:** PR open; resumed 2026-10-10 for T8 and the retro (resume decisions below)
+- **Status:** PR open (#40); T8 and the retro done after the resume (decisions R1–R3 below)
 - **Branch:** `s09-r2-authority`
 - **Tasks, in this order:** S09-T5 (gate stages) → S09-T6 (tiers per hit) → S09-T7 (`authority` mode and metric) → S09-T8 (the S09 eval run).
 - **Closes the slice:** yes, once the retro (`/slice-retro`) follows.
@@ -650,7 +650,53 @@ RETRIEVAL_MODE=authority HF_HUB_OFFLINE=1 uv run orgknow ask "Does the API serve
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - **S09-R1** (PR #39), 3 tasks in 1 PR; T1 (ADR-009) was decided in the sitting:
+    - **T2:** the router: one Claude call (Opus 5.5, effort low) returns a mode and a time scope; code turns the scope into a release window. 35 of 36 modes and 7 of 9 windows on v0; p50 1.71 s, p95 4.27 s per call.
+    - **T3:** stale-result rate, temporal accuracy and router accuracy in `make eval-retrieval` and the summaries.
+    - **T4:** `temporal` mode: filters inside both searches. Stale "now" hits 38 → 0 of 100; dated "back then" hits in the window 32 → 47 of 90.
+  - **S09-R2** (PR #40), 4 tasks in 1 PR:
+    - **T5:** `observed_lifecycle`: 3,295 gate × release rows over 1.20–1.37, 3,260 high and 35 low. Every per-release count and spot row matched the sitting.
+    - **T6:** a tier on every hit in every mode (0 of 1,440 missing), and a KEP's stage at the asked-about release. The tier is in the prompt and the citations, and AC1 requires it. Current KEPs at 1.37: 82 tier 3, 25 tier 5, 6 superseded.
+    - **T7:** `authority` mode (×1.25 / ×0.8 on the reranker's probability) and authority-selection accuracy: 9 of 9 (temporal 5, rerank 5, hybrid 2, dense 3). The flipped-tier check reproduced the sitting's numbers.
+    - **T8:** 3 paid runs in authority mode: 0 errors, identical hits in all 3.
+  - **Result:** authority passes the improvement rule against rerank, so `RETRIEVAL_MODE` now defaults to `authority`.
+    - Targets: stale rate 0.380 → 0.000; temporal accuracy 0.356 → 0.522; authority selection 0.556 → 1.000.
+    - Retrieval: Recall@10 0.516 → 0.552 (+0.037), Hit@10 0.972 → 1.000, MRR 0.703 → 0.813 (+0.110), nDCG@10 0.489 → 0.535 (+0.046). CURRENT MRR 0.588 → 0.783.
+    - Answers: AC1–AC3 100% in all 3 runs; false refusals 0 of 36 (rerank 1–2).
+    - Speed and cost: p95 14.9 s (14.5–15.3; rerank 14.2); retrieve p95 6.5 s; $0.032 per question (rerank $0.031). A live ask adds the router call (p95 4.27 s).
+    - Thresholds in the product spec (decision 5): stale ≤ 0.01, temporal ≥ 0.51, authority selection ≥ 0.88, router ≥ 0.90.
+  - **Paid in S09:** about $5.4 in all.
+    - R1 sitting router test: $0.31.
+    - R1 run: about $0.25.
+    - R2: $4.09 for the 3 kept runs, $0.67 for the dropped partial run, and about $0.07 for 2 demo asks.
+    - Voyage: 4 requests. Hugging Face: 0 downloads.
+  - **Tests:** 707 unit and 177 integration (from 506 and 126).
+  - **PR sizes:**
+    - R1: about 2,900 reviewable lines (estimate 1,400).
+    - R2: about 3,200 (estimate 2,000).
+    - Greptile, R1: 1 fixed, 1 parked.
+    - Greptile, R2: 4 comments. 1 was fixed; the 3 parked ones were fixed at the resume (R3).
 - **Surprises:**
+  - **Weights applied after RRF do nothing in rerank mode,** because the reranker re-sorts the whole pool. Found in the R2 sitting; ADR-003 now applies them after the reranker, on its probability.
+  - **42 of 65 gated KEPs have no gate row at 1.37:** the gate was removed after GA. So a KEP counts as "shipped" when a gate row exists at any release up to the target.
+  - **The reference renames gates in its own files** (2 cases), and 15 gate names in KEPs match no reference name. Without aliasing, KEP-4412 matches only by the release's own name.
+  - **The Anthropic credit ran out mid-eval:** run 2 failed from question 23 with a 400. Nothing tracked the balance. The workflow now tracks it (PR #41).
+  - **The pinned migration let a blank stage be "high".** `NULL IN (...)` is NULL, and a CHECK lets NULL through. Greptile found it.
+  - **The sitting's ADR-003 change table left D2–D4's own text on the old rules.** `docs/decisions/README.md` asks for both; Greptile found it.
+  - **Run 1, on pre-R3 code, could be kept:** the final code retrieves the same hits for 43 of 43 questions (430 hits), and the comparison flagged a deliberately corrupted copy.
+  - **Later documents describe the past** (R1): 7 of 41 dated HISTORY labels have no text within ±1 release of their window.
 - **What didn't work / negative results:**
+  - **Recall@10 dips against temporal** (0.560 → 0.552) and fell on 4 questions against rerank (q07, q09, q11, q30).
+  - **The authority metric leans toward the weights:** inverted tiers still lift it (3 → 6 of 9). CURRENT MRR, from human labels only, tells them apart (0.628 inverted vs. 0.783 real), so both are printed.
+  - **43 of 90 dated HISTORY hits are still outside the exact window.** The exact-window filter put 82 of 90 inside but lowered Recall@10 (0.541).
+  - **CHANGE questions score the same as in rerank,** although 4 of 9 got a different top 10.
+  - **Keyword rules routed 12 of 36 correctly on a blind rewording** (36 of 36 on the original wording), so routing costs a model call.
+  - **One answer took 29.7 s** (q42, run 1), over the 23 s ceiling. It's the 43rd of 43, so p95 leaves it out; the other 2 runs took 10–12 s.
+  - **v0 isn't a clean test.** The ±1 slack and the weights (4 variants) were chosen on v0; v1 is the clean test.
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S09-*.md`
+  - Check the Anthropic credit before every paid step, and show it in check-ins (`CLAUDE.md`, "Anthropic credit").
+  - In the sitting, read every pinned CHECK for NULL: a CHECK passes when its condition is NULL.
+  - When the sitting changes an ADR sub-decision, update its text in place in the same commit, not only the change table.
+  - Cross-check pinned rules against the edge-case list: the WHY rule and "never boosted" disagreed.
+  - Size estimates: R1 ran +107% over and R2 +60%. Tests are about half of each PR, so estimate them separately and add 50%.
+- **Slice brief:** `docs/learning/S09-temporal-authority.md`
