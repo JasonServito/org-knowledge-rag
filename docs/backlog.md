@@ -328,7 +328,7 @@ Tasks:
 - [x] **S10-T2 `[core]` KEP metadata conflicts.**
   - `claim_mismatch` (the claim of the KEP version valid at the target release vs. its observed stage) and `history_date` (a KEP "v1.N … released" line vs. the `releases` table), on each question's hits.
   - Done when: hand-worked unit tests pass; `make eval-retrieval` prints the sitting's rule-conflict line.
-- [ ] **S10-T3 `[core]` Kind and resolution of a pair.**
+- [x] **S10-T3 `[core]` Kind and resolution of a pair.**
   - A pure function: same section → supersession, else contradiction; the winner by ADR-003 D6, or unresolved.
   - Done when: hand-worked unit tests pass, including the sitting's 2 real pairs.
 - [ ] **S10-T4 `[core]` Conflicts in the answer.**

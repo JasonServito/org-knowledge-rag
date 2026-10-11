@@ -1,8 +1,10 @@
 """S10-T2: the rule-found conflicts (ADR-010 D1; the S10-R1 contract's "T2 rules (pinned)").
+S10-T3: the kind and resolution of a pair (ADR-010 D2, ADR-003 D6; "T3 rules (pinned)").
 
-Every expected value is typed by hand from those rules, ADR-003 D2 and the real corpus lines;
-none is computed by the code under test. No database, no network: the hits, the KEP versions,
-the observations and the release dates are hand-built. Release dates are the manifest's.
+Every expected value is typed by hand from those rules, ADR-003 D2 and D6 and the real corpus
+lines; none is computed by the code under test. No database, no network: the hits, the KEP
+versions, the observations and the release dates are hand-built. Release dates are the
+manifest's. The real pairs' ids, sections, windows and tiers were read from the dev database.
 """
 
 from datetime import date
@@ -11,7 +13,12 @@ from typing import Any
 import pytest
 
 from orgknow.db.models import Authority, Confidence, Hit, NewestVersion, Observation
-from orgknow.generation.conflicts import Conflict, claim_mismatches, history_dates
+from orgknow.generation.conflicts import (
+    Conflict,
+    claim_mismatches,
+    history_dates,
+    pair_conflict,
+)
 
 GATE = "StrictIPCIDRValidation"  # KEP-4858's one gate, as its kep.yaml names it
 
@@ -290,3 +297,183 @@ def test_a_history_line_in_a_non_kep_hit_is_ignored() -> None:
     hit = _hit(300, "web:/blog/x/", source_type="blog_post", text=KEP_2579_HISTORY)
 
     assert history_dates([hit], RELEASE_DATES, TOLERANCE) == []
+
+
+# --- pair_conflict --------------------------------------------------------------------------------
+
+NOW = 37  # the latest release in `releases` (1.37): a CURRENT question's target
+
+
+def _pair_hit(
+    chunk_id: int,
+    canonical_id: str,
+    tier: int | None,
+    windows: list[tuple[int, int | None]],
+    heading_path: tuple[str, ...] = ("Overview",),
+    source_type: str = "docs_page",
+) -> Hit:
+    """A hit with `tier` (None: a superseded proposal) and its release windows."""
+    authority = Authority(
+        target_release=NOW, tier=tier, effective_stage=None, stage_confidence=None
+    )
+    return _hit(
+        chunk_id,
+        canonical_id,
+        source_type=source_type,
+        heading_path=list(heading_path),
+        release_windows=windows,
+        authority=authority,
+    )
+
+
+def test_real_pair_old_and_new_text_of_one_section_is_won_by_the_valid_one() -> None:
+    # The StrictIPCIDRValidation gate page's one section (heading path []): chunk 10419 holds its
+    # 1.33-1.35 text, chunk 10420 its 1.36-now text; both tier 1. At 1.37 only 10420 is valid.
+    old = _pair_hit(
+        10419, "gate:StrictIPCIDRValidation", 1, [(33, 35)], (), "feature_gate_reference"
+    )
+    new = _pair_hit(
+        10420, "gate:StrictIPCIDRValidation", 1, [(36, None)], (), "feature_gate_reference"
+    )
+
+    assert pair_conflict(new, old, NOW, NOW) == ("supersession", "valid_at_target", 10420)
+    assert pair_conflict(old, new, NOW, NOW) == ("supersession", "valid_at_target", 10420)
+
+
+def test_real_pair_versioning_md_vs_the_version_skew_page_is_won_by_the_lower_tier() -> None:
+    # Chunk 36383, versioning.md (governance doc, tier 4, 1.36-now), vs. chunk 7201, the
+    # version-skew page (a release record: tier 2, as S09's run records it in q21; 1.28-now).
+    # Both valid at 1.37, so the tier decides: 2 < 4.
+    versioning = _pair_hit(
+        36383,
+        "sig-release:release-engineering/versioning.md",
+        4,
+        [(36, None)],
+        (
+            "Kubernetes Release Versioning",
+            "Release versioning",
+            "Supported releases and component skew",
+        ),
+        "governance_doc",
+    )
+    skew = _pair_hit(
+        7201,
+        "web:/docs/setup/release/version-skew-policy/",
+        2,
+        [(28, None)],
+        ("Supported versions",),
+        "release_record",
+    )
+
+    assert pair_conflict(versioning, skew, NOW, NOW) == ("contradiction", "lower_tier", 7201)
+    assert pair_conflict(skew, versioning, NOW, NOW) == ("contradiction", "lower_tier", 7201)
+
+
+@pytest.mark.parametrize(
+    ("canonical_id", "heading_path", "kind"),
+    [
+        ("web:/docs/a/", ("Setup", "Install"), "supersession"),
+        ("web:/docs/a/", ("Setup",), "contradiction"),  # same document, another section
+        ("web:/docs/b/", ("Setup", "Install"), "contradiction"),  # another document
+    ],
+    ids=["same-section", "same-document-other-section", "other-document-same-heading"],
+)
+def test_the_kind_is_supersession_only_within_one_section(
+    canonical_id: str, heading_path: tuple[str, ...], kind: str
+) -> None:
+    # Both valid at 1.37 and both tier 1: only the kind differs, and the pair is unresolved.
+    a = _pair_hit(1, "web:/docs/a/", 1, [(36, None)], ("Setup", "Install"))
+    b = _pair_hit(2, canonical_id, 1, [(30, None)], heading_path)
+
+    assert pair_conflict(a, b, NOW, NOW) == (kind, "unresolved", None)
+
+
+def test_exactly_one_valid_at_the_target_prevails_whatever_its_tier() -> None:
+    # A blog post (tier 6, 1.36-now) vs. a docs page (tier 1, 1.30-1.35).
+    blog = _pair_hit(1, "web:/blog/x/", 6, [(36, None)], source_type="blog_post")
+    docs = _pair_hit(2, "web:/docs/x/", 1, [(30, 35)])
+
+    # At 1.37 only the blog post is valid; at 1.32 (a HISTORY question) only the docs page.
+    assert pair_conflict(blog, docs, NOW, NOW) == ("contradiction", "valid_at_target", 1)
+    assert pair_conflict(docs, blog, NOW, NOW) == ("contradiction", "valid_at_target", 1)
+    assert pair_conflict(blog, docs, 32, NOW) == ("contradiction", "valid_at_target", 2)
+
+
+def test_both_valid_the_lower_tier_number_prevails() -> None:
+    # A governance doc (tier 4) vs. a docs page (tier 1), both valid at 1.37.
+    governance = _pair_hit(1, "sig-release:x.md", 4, [(36, None)], source_type="governance_doc")
+    docs = _pair_hit(2, "web:/docs/x/", 1, [(30, None)])
+
+    assert pair_conflict(governance, docs, NOW, NOW) == ("contradiction", "lower_tier", 2)
+    assert pair_conflict(docs, governance, NOW, NOW) == ("contradiction", "lower_tier", 2)
+
+
+def test_neither_valid_with_equal_tiers_is_unresolved() -> None:
+    # Two blog posts (tier 6), valid 1.20-1.25 and 1.28-1.30, at 1.37.
+    first = _pair_hit(1, "web:/blog/a/", 6, [(20, 25)], source_type="blog_post")
+    second = _pair_hit(2, "web:/blog/b/", 6, [(28, 30)], source_type="blog_post")
+
+    assert pair_conflict(first, second, NOW, NOW) == ("contradiction", "unresolved", None)
+
+
+def test_a_superseded_proposal_loses_to_any_tier() -> None:
+    # A withdrawn KEP (no tier) vs. a blog post (tier 6, the worst tier), both valid at 1.37.
+    kep = _pair_hit(1, "kep:1234", None, [(30, None)], source_type="kep").model_copy(
+        update={"claimed_status": "withdrawn"}
+    )
+    blog = _pair_hit(2, "web:/blog/x/", 6, [(36, None)], source_type="blog_post")
+
+    assert pair_conflict(kep, blog, NOW, NOW) == ("contradiction", "lower_tier", 2)
+    assert pair_conflict(blog, kep, NOW, NOW) == ("contradiction", "lower_tier", 2)
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        _pair_hit(2, "kep:5678", None, [(30, None)], source_type="kep"),
+        _hit(
+            2, "web:/docs/x/", source_type="docs_page", release_windows=[(30, None)], authority=None
+        ),
+    ],
+    ids=["two-superseded-proposals", "no-authority"],
+)
+def test_both_without_a_tier_is_unresolved(other: Hit) -> None:
+    kep = _pair_hit(1, "kep:1234", None, [(30, None)], source_type="kep")
+
+    assert pair_conflict(kep, other, NOW, NOW) == ("contradiction", "unresolved", None)
+
+
+@pytest.mark.parametrize(
+    ("windows", "target", "latest", "resolution", "prevails"),
+    [
+        ([(37, None)], 37, 37, "valid_at_target", 1),  # opens at the target; open = 1.37
+        ([(30, 37)], 37, 37, "valid_at_target", 1),  # closes at the target: both ends count
+        ([(30, 36)], 37, 37, "unresolved", None),  # closed before the target
+        ([(36, None)], 30, 37, "unresolved", None),  # opens after the target
+        ([(30, None)], 37, 36, "unresolved", None),  # open counts up to the latest, not forever
+        ([(30, 32), (36, None)], 34, 37, "unresolved", None),  # in the gap between two windows
+        ([(30, 32), (36, None)], 31, 37, "valid_at_target", 1),  # in the first window
+    ],
+    ids=[
+        "opens-at-target",
+        "closes-at-target",
+        "closed-before",
+        "opens-after",
+        "open-ends-at-latest",
+        "in-a-gap",
+        "in-first-window",
+    ],
+)
+def test_valid_at_the_target(
+    windows: list[tuple[int, int | None]],
+    target: int,
+    latest: int,
+    resolution: str,
+    prevails: int | None,
+) -> None:
+    # Paired with a hit of the same tier never valid (1.20-1.21): the hit prevails if it is
+    # valid at the target, else neither is and the equal tiers leave the pair unresolved.
+    hit = _pair_hit(1, "web:/docs/a/", 1, windows)
+    never = _pair_hit(2, "web:/docs/b/", 1, [(20, 21)])
+
+    assert pair_conflict(hit, never, target, latest) == ("contradiction", resolution, prevails)

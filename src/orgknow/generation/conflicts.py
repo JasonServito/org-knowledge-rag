@@ -8,11 +8,14 @@ ADR-010 D1).
   table's date for 1.N.
 - `rule_conflicts`: both, on one question's hits. The only function here that reads the
   database; the two rules are pure.
+- `pair_conflict` (S10-T3, ADR-010 D2): the kind and resolution of two hits that disagree.
 
 Both rules resolve as `observed_beats_claimed` (ADR-003 D6 rule 1): the observed stage, or the
-release date, wins over what the KEP says.
+release date, wins over what the KEP says. A pair resolves by D6's rules 2-4: the hit valid at
+the target release, else the lower tier number, else unresolved.
 """
 
+import math
 import re
 from collections.abc import Mapping, Sequence
 from datetime import date
@@ -143,6 +146,46 @@ def history_dates(
         )
         for (canonical_id, minor, said), chunk_ids in found.items()
     ]
+
+
+def pair_conflict(
+    a: Hit, b: Hit, target: int, latest: int
+) -> tuple[ConflictKind, Resolution, int | None]:
+    """The kind, resolution and prevailing chunk id of two hits that disagree, at the `target`
+    release (ADR-010 D2, ADR-003 D6). The order of `a` and `b` doesn't change the result.
+
+    - Kind: the same document and heading path → `supersession`; otherwise `contradiction`.
+    - Exactly one hit valid at `target` (`_valid_at`) → it prevails: `valid_at_target`.
+    - Otherwise their tiers decide, where no tier (a superseded proposal, or no `authority`) is
+      worse than any tier: the lower number prevails (`lower_tier`); equal tiers, both None
+      included, → `unresolved`, and nothing prevails.
+    """
+    same_section = a.canonical_id == b.canonical_id and a.heading_path == b.heading_path
+    kind: ConflictKind = "supersession" if same_section else "contradiction"
+    a_valid, b_valid = _valid_at(a, target, latest), _valid_at(b, target, latest)
+    if a_valid != b_valid:
+        return kind, "valid_at_target", a.chunk_id if a_valid else b.chunk_id
+    a_rank, b_rank = _tier_rank(a), _tier_rank(b)
+    if a_rank == b_rank:
+        return kind, "unresolved", None
+    return kind, "lower_tier", a.chunk_id if a_rank < b_rank else b.chunk_id
+
+
+def _valid_at(hit: Hit, target: int, latest: int) -> bool:
+    """Whether some release window of `hit` holds `target`: from ≤ target ≤ until, where an
+    open window (until None) runs to `latest`."""
+    return any(
+        start <= target <= (latest if until is None else until)
+        for start, until in hit.release_windows
+    )
+
+
+def _tier_rank(hit: Hit) -> float:
+    """The hit's tier at the target release, for comparing: no tier (a superseded proposal, or
+    no `authority`) is infinity, worse than any tier."""
+    if hit.authority is None or hit.authority.tier is None:
+        return math.inf
+    return hit.authority.tier
 
 
 def rule_conflicts(
