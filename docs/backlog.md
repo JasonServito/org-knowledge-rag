@@ -351,7 +351,7 @@ Tasks:
   - Every disagreement among the 10 results of each golden question and the 2 new questions, plus the 4 seeds; 3 independent passes; the spot-check sheet.
   - Done when: the loader's check passes on the draft; the split rate is reported.
   - Deps: T6.
-- [ ] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
+- [x] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
 - [ ] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T7.
 
 ### ⬜ S11 Corrective agentic retrieval *(Stage 8)*

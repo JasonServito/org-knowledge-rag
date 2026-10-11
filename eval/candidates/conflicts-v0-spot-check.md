@@ -1768,47 +1768,49 @@ Your verdict (missing: none, or a list):
 Copy this block into your reply, or edit it here.
 
 ```text
-Seed k01 q18: ✅/❌
-Seed k02 q01: ✅/❌
-Seed k03 q08: ✅/❌
-Seed k04 c01: ✅/❌
-k24 q20 (claim_mismatch): ✅/❌
-k61 c02 (history_date): ✅/❌
-k32 q23 (texts within one document): ✅/❌
-k35 q25 (texts across two or more documents): ✅/❌
-k22 q19 (1 more random conflict): ✅/❌
-d01 q01 (disputed): keep/drop
-d02 q01 (disputed): keep/drop
-d03 q03 (disputed): keep/drop
-d04 q03 (disputed): keep/drop
-d05 q04 (disputed): keep/drop
-d06 q04 (disputed): keep/drop
-d07 q04 (disputed): keep/drop
-d08 q06 (disputed): keep/drop
-d09 q07 (disputed): keep/drop
-d10 q09 (disputed): keep/drop
-d11 q12 (disputed): keep/drop
-d12 q13 (disputed): keep/drop
-d13 q16 (disputed): keep/drop
-d14 q16 (disputed): keep/drop
-d15 q16 (disputed): keep/drop
-d16 q17 (disputed): keep/drop
-d17 q17 (disputed): keep/drop
-d18 q17 (disputed): keep/drop
-d19 q21 (disputed): keep/drop
-d20 q24 (disputed): keep/drop
-d21 q25 (disputed): keep/drop
-d22 q26 (disputed): keep/drop
-d23 q26 (disputed): keep/drop
-d24 q34 (disputed): keep/drop
-d25 q45 (disputed): keep/drop
-Group q02 (k07, k08, 2+ facts): keep / add <pass:id>
-Group q21 (k26, k27, 2+ facts): keep / add <pass:id>
-Group q23 (k30, k31, 2+ facts): keep / add <pass:id>
-Group q23 (k32, k33, 2+ facts): keep / add <pass:id>
-Group q25 (k34, k35, 2+ facts): keep / add <pass:id>
-Group q27 (k40, k41, 2+ facts): keep / add <pass:id>
-Group q30 (k42, k43, 2+ facts): keep / add <pass:id>
-Whole question q32: missing: none / <list>
-Anthropic console balance (Plans & Billing): US$____
+Seed k01 q18: ✅
+Seed k02 q01: ✅
+Seed k03 q08: ✅
+Seed k04 c01: ✅
+k24 q20 (claim_mismatch): ✅
+k61 c02 (history_date): ✅
+k32 q23 (texts within one document): ✅
+k35 q25 (texts across two or more documents): ✅
+k22 q19 (1 more random conflict): ✅
+d01 q01 (disputed): keep
+d02 q01 (disputed): drop (duplicate of d01)
+d03 q03 (disputed): drop (its sides sit inside d04's)
+d04 q03 (disputed): keep
+d05 q04 (disputed): drop (its sides sit inside d06's)
+d06 q04 (disputed): keep
+d07 q04 (disputed): drop (de facto vs. official start: different facts)
+d08 q06 (disputed): drop (duplicate of k10)
+d09 q07 (disputed): drop (borderline: "available" likely means GA in 1.25)
+d10 q09 (disputed): drop (planned removal, then done: consistent)
+d11 q12 (disputed): drop (same fact as k13; the extra page would credit an agreeing pair)
+d12 q13 (disputed): drop (duplicate of k14, k15, k16)
+d13 q16 (disputed): keep
+d14 q16 (disputed): drop (its sources are all in d13)
+d15 q16 (disputed): drop (its sources are all in d13)
+d16 q17 (disputed): keep
+d17 q17 (disputed): drop (its sources are all in d16)
+d18 q17 (disputed): drop (its sources are all in d16)
+d19 q21 (disputed): drop (duplicate of k27)
+d20 q24 (disputed): drop (different facts: serving old images vs. publishing new ones)
+d21 q25 (disputed): drop (its sources are all in k35)
+d22 q26 (disputed): drop (its sources are all in k37)
+d23 q26 (disputed): drop (two dated snapshots, not a disagreement)
+d24 q34 (disputed): drop; add its v1.29 blog source to k50's second side
+d25 q45 (disputed): drop (borderline: a type renamed during design)
+Group q02 (k07, k08, 2+ facts): keep
+Group q21 (k26, k27, 2+ facts): keep
+Group q23 (k30, k31, 2+ facts): keep
+Group q23 (k32, k33, 2+ facts): keep
+Group q25 (k34, k35, 2+ facts): keep
+Group q27 (k40, k41, 2+ facts): keep
+Group q30 (k42, k43, 2+ facts): keep
+Merges (sides inside another conflict on the same question; keep the outer conflict's sources, add the inner fact to its note with "Also:"): k07 into k08; k25 into k26; k28 into k27; k32 and k33 into k31
+Whole question q32: missing: none
+Anthropic console balance (Plans & Billing): US$11.57 (stated 2026-10-11)
+Signed off by the developer, 2026-10-11. Result: eval/golden_set/conflicts-v0.yaml (62 conflicts, 4 seeds; sha256 887201b7).
 ```
