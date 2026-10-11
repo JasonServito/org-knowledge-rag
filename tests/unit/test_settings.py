@@ -351,3 +351,22 @@ def test_weights_outside_their_range_are_refused(
 
     with pytest.raises(ValidationError, match=name.lower()):
         Settings(_env_file=None, database_url="x")
+
+
+def test_the_history_date_tolerance_defaults_to_7_days(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HISTORY_DATE_TOLERANCE_DAYS", raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # S10-R1 decision 11.
+    assert settings.history_date_tolerance_days == 7
+
+
+def test_a_history_date_tolerance_of_0_is_accepted_and_below_0_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert Settings(_env_file=None, database_url="x", history_date_tolerance_days=0)
+    monkeypatch.setenv("HISTORY_DATE_TOLERANCE_DAYS", "-1")
+
+    with pytest.raises(ValidationError, match="history_date_tolerance_days"):
+        Settings(_env_file=None, database_url="x")

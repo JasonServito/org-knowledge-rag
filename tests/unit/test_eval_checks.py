@@ -1,5 +1,5 @@
 """Answer checks AC1-AC3 and the false-refusal flag on hand-built answers (S06-T3; AC1's tier,
-S09-T6).
+S09-T6), and the losing-side flag (S10-T5, ADR-010 D3).
 
 Every expected record is a hand-written literal: True (pass), False (fail) or None (n/a).
 The retrieved hits are chunks 11, 12 and 13; chunk 99 was not retrieved.
@@ -12,6 +12,7 @@ import pytest
 from orgknow.db.models import Hit
 from orgknow.eval.checks import AnswerChecks, check_answer
 from orgknow.eval.golden import Label, Question
+from orgknow.generation.conflicts import Conflict
 from orgknow.generation.schema import Answer, Evidence
 
 
@@ -97,7 +98,13 @@ def _refused(reason: str | None, *citations: Evidence) -> Answer:
 
 
 def test_the_record_keys_are_the_results_file_checks_keys() -> None:
-    assert list(AnswerChecks.model_fields) == ["ac1", "ac2", "ac3", "false_refusal"]
+    assert list(AnswerChecks.model_fields) == [
+        "ac1",
+        "ac2",
+        "ac3",
+        "false_refusal",
+        "loser_only",
+    ]
 
 
 # Answerable questions: AC1 and AC2 apply, AC3 is n/a.
@@ -106,14 +113,14 @@ def test_the_record_keys_are_the_results_file_checks_keys() -> None:
 def test_answered_with_complete_retrieved_citations_passes() -> None:
     answer = _answered(_citation(11), _citation(13))
     assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
-        ac1=True, ac2=True, ac3=None, false_refusal=False
+        ac1=True, ac2=True, ac3=None, false_refusal=False, loser_only=False
     )
 
 
 def test_answered_with_no_citations_fails_ac1() -> None:
     # AC2 passes: no citation is outside the hits.
     assert check_answer(ANSWERABLE, HITS, _answered()) == AnswerChecks(
-        ac1=False, ac2=True, ac3=None, false_refusal=False
+        ac1=False, ac2=True, ac3=None, false_refusal=False, loser_only=False
     )
 
 
@@ -126,7 +133,7 @@ def test_a_citation_missing_a_field_fails_ac1(changes: dict[str, Any]) -> None:
     # One complete citation, one missing a field: each citation must be complete.
     answer = _answered(_citation(11), _citation(12, **changes))
     assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
-        ac1=False, ac2=True, ac3=None, false_refusal=False
+        ac1=False, ac2=True, ac3=None, false_refusal=False, loser_only=False
     )
 
 
@@ -134,7 +141,7 @@ def test_a_citation_with_no_tier_that_isnt_a_superseded_proposal_fails_ac1() -> 
     # S09-T6: e.g. a hit that never had its authority attached.
     answer = _answered(_citation(11), _citation(12, tier=None))
     assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
-        ac1=False, ac2=True, ac3=None, false_refusal=False
+        ac1=False, ac2=True, ac3=None, false_refusal=False, loser_only=False
     )
 
 
@@ -142,14 +149,14 @@ def test_a_superseded_proposal_with_no_tier_passes_ac1() -> None:
     citation = _citation(12, source_type="kep", tier=None, superseded_proposal=True)
     answer = _answered(_citation(11), citation)
     assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
-        ac1=True, ac2=True, ac3=None, false_refusal=False
+        ac1=True, ac2=True, ac3=None, false_refusal=False, loser_only=False
     )
 
 
 def test_a_cited_id_outside_the_hits_fails_ac2() -> None:
     answer = _answered(_citation(11), _citation(99))
     assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
-        ac1=True, ac2=False, ac3=None, false_refusal=False
+        ac1=True, ac2=False, ac3=None, false_refusal=False, loser_only=False
     )
 
 
@@ -157,14 +164,14 @@ def test_a_refusal_citing_an_id_outside_the_hits_fails_ac2() -> None:
     # AC2 applies to every answer, not only `answered` ones.
     answer = _refused("Not covered.", _citation(99))
     assert check_answer(ANSWERABLE, HITS, answer) == AnswerChecks(
-        ac1=None, ac2=False, ac3=None, false_refusal=True
+        ac1=None, ac2=False, ac3=None, false_refusal=True, loser_only=False
     )
 
 
 def test_an_answerable_question_refused_is_a_false_refusal() -> None:
     # AC1 is n/a: it applies only to `answered` answers.
     assert check_answer(ANSWERABLE, HITS, _refused("Not covered.")) == AnswerChecks(
-        ac1=None, ac2=True, ac3=None, false_refusal=True
+        ac1=None, ac2=True, ac3=None, false_refusal=True, loser_only=False
     )
 
 
@@ -180,7 +187,7 @@ def test_an_answerable_error_row_is_all_na() -> None:
 
 def test_an_unanswerable_question_refused_with_a_reason_passes_ac3() -> None:
     assert check_answer(UNANSWERABLE, HITS, _refused("The doc is not public.")) == AnswerChecks(
-        ac1=None, ac2=True, ac3=True, false_refusal=None
+        ac1=None, ac2=True, ac3=True, false_refusal=None, loser_only=False
     )
 
 
@@ -188,14 +195,14 @@ def test_an_unanswerable_question_answered_fails_ac3() -> None:
     # Its citations are complete and retrieved, so AC1 and AC2 still pass.
     answer = _answered(_citation(12))
     assert check_answer(UNANSWERABLE, HITS, answer) == AnswerChecks(
-        ac1=True, ac2=True, ac3=False, false_refusal=None
+        ac1=True, ac2=True, ac3=False, false_refusal=None, loser_only=False
     )
 
 
 @pytest.mark.parametrize("reason", ["", "   ", None], ids=["empty", "blank", "None"])
 def test_a_refusal_without_a_reason_fails_ac3(reason: str | None) -> None:
     assert check_answer(UNANSWERABLE, HITS, _refused(reason)) == AnswerChecks(
-        ac1=None, ac2=True, ac3=False, false_refusal=None
+        ac1=None, ac2=True, ac3=False, false_refusal=None, loser_only=False
     )
 
 
@@ -203,3 +210,61 @@ def test_an_unanswerable_error_row_fails_ac3() -> None:
     assert check_answer(UNANSWERABLE, HITS, None) == AnswerChecks(
         ac1=None, ac2=None, ac3=False, false_refusal=None
     )
+
+
+# The losing-side flag (S10-T5): a model-found conflict's prevailing chunk not cited, the other
+# one cited. Chunk 12 prevails over chunk 11 in MODEL_PAIR (by tier, say).
+
+MODEL_PAIR = Conflict(
+    kind="contradiction",
+    found_by="model",
+    chunk_ids=[11, 12],
+    documents=["web:/docs/a/"],
+    summary="11 says four releases; 12 says three.",
+    resolution="lower_tier",
+    prevails=12,
+)
+UNRESOLVED_PAIR = MODEL_PAIR.model_copy(update={"resolution": "unresolved", "prevails": None})
+
+
+def _with(answer: Answer, *conflicts: Conflict) -> Answer:
+    return answer.model_copy(update={"conflicts": list(conflicts)})
+
+
+@pytest.mark.parametrize(
+    ("cited", "conflicts", "loser_only"),
+    [
+        ([11], [MODEL_PAIR], True),  # the loser cited, the winner not
+        ([11, 12], [MODEL_PAIR], False),  # both cited
+        ([12], [MODEL_PAIR], False),  # the winner alone
+        ([13], [MODEL_PAIR], False),  # neither
+        ([11], [UNRESOLVED_PAIR], False),  # nothing prevails
+        ([11], [], False),  # no conflict
+    ],
+    ids=["loser-only", "both", "winner-only", "neither", "unresolved", "no-conflict"],
+)
+def test_loser_only_on_an_answer(
+    cited: list[int], conflicts: list[Conflict], loser_only: bool
+) -> None:
+    answer = _with(_answered(*(_citation(chunk_id) for chunk_id in cited)), *conflicts)
+
+    assert check_answer(ANSWERABLE, HITS, answer).loser_only is loser_only
+
+
+def test_loser_only_on_a_refusal_citing_the_loser() -> None:
+    # The model's own insufficient_evidence is still an answer, with its citations.
+    answer = _with(_refused("They disagree.", _citation(11)), MODEL_PAIR)
+
+    assert check_answer(ANSWERABLE, HITS, answer).loser_only is True
+
+
+def test_loser_only_ignores_a_rule_found_conflict() -> None:
+    # A rule-found conflict never sets `prevails`; a hand-built one that did is still ignored.
+    rule = MODEL_PAIR.model_copy(update={"found_by": "rule"})
+    answer = _with(_answered(_citation(11)), rule)
+
+    assert check_answer(ANSWERABLE, HITS, answer).loser_only is False
+
+
+def test_loser_only_is_na_with_no_answer() -> None:
+    assert check_answer(ANSWERABLE, HITS, None).loser_only is None

@@ -99,6 +99,7 @@ def _answered(chunk_id: int) -> FakeGenerator:
             answer="The Pod Security admission controller.",
             evidence=[chunk_id],
             insufficient_evidence_reason=None,
+            conflicts=[],
         )
     )
 
@@ -144,6 +145,7 @@ def test_ask_prints_the_answer_json_offline(
                 "source_url": f"https://github.com/kubernetes/website/blob/{SHA}/{PATH}",
             }
         ],
+        "conflicts": [],  # S10-T4: a docs page alone gives no rule-found conflict
         "insufficient_evidence_reason": None,
         "model": "claude-opus-5-5",
         "trace_id": None,

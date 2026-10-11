@@ -368,6 +368,7 @@ def _refusing() -> FakeGenerator:
             answer="",
             evidence=[],
             insufficient_evidence_reason="Not covered.",
+            conflicts=[],
         )
     )
 
@@ -392,6 +393,7 @@ def test_a_run_writes_the_pinned_results_format(
                 answer="Follow page B.",
                 evidence=[chunk_ids["b usage"]],
                 insufficient_evidence_reason=None,
+                conflicts=[],
             ),
             CUT_OFF,  # q02: an ask error, recorded as a row
             ModelAnswer(
@@ -399,6 +401,7 @@ def test_a_run_writes_the_pinned_results_format(
                 answer="",
                 evidence=[],
                 insufficient_evidence_reason="The sources don't cover it.",
+                conflicts=[],
             ),
         ]
     )
@@ -444,6 +447,8 @@ def test_a_run_writes_the_pinned_results_format(
             # S09-T7: authority mode's weights are null outside it.
             "authority_boost": None,
             "authority_demote": None,
+            # S10-T2: the rule-found conflicts' date tolerance, in every mode (the default).
+            "history_date_tolerance_days": 7,
             "generation_model": "claude-opus-5-5",
             "generation_effort": "medium",
             "generation_max_tokens": 16000,
@@ -455,7 +460,7 @@ def test_a_run_writes_the_pinned_results_format(
     assert [list(row) for row in rows] == [
         [
             *("id", "mode", "release_window", "label_tiers", "route", "answerable", "hits"),
-            "answer",
+            *("answer", "conflicts"),  # S10-T4: the row's conflicts follow its answer
             *("metrics", "checks", "usage", "latency_s", "retrieve_s", "error"),
         ]
     ] * 3
@@ -550,10 +555,12 @@ def test_a_run_writes_the_pinned_results_format(
                     f"{SHA}/content/en/docs/test/page.md",
                 }
             ],
+            "conflicts": [],  # S10-T4: docs pages alone give no rule-found conflict
             "insufficient_evidence_reason": None,
             "model": "claude-opus-5-5",
             "trace_id": None,
         },
+        "conflicts": [],
         "metrics": {
             "recall": 1.0,
             "hit": 1,
@@ -561,7 +568,13 @@ def test_a_run_writes_the_pinned_results_format(
             "ndcg": pytest.approx(0.693426, abs=1e-6),
             "distinct_sections": 3,
         },
-        "checks": {"ac1": True, "ac2": True, "ac3": None, "false_refusal": False},
+        "checks": {
+            "ac1": True,
+            "ac2": True,
+            "ac3": None,
+            "false_refusal": False,
+            "loser_only": False,
+        },
         "usage": USAGE,
         "error": None,
     }
@@ -576,8 +589,15 @@ def test_a_run_writes_the_pinned_results_format(
         "answerable": True,
         "hits": hits,
         "answer": None,
+        "conflicts": [],
         "metrics": {"recall": 1.0, "hit": 1, "mrr": 1.0, "ndcg": 1.0, "distinct_sections": 3},
-        "checks": {"ac1": None, "ac2": None, "ac3": None, "false_refusal": None},
+        "checks": {
+            "ac1": None,
+            "ac2": None,
+            "ac3": None,
+            "false_refusal": None,
+            "loser_only": None,
+        },
         "usage": {"input_tokens": 500, "output_tokens": 16000, "thinking_tokens": 15000},
         "error": "GenerationError: no usable answer from the model (stop reason: max_tokens)",
     }
@@ -595,12 +615,20 @@ def test_a_run_writes_the_pinned_results_format(
             "answer_status": "insufficient_evidence",
             "answer": "",
             "evidence": [],
+            "conflicts": [],
             "insufficient_evidence_reason": "The sources don't cover it.",
             "model": "claude-opus-5-5",
             "trace_id": None,
         },
+        "conflicts": [],
         "metrics": None,
-        "checks": {"ac1": None, "ac2": True, "ac3": True, "false_refusal": None},
+        "checks": {
+            "ac1": None,
+            "ac2": True,
+            "ac3": True,
+            "false_refusal": None,
+            "loser_only": False,
+        },
         "usage": USAGE,
         "error": None,
     }
@@ -643,6 +671,9 @@ def test_a_run_writes_the_pinned_results_format(
         "temporal": {"pass": 0, "total": 3},
         "router": None,
         "authority": None,
+        "conflicts_rule": 0,  # S10-T4: no KEP among the hits
+        "conflicts_model": 0,  # S10-T5: the fake model lists no pairs
+        "loser_only_answers": 0,
     }
     assert len(generator.calls) == 3
 

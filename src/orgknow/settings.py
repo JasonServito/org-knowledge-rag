@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     # temporal mode's ranking. Set on golden set v0; v1 is their clean test.
     authority_boost: float = Field(default=1.25, ge=1, le=4)
     authority_demote: float = Field(default=0.8, gt=0, le=1)
+    # The rule-found conflicts (ADR-010 D1): a KEP history line "YYYY-MM-DD: ... v1.N ... released"
+    # whose date is more than this many days (0 or more) from the `releases` table's date for 1.N
+    # is a `history_date` conflict (S10-R1 decision 11).
+    history_date_tolerance_days: int = Field(default=7, ge=0)
     # The answer step (ADR-006 D1). Opus 5.5 always reasons, and effort sets how much; there is
     # no temperature (Opus 5.5 rejects it). Reasoning counts toward the max tokens and is billed
     # as output. At most 21,333: above that, the SDK refuses a non-streaming call (it expects

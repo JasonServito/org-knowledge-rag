@@ -17,9 +17,9 @@
   temporal and authority modes its stored route), in RETRIEVAL_MODE, and print the retrieval
   metrics (S07-T3), the stale-result rate and temporal accuracy (S09-T3), authority selection and
   the CURRENT questions' MRR (S09-T7), in temporal and authority modes the router line (S09-T4),
-  then the retrieve time's p50 and p95 and, in rerank, temporal and authority modes, the
-  reranker's load time (S08-T4). Free: no Voyage or Anthropic call; a missing vector or route is
-  an error. Writes nothing.
+  the rule-found conflicts of the hits (S10-T2), then the retrieve time's p50 and p95 and, in
+  rerank, temporal and authority modes, the reranker's load time (S08-T4). Free: no Voyage or
+  Anthropic call; a missing vector or route is an error. Writes nothing.
 
 In rerank, temporal and authority modes, `run` and `retrieval` load the cross-encoder once, before
 the question loop, and time the load (S08-T2).
@@ -153,8 +153,8 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
 
 def retrieval(settings: Settings) -> int:
     """`make eval-retrieval`: print the mode, the retrieval metrics, the time metrics, authority
-    selection, in temporal and authority modes the router line, and the retrieve time; 1 on an
-    error."""
+    selection, in temporal and authority modes the router line, the rule-found conflicts, and the
+    retrieve time; 1 on an error."""
     try:
         reranker, load_s = _load_reranker(settings)
     except OSError as error:
@@ -174,6 +174,7 @@ def retrieval(settings: Settings) -> int:
     print(runner.authority_line(scores.authority, scores.current_mrr))
     if scores.router is not None:  # temporal and authority modes
         print(runner.router_line(scores.router))
+    print(runner.conflict_line(scores.rule_conflicts))
     print(runner.timing_line(scores.retrieve_s, load_s))
     return 0
 
