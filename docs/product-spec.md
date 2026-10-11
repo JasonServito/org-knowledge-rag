@@ -40,7 +40,7 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 | AC1 | 100% of answered responses have ≥ 1 citation. Each citation resolves to a stored chunk with source URL, release/date, `source_type` and tier. | Eval harness schema check. Since S09-T6 it also requires each citation's tier, or the superseded-proposal flag for a withdrawn, rejected or replaced KEP (S04-R2 decision 5; S09-R2) |
 | AC2 | 0 fabricated citations: no chunk IDs or URLs that aren't in the retrieved evidence | Eval harness |
 | AC3 | All seed UNANSWERABLE questions return `insufficient_evidence` with a reason. This includes the 4 gated-Google-Doc cases. | Golden set |
-| AC4 | On the 4 seed conflict cases, the answer surfaces the conflict (claimed vs. observed, or old vs. new) rather than asserting one side | Golden set, conflict subset |
+| AC4 | On the 4 seed conflict cases, the answer surfaces the conflict (claimed vs. observed, or old vs. new) rather than asserting one side | Conflict set v0 (ADR-007 D4), end to end: the seed questions are fixed without looking at their results, and each reports whether search retrieved it (S10-R2 decision 3) |
 | AC5 | CURRENT questions: the primary claim is supported by evidence valid at the latest release on every seed CURRENT question | Golden set |
 | AC6 | HISTORY questions naming a release or date: the cited evidence is valid within the requested window | Golden set |
 | AC7 | The ablation table covers the full sequence: dense → +lexical/RRF → +rerank → +temporal/authority → +conflict → +corrective. Every stage kept either improves its target metric or has its retention justified in writing. | README / eval report |

@@ -1,6 +1,6 @@
 # ADR-007: Golden-set schema and labeling
 
-- **Status:** Accepted (2026-10-08, decided in the S06-R1 sitting)
+- **Status:** Accepted (2026-10-08, decided in the S06-R1 sitting). D4, the conflict set: Accepted 2026-10-11 in the S10-R2 sitting (amendment below).
 - **Date:** 2026-10-08
 - **Blueprint/spec refs:** §19.1–19.2; product spec "Golden set v0", AC1–AC3, AC7; ADR-002 (`canonical_id`, aliases)
 
@@ -80,3 +80,56 @@ No `tags` or blueprint category field: current-state and historical are `mode`, 
 - Results store each hit's document and heading path, so a change to these rules means re-scoring stored runs for free, not a paid re-run.
 - Linking the 25 old single-file KEPs (backlog) needs no relabel only if the link stores each old id as an alias.
 - Labeling needs exact section names (backticks, shortcodes): the label check and a section-listing command support it.
+
+## S10-R2 amendment (2026-10-11): D4, the conflict set
+
+Decided by the developer in the S10-R2 sitting; the evidence is in `docs/slices/S10-conflict-detection.md`, run S10-R2. A devil's advocate argued against the recommendation first; its points became (a)–(d) and the known limits below.
+
+### Context
+
+- **D1 left conflicts to S10:** "conflict cases belong to S10's own set". S10 needs precision (are the flagged conflicts real?), recall (are the real ones flagged?) and AC4 (the 4 seed cases).
+- **Precision needs a verdict on every flagged conflict,** not only the expected ones.
+- **Retrieval is deterministic.** With stored question vectors and routes, a fresh retrieval of all 43 v0 questions gave the S09 run's 10 chunk ids by rank (43 of 43). So every pair the system could flag is known before any paid run: 430 hits, 335 distinct chunks, 1,935 pairs.
+
+### D4. The conflict set: every disagreement in the fixed results, labeled before the runs
+
+- **The file:** `eval/golden_set/conflicts-v0.yaml` (human-owned, like v0).
+  - It references golden questions by id, and adds its own new questions (`c` ids).
+  - It lists conflicts. Each has an id, a question, a kind (`claim_mismatch`, `history_date` or `texts`), an optional `seed` flag (exactly 4), a note quoting both values, and its sides.
+  - Each side is a list of `{document, section?}` entries ("any of"), matched by D2's rule. A rule kind has one side, its KEP. `texts` has two, which may be the same section (old vs. new).
+- **The pool:** every golden question plus the file's new questions. A question with no conflict has no disagreement. The fixed format and the label check are in the S10-R2 run contract.
+- **What counts as a disagreement:**
+  - **Counts:** different values for the same fact about the same thing, even when each was true at a different time (stale vs. current).
+  - **Doesn't count:** cosmetic edits, added detail, and statements about different things.
+  - **KEP-specific kinds:** a KEP's claim vs. the feature-gate reference is only `claim_mismatch`; a KEP history date vs. the releases table is only `history_date`.
+- **Matching:**
+  - (a) **By kind.** A rule-kind conflict is matched only by a rule-found conflict of that kind with a chunk on its side. A `texts` conflict is matched only by a model-found pair whose two chunks match its two sides, one each, in either order.
+  - **Reachable:** a conflict whose sides are among its question's top-K hits.
+- **Metrics:**
+  - **Precision** = flagged conflicts matching a conflict ÷ flagged conflicts.
+  - **Recall** = reachable conflicts matched ÷ reachable conflicts.
+  - (c) **Split reporting:** both overall, and split rule-found / model-found.
+  - **AC4, per seed:** retrieved (reachable) and surfaced (matched).
+- **(b)** The rule above settles stale-vs.-current cases.
+- **(d) The agreement check:**
+  - **The check:** 3 independent Claude passes and a developer spot-check that includes one whole question.
+  - **The trigger:** the passes split on more than 1 in 5 disagreements, or the developer finds one all 3 passes missed.
+  - **Then:** precision is provisional; every unmatched flagged conflict gets a verdict after the runs, and precision is reported both ways.
+
+### Alternatives considered
+
+| Option | Why not |
+|---|---|
+| Label the expected conflicts, judge the rest after the runs (pooling) | A human step after the paid runs; judged after seeing the output; recall only counts what was thought of in advance. Kept as (d)'s fallback |
+| Label only the expected conflicts; anything else counts as wrong | Precision understated by every real but unlisted conflict |
+| Match by documents only, any kind | Any pair touching a KEP would count as that KEP's claim conflict |
+| One label per pair | One disagreement stated by 4 sources would need 4 labels, and recall would expect the model to list it 4 times |
+
+### Consequences
+
+- **Re-scoring is free:** results store each flagged conflict's chunk ids and each hit's document and heading path, so stored runs re-score after a label fix.
+- **Known limits:**
+  - "Every disagreement" is only as complete as 3 passes of one model family; the spot-check samples it.
+  - A flagged pair matching two conflicts credits both.
+  - A section-level side also matches packed pieces of one version.
+- **S11:** retries fetch new hits, which have no labels. S11's sitting decides how to label them; labels by document and section carry over for unchanged hits.

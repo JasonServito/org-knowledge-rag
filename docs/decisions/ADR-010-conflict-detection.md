@@ -1,6 +1,6 @@
 # ADR-010: Conflict detection method
 
-- **Status:** Accepted (2026-10-11, decided in the S10-R1 sitting)
+- **Status:** Accepted (2026-10-11, decided in the S10-R1 sitting); changed in the S10-R2 sitting (below)
 - **Date:** 2026-10-11
 - **Blueprint/spec refs:** §16, §18; product spec must-have 6, AC4, AC7; ADR-003 D2, D6; ADR-006 D2
 - **Evidence:** `docs/slices/S10-conflict-detection.md`, run S10-R1 ("Sitting evidence"). Two devil's-advocate reviews argued against the recommendations first.
@@ -60,3 +60,15 @@
 - **The model's conflict recall is unknown until S10-T8.** AC4's seeds split between rules (KEP-4858, KEP-2579) and the model (`versioning.md`, KEP-2572).
 - **S11's grader** sees the rule-found conflicts before the answer, but not the model-found ones. Revisit with S11's design.
 - **Revisit triggers:** the switch rule (D4); a new source type with stage claims; the S11 graph.
+
+## Changes from the S10-R2 sitting (2026-10-11)
+
+Decided by the developer in the S10-R2 sitting; the evidence is in `docs/slices/S10-conflict-detection.md`, run S10-R2. A devil's advocate argued against the AC4 recommendation first, and it changed.
+
+| Where | Was | Now | Evidence |
+|---|---|---|---|
+| D2, "the prompt states the same rules" | The prompt says a chunk valid at "the asked-about release" wins, but only KEP chunks show that release | The prompt adds "Settle conflicts at release 1.N." before the question, and the rule points to it | 7 of v0's 43 questions settle before 1.37 (1.20 ×3, 1.24, 1.27, 1.28 ×2); code always used the target, so only the prose could differ (Greptile on PR #42) |
+| D3, how the list is measured | (unstated) | Against conflict set v0 (ADR-007 D4): precision, recall and AC4 per seed | — |
+| Consequences, AC4's seeds | "AC4's seeds split between rules (KEP-4858, KEP-2579) and the model (`versioning.md`, KEP-2572)" | AC4 is end to end, on questions fixed without looking at their results: q18 (KEP-4858), q01 (KEP-2572), q08 (KEP-2579's date) and c01 (versioning.md's "every three months", "In Kubernetes 1.30, how long was a minor release supported?"). Each seed reports whether search retrieved it. KEP-2579's `replaces: []` is in no chunk's text, so only its date is checked | q08 doesn't retrieve KEP-2579's date line in authority mode (hybrid did). Picking questions that do would break the slice's rule; the spec's hard gates apply to the finished Phase 1 |
+| D4, the switch rule | "If the model misses a model-found seed in any of S10-T8's 3 runs …" | It counts a missed seed only when search retrieved it (a separate detector sees the same 10 results) | — |
+| D4, the one-off comparison | "Decided in the S10-R2 sitting" | Only if the switch rule fires, as the first step of that later run | ~100 lines of new code and ~US$0.25 for data needed only then |
