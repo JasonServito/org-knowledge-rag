@@ -23,7 +23,7 @@ Slice: `$ARGUMENTS`. The developer is here, and every decision for the run is ma
    - For an ADR-level decision, start a `devils-advocate` subagent with the question, the options and your recommendation. Show its case before the developer decides.
    - If nothing needs deciding, say "No decisions needed".
 7. **Step 5, verification plan.** Per task: the proof map ("done when" → proof → source of expected values), 1–3 break-it rules, and the real-data demo command. Then the bundle-level check. Expected values never come from the code under test.
-8. **Step 6, PR plan.** Is there a natural seam? 1 or 2 PRs. Paid calls allowed: none unless the developer lists them.
+8. **Step 6, PR plan.** Is there a natural seam? 1 or 2 PRs. Paid calls allowed: none unless the developer lists them. If any are listed, ask for the current Anthropic credit (console → Plans & Billing, USD) and record it as `Credit at sitting: US$N (date)`. Flag it if the listed calls would leave less than US$5 (`CLAUDE.md`, "Anthropic credit").
 9. **Step 7, teach-back.** Ask the developer to explain the bundle in 2–3 sentences. Fix any gaps in at most 3 bullets.
 10. **Step 8, read-back and go.**
     - List every decision ("Here's what you decided") and get confirmation.

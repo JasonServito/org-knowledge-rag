@@ -231,6 +231,25 @@ Greptile is an AI code reviewer that comments on GitHub PRs. Its config is in `.
 | 41–49 | Mindful: say "running low", and prefer skipping re-reviews and docs/config-only PRs |
 | 50 | Hard max: no more triggers until the reset |
 
+## Anthropic credit
+
+Paid Anthropic calls (answers, the router) draw on a prepaid credit balance. No API returns the balance: the Admin API's cost report gives spend only and needs an admin key. So Claude tracks an estimate and shows it.
+
+- **Starting balance:** the developer reads it in the console (Plans & Billing, USD) and states it:
+  - at every sitting (recorded in the contract's "Paid calls allowed" as `Credit at sitting: US$N (date)`)
+  - before an interactive task's first paid call
+  - after any top-up
+- **Estimate:** the starting balance minus the spend each paid step reports (the eval's cost line; an `ask`'s token usage at `GENERATION_PRICE_*`). Failed and partial runs count too.
+- **Show it:** `Anthropic ~US$N left` in every check-in and brief that follows or plans a paid call, beside the Greptile count. No stated balance → `Anthropic credit: unknown`: ask for it (in a run, park the paid steps).
+- **Before each paid step:** if its estimated cost is more than the estimated balance, don't start it. Park it in a run; ask in an interactive task. A paid run that stops partway wastes credit and leaves a broken results folder.
+- **A 400 "credit balance is too low":** stop at once, with no retry. Park the rest, keep the outputs and report the spend.
+
+| Estimated balance | Mindset |
+|---|---|
+| US$5 or more | Normal use |
+| Under US$5 | **Low:** start the check-in or brief with `⚠️ Anthropic credit low: ~US$N left`. In a run, also send a push notification. Prefer free checks |
+| Under the next paid step's cost | Don't start that step: park it or ask |
+
 ## Writing for the developer
 
 Applies to briefs, check-ins, sittings, slice briefs and any other output.
@@ -255,7 +274,7 @@ In a run, these park instead of stopping.
   - **Bulk human review:** when a `[human]` task means reviewing many items, offer up front to verify every item yourself while the developer spot-checks a stratified sample (about 1 per class plus 1 random). Build the spot-check sheet from excerpts a script copies from the source, so the developer runs no SQL. Record the sign-off rule in the slice doc.
 - changing retrieval scoring, weights, or thresholds not specified by the task
 - deviating from an ADR or the product spec, or editing files unrelated to the task
-- spending money beyond the task's needs, e.g. embedding the full corpus or running the full eval. Default to fixtures and caches.
+- spending money beyond the task's needs, e.g. embedding the full corpus or running the full eval. Default to fixtures and caches. Check the Anthropic credit first (see Anthropic credit).
 
 ## Non-goals (don't build them, and don't scaffold them "for later")
 
