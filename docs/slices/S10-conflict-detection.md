@@ -742,6 +742,7 @@ HF_HUB_OFFLINE=1 EVAL_CONFLICTS_PATH=eval/candidates/conflicts-v0-draft.yaml mak
 - **Part 1:** `make eval-routes` for c01 and c02: at most 2 router calls and 1 Voyage request. Cap US$0.05.
 - **Part 2:** 3 runs of 45 answer calls (43 golden + c01, c02) on stored vectors and routes: 0 router calls and 0 Voyage requests. Cap US$5.50 (estimate ~US$4.7).
 - **Credit at sitting:** US$11.58 (2026-10-11). Check-ins show `Anthropic ~US$N left`.
+- **Credit after part 1:** US$11.57, stated by the developer (2026-10-11). It matches the estimate (US$11.58 − US$0.01 for `make eval-routes`).
 - **Langfuse:** none (the eval isn't traced). **Hugging Face:** none (`HF_HUB_OFFLINE=1`). **Package installs:** none.
 
 ## Retro (fill in at the end)
