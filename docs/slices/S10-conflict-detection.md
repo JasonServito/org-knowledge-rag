@@ -412,7 +412,9 @@ HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --smoke --name conflict-smoke
 
 ### Run S10-R2: the conflict set and the S10 eval (one PR, two parts)
 
-- **Status:** planned
+- **Status:** part 1 done; T8 and the retro parked until T7
+- **Parked:** S10-T8: needs S10-T7, a human task. It unparks when the developer's `S10-T7: …` commit is on the branch, and `/run-bundle` then resumes at T8.
+- **Parked:** the retro: needs S10-T8.
 - **Branch:** `s10-r2-conflict-eval`
 - **Tasks, in this order:**
   - **Part 1:** S10-T5b (the settle line) → S10-T6 (format, loader, metrics) → S10-T7a (Claude's draft).
