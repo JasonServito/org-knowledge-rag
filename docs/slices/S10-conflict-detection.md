@@ -1,9 +1,9 @@
 # S10: Conflict detection
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 7 (conflict detection: §16; `conflicts[]` in the structured output: §18)
 - **Started:** 2026-10-11
-- **Finished:**
+- **Finished:** 2026-10-12
 
 ## Outcome
 
@@ -18,11 +18,11 @@ Every answer carries a `conflicts[]` list: claimed vs. observed, old vs. new tex
 
 ## Exit checks
 
-- [ ] ADR-010 (conflict detection method) is Accepted.
-- [ ] Every answer carries `conflicts[]`, each conflict resolved by an ADR-003 D6 rule or marked unresolved; `ask` prints it and the trace logs it.
-- [ ] Conflict set v0 is human-verified: every disagreement among each eval question's 10 results, and the 4 seed cases (ADR-007 D4; S10-R2 decisions 2–3).
-- [ ] `make eval` prints conflict precision, recall and AC4; the +conflict row (3 runs) is in the ablation table; the product spec has the conflict thresholds.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] ADR-010 (conflict detection method) is Accepted.
+- [x] Every answer carries `conflicts[]`, each conflict resolved by an ADR-003 D6 rule or marked unresolved; `ask` prints it and the trace logs it.
+- [x] Conflict set v0 is human-verified: every disagreement among each eval question's 10 results, and the 4 seed cases (ADR-007 D4; S10-R2 decisions 2–3).
+- [x] `make eval` prints conflict precision, recall and AC4; the +conflict row (3 runs) is in the ablation table; the product spec has the conflict thresholds.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -360,7 +360,7 @@ Retrieve time: p50 4.91 s, p95 6.14 s (36 questions). Reranker load 7.4 s.
 | T2 | Rules | Unit, hand-built hits and rows: claim stable vs. observed beta at 37 → 1 conflict with the pinned summary; claim = observed → none; two versions valid at 24 (beta 22–24, stable 24–25) → the stable one; `disabled` → none; no claim → none; a gate with no row, a low row, or 2 gates giving alpha and beta → none; 3 hits of one KEP → 1 conflict holding 3 ids; a non-KEP hit → ignored; history lines: `- 2021-11-03: v1.23 Beta version released` with 1.23 released 2021-12-07 → 1 conflict (34 days); `- 2022-12-08: Kubernetes 1.26 released` → none; `- 2018-09-27 Kubernetes 1.12.0 released with Alpha SCTP support` → skipped; 7 days off → none, 8 → one | By hand; ADR-003 D2; the real lines |
 | T2 | **Real hits** | `HF_HUB_OFFLINE=1 make eval-retrieval` → `Rule conflicts: 5 claim_mismatch (q16 q17 q18 q19 q32), 0 history_date` | Sitting SQL |
 | T2 | DB read | Integration: `kep_versions_at` returns the newest of two versions valid at a boundary release, none for a release before the KEP's first, and the current version at the latest | By hand |
-| T3 | D6 branches | Unit: same section → supersession; one valid at the target → it prevails; both valid with tiers 4 and 1 → tier 1 prevails; neither valid with tiers 6 and 6 → unresolved; a superseded proposal vs. tier 6 → tier 6 prevails; both None → unresolved. Real pairs as hand-built hits: chunk 36383 (versioning.md, tier 4, 1.36–now) vs. 7201 (version-skew page, tier 1, 1.28–now) at 37 → contradiction, `lower_tier`, prevails 7201; chunk 10420 (gate page, tier 1, 1.36–now) vs. 10419 (same section, 1.33–1.35) at 37 → supersession, `valid_at_target`, prevails 10420 | ADR-003 D6, by hand; sitting SQL |
+| T3 | D6 branches | Unit: same section → supersession; one valid at the target → it prevails; both valid with tiers 4 and 1 → tier 1 prevails; neither valid with tiers 6 and 6 → unresolved; a superseded proposal vs. tier 6 → tier 6 prevails; both None → unresolved. Real pairs as hand-built hits: chunk 36383 (versioning.md, tier 4, 1.36–now) vs. 7201 (version-skew page, tier 2 (a release record; the contract said tier 1, retro fix), 1.28–now) at 37 → contradiction, `lower_tier`, prevails 7201; chunk 10420 (gate page, tier 1, 1.36–now) vs. 10419 (same section, 1.33–1.35) at 37 → supersession, `valid_at_target`, prevails 10420 | ADR-003 D6, by hand; sitting SQL |
 | T4 | Every path | Unit (fake generator): answered, the model's `insufficient_evidence`, rejected for a bad citation, an eval error row → each carries the rule conflicts; no hits → `[]`; an S09 `questions.jsonl` row and `Answer` JSON load with `conflicts == []` | By hand |
 | T4 | Prompt | Unit: the pinned block for 1 rule conflict with 2 chunks and for 1 with 1 chunk; no block when there's none | The contract |
 | T4 | **Retrieval unchanged** | `HF_HUB_OFFLINE=1 make eval-retrieval` → S09's lines exactly (pinned above) | S09-R2 |
@@ -373,7 +373,7 @@ If a pinned number differs, the task parks that item (with both numbers) and kee
 
 #### Break-it rules
 
-- **T2:** take the claim from each hit's own version → the line becomes `Rule conflicts: 6 claim_mismatch (q16 q17 q18 q19 q36 q44), 0 history_date`, and the boundary-release unit test fails.
+- **T2:** take the claim from each hit's own version → the line becomes `Rule conflicts: 6 claim_mismatch (q16 q17 q18 q19 q36 q44), 0 history_date`, and the boundary-release unit test fails. *(Retro fix: taking the claim from each KEP's first-ranked hit gives `(q16 q17 q18 q19 q44 q45)`; the line above appears under another reading, any hit's own claim vs. all its hits' gates. Both breaks failed 5 unit tests and 1 integration test; PR #42.)*
 - **T3:** let the higher tier number win → the tier tests fail.
 - **T4/T5:** send a bad conflict id through the citation check (`rejection_reason`) → the "answer unchanged" test fails.
 
@@ -418,10 +418,9 @@ HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --smoke --name conflict-smoke
 
 ### Run S10-R2: the conflict set and the S10 eval (one PR, two parts)
 
-- **Status:** PR open; S10-T5c and S10-T8 done (2026-10-12); the retro next
+- **Status:** PR open; S10-T5c, S10-T8 and the retro done (2026-10-12)
 - **Part 2 so far (2026-10-12):** T8 step 0 (`run.json` records the conflict file) done; the free gate passed; run 1 `conflict-20261012T055648Z` (US$1.74) missed its gate on q48 and is void (decision Q5).
 - **Unparked (2026-10-12):** S10-T8 runs 2–3, the write-up and the thresholds were parked here: run 1 got AC3 6/7 (and AC1 37/37), against the pinned 7/7 (36/36). Unanswerable q48 was answered ("GA being targeted for Kubernetes 1.38") from the claim line's "(latest milestone v1.38)" (ADR-010 D1, added in S10-T5), which q48's label calls the unseen part of its trap. Fixing it departs from ADR-010 D1: the developer decides. Step 0 and run 1's folder are committed, not stashed (the contract keeps the folder). `/run-bundle` resumes at T8 run 1 once the decision is recorded here. A prompt fix voids run 1: 3 new runs (~US$5.21) on top of it (US$1.74) exceed the US$5.50 cap. Decided in "Decisions after run 1" (Q1–Q6).
-- **Resume:** `/run-bundle` continues at the retro.
 - **Branch:** `s10-r2-conflict-eval`
 - **Tasks, in this order:**
   - **Part 1:** S10-T5b (the settle line) → S10-T6 (format, loader, metrics) → S10-T7a (Claude's draft).
@@ -805,7 +804,39 @@ HF_HUB_OFFLINE=1 EVAL_CONFLICTS_PATH=eval/candidates/conflicts-v0-draft.yaml mak
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - **S10-R1** (PR #42), 4 tasks in 1 PR; T1 (ADR-010) was decided in the sitting:
+    - **T2:** 2 rules on stored facts: `claim_mismatch` (a KEP's claim at the target release vs. its gates' observed stage) and `history_date` (a KEP history date vs. the releases table, 7-day tolerance). On v0's 36 answerable questions: 5 claim_mismatch, 0 history_date (hybrid mode: 1, q08).
+    - **T3:** a pure function gives a pair's kind (same section → supersession, else contradiction) and its winner by ADR-003 D6.
+    - **T4:** `conflicts[]` on every answer, `ask`'s JSON, the trace and the eval rows.
+    - **T5:** the answer model lists disagreeing chunk pairs in the same call; code checks the ids and resolves each pair. Smoke run (13 questions): AC1–AC3 100%, 6 conflicts (2 rule, 4 model), +$0.0054 per question.
+  - **S10-R2** (PR #43), 6 tasks in 1 PR over 2 parts, with your T7 in between:
+    - **T5b:** "Settle conflicts at release 1.N." in the prompt.
+    - **T6:** the conflict set's format, loader and label check; precision, recall and AC4 per seed in the summary and the table; `make eval-conflicts` (free).
+    - **T7a / T7:** conflict set v0: 3 independent labeling passes (62, 61, 57 conflicts; split rate 0.526), then your sign-off: 62 conflicts, 4 seeds, 45 questions.
+    - **T5c:** a KEP's future milestone stays out of the prompt (ADR-010 D1 amended). q48: refused 0 of 3 before, 3 of 3 after.
+    - **T8:** 3 paid runs on `10eb649`: 0 errors, AC1–AC3 100% and false refusals 0 of 36 in each; hits identical to authority's (43 of 43).
+  - **Result:** the +conflict row passes AC7's improvement rule against authority.
+    - Conflict precision 0.818–0.952 raw, 0.955–1.000 judged; recall 0.317–0.350 (rule-found 8 of 8 in both, every run; two-text recall 11–13 of 52).
+    - AC4 2 of 4 by matching (q08, c01 not retrieved); 1 of 4 if q01's summaries fail the check.
+    - Cost $0.0378 per question (+$0.0061, +19%); p95 16.3 s (+1.4 s). Both within the Phase 1 ceilings ($0.06, 23 s).
+    - Thresholds in the product spec (decision 6): judged precision ≥ 0.90, recall ≥ 0.30; AC4 stays a hard gate.
+  - **Paid in S10:** about US$7.7 tracked: R1 ~US$0.60; R2 US$0.01 (routes), US$1.74 (the void run), ~US$0.29 (q48's check), US$5.08 (3 runs). Voyage: 5 requests. Hugging Face: 0 downloads.
+  - **Tests:** 853 unit and 186 integration (from 707 and 177).
+  - **PR sizes:** R1 34 files, ~2,260 reviewable lines; R2 part 1 36 files, ~2,280. Greptile: R1 1 comment, parked; R2 2 comments, both fixed. 17/50 credits.
 - **Surprises:**
+  - **Adding true information broke a refusal.** The KEP milestone, added in T5 for stale KEPs, let the model turn q48's plan ("latest milestone v1.38") into a release answer. Only a full run caught it; the 13-question smoke run doesn't include q48.
+  - **Labelers disagree a lot:** 41 of 78 groups weren't found by all 3 passes (0.526). 3 real conflicts the model flagged were in no pass.
+  - **Two of the 4 blind seeds aren't retrieved** in authority mode (q08, c01), so AC4 can't pass from the conflict step alone.
 - **What didn't work / negative results:**
+  - **Two-text recall is low:** 11–13 of 52 reachable. The model lists 13–14 pairs per run; 39 conflicts were found in no run.
+  - **The first full run was void** (US$1.74) and needed a decision and a fix.
+  - **q01's seed matches by a different disagreement:** the pair's summary is about "4 times per year", not KEP-2572's out-of-date status. Matching by documents can't tell the two facts apart.
+  - **AC7's test is weak here:** authority has no conflict step, so its recall is 0 by construction.
 - **Do differently next slice:**
+  - Put the questions with refusal traps (q48 and other `answerable: false`) in the smoke set, or check them before a full run, when a prompt change adds information.
+  - Match seed conflicts on the fact, not only the documents, when one document holds two disagreements.
+  - Budget: S11 starts with ~US$4.46. Plan the top-up before the sitting.
+- **Open for the developer (from T8):**
+  - q01's seed summaries: confirm Claude's reading (fail). If confirmed, AC4 is 1 of 4, and ADR-010 D4's switch rule and KEP-2572 fallback fire for a later run.
+  - 3 real conflicts are missing from the key (q18, q34, q35 pairs): candidates for the set's next version.
 - **Slice brief:** `docs/learning/S10-conflict-detection.md`

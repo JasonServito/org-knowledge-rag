@@ -318,7 +318,7 @@ Tasks:
   - Deps: T4, T6.
 - [x] **S09-T8 `[commodity]` S09 eval run.** A free gate first, then 3 paid runs, the row, the write-up, the S09 metric thresholds (by the R2 sitting's rule). Deps: T7.
 
-### 🟨 S10 Conflict detection *(Stage 7)*
+### ✅ S10 Conflict detection *(Stage 7)*
 
 - **Outcome:** every answer carries `conflicts[]`: claimed vs. observed, old vs. new text, and contradictions, each resolved by an ADR-003 D6 rule or marked unresolved.
 - **Slice doc:** `docs/slices/S10-conflict-detection.md`
@@ -358,7 +358,7 @@ Tasks:
 - [x] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
 - [x] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T5c, T7.
 
-### ⬜ S11 Corrective agentic retrieval *(Stage 8)*
+### 🟨 S11 Corrective agentic retrieval *(Stage 8)*
 
 - **Outcome:** a bounded LangGraph workflow (router → retrieve → grade → retry ≤ 3 → generate).
 - **Exit:** kept only if the ablation shows benefit on hard queries worth the extra latency and cost; trajectory metrics recorded.
