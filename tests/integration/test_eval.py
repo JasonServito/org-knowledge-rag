@@ -438,6 +438,9 @@ def test_a_run_writes_the_pinned_results_format(
         "name": "dense",
         "golden_path": str(golden_path),
         "golden_sha256": golden_sha256,
+        # S10-T8 (decision R2): no conflict file in this test's settings, so both are None.
+        "conflicts_path": None,
+        "conflicts_sha256": None,
         "smoke": False,
         "questions": 3,
         "settings": {

@@ -154,6 +154,10 @@ class RunInfo(BaseModel):
     git_dirty: bool  # tracked files differ from git_sha
     golden_path: str
     golden_sha256: str  # of the file's bytes: a changed file is another table row
+    # The conflict file scored against, and its bytes' hash (S10-R2 decision R2); None without one
+    # and in older folders. The table still groups rows by the golden file.
+    conflicts_path: str | None = None
+    conflicts_sha256: str | None = None
     smoke: bool
     questions: int
     settings: RunSettings
@@ -622,10 +626,11 @@ def run(
     )
     conflicts_path = settings.eval_conflicts_path
     conflict_set = None
+    conflicts_sha256 = None
     if conflicts_path.is_file():
         conflict_set = check_conflicts(conn, golden, conflicts_path)
-        sha256 = hashlib.sha256(conflicts_path.read_bytes()).hexdigest()
-        print(set_line(conflicts_path, sha256, conflict_set, len(golden.questions)))
+        conflicts_sha256 = hashlib.sha256(conflicts_path.read_bytes()).hexdigest()
+        print(set_line(conflicts_path, conflicts_sha256, conflict_set, len(golden.questions)))
     else:
         print(f"Conflict set: none ({conflicts_path} not found).")
     # The conflict set's new questions run in full runs only (S10-R2, Claude's call 4).
@@ -673,6 +678,8 @@ def run(
         git_dirty=git_dirty,
         golden_path=str(golden_path),
         golden_sha256=golden_sha256,
+        conflicts_path=None if conflict_set is None else str(conflicts_path),
+        conflicts_sha256=conflicts_sha256,
         smoke=smoke,
         questions=len(rows),
         settings=RunSettings(

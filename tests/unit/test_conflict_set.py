@@ -18,9 +18,10 @@ from typing import Any
 import anthropic
 import pytest
 import yaml  # type: ignore[import-untyped]
-from tests.conftest import FakeEmbedder
+from tests.conftest import FakeEmbedder, FakeGenerator
 
 from orgknow.eval import __main__ as eval_main
+from orgknow.eval import runner
 from orgknow.eval.checks import AnswerChecks
 from orgknow.eval.conflicts import (
     ConflictCounts,
@@ -38,11 +39,12 @@ from orgknow.eval.conflicts import (
     seeds_line,
     set_line,
 )
-from orgknow.eval.golden import Label
+from orgknow.eval.golden import Label, load_golden_file
 from orgknow.eval.runner import (
     QuestionRow,
     RankedHit,
     Rate,
+    RunInfo,
     Summary,
     load_routes,
     load_vectors,
@@ -819,3 +821,53 @@ def test_eval_routes_stops_on_an_invalid_conflict_file(
     assert eval_main.main(["routes"], settings) == 1
 
     assert capsys.readouterr().err == f"error: {conflicts}: conflicts: Field required\n"
+
+
+# --- `run.json` records the conflict file (S10-R2 decision R2; fakes, no database) ----------------
+
+# R1's smoke run, written before R2: its run.json has no conflict-file fields.
+R1_SMOKE_RUN = (
+    Path(__file__).parents[2] / "eval" / "results" / "conflict-smoke-20261011T083501Z" / "run.json"
+)
+
+
+def test_run_json_records_the_conflict_file_or_none_and_older_folders_load_with_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The database reads, faked: the golden and conflict files as loaded, no tiers, and a row with
+    # no hits per question. Nothing else in `run` reads the database or the network.
+    golden = load_golden_file(DEMO_GOLDEN)
+    monkeypatch.setattr(runner, "check_golden", lambda conn, path: (golden, []))
+    monkeypatch.setattr(
+        runner,
+        "check_conflicts",
+        lambda conn, golden, path: resolve_sides(load_conflict_file(path, GOLDEN_IDS), {}),
+    )
+    monkeypatch.setattr(runner, "document_tiers", lambda conn, questions: {})
+    monkeypatch.setattr(runner, "_run_question", lambda question, *args: _row(question.id, [], []))
+
+    def run_json(conflicts_path: Path, name: str) -> RunInfo:
+        settings = _settings(
+            retrieval_mode="dense",
+            embedding_model="fake-model",
+            eval_golden_path=DEMO_GOLDEN,
+            eval_conflicts_path=conflicts_path,
+            eval_results_dir=tmp_path / "results",
+            eval_vectors_dir=tmp_path / "vectors",
+        )
+        generator = FakeGenerator(None)
+        folder = runner.run(None, FakeEmbedder(), generator, settings, smoke=False, name=name)  # type: ignore[arg-type]
+        return RunInfo.model_validate_json((folder / "run.json").read_text(encoding="utf-8"))
+
+    with_file = run_json(DEMO_SAMPLE, "with")
+    assert with_file.conflicts_path == str(DEMO_SAMPLE)
+    # By `sha256sum tests/fixtures/conflicts/demo-sample.yaml`.
+    assert with_file.conflicts_sha256 == (
+        "7b8cfbd4a2d346a02309094ea78a9db68a0cec0296181379668c5ffa0e0f619b"
+    )
+
+    without = run_json(tmp_path / "none.yaml", "without")
+    assert (without.conflicts_path, without.conflicts_sha256) == (None, None)
+
+    older = RunInfo.model_validate_json(R1_SMOKE_RUN.read_text(encoding="utf-8"))
+    assert (older.conflicts_path, older.conflicts_sha256) == (None, None)

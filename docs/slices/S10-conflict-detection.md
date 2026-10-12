@@ -412,8 +412,9 @@ HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --smoke --name conflict-smoke
 
 ### Run S10-R2: the conflict set and the S10 eval (one PR, two parts)
 
-- **Status:** PR open (part 1); T8 and the retro parked until T7
-- **Parked:** S10-T8: needs S10-T7, a human task. It unparks when the developer's `S10-T7: …` commit is on the branch, and `/run-bundle` then resumes at T8.
+- **Status:** PR open; part 2 stopped at T8's run 1 (q48 decision)
+- **Part 2 so far (2026-10-12):** T8 step 0 (`run.json` records the conflict file) done; the free gate passed; run 1 `conflict-20261012T055648Z` kept (US$1.74). It missed its gate on q48.
+- **Parked:** S10-T8 runs 2–3, the write-up and the thresholds: run 1 got AC3 6/7 (and AC1 37/37), against the pinned 7/7 (36/36). Unanswerable q48 was answered ("GA being targeted for Kubernetes 1.38") from the claim line's "(latest milestone v1.38)" (ADR-010 D1, added in S10-T5), which q48's label calls the unseen part of its trap. Fixing it departs from ADR-010 D1: the developer decides. Step 0 and run 1's folder are committed, not stashed (the contract keeps the folder). `/run-bundle` resumes at T8 run 1 once the decision is recorded here. A prompt fix voids run 1: 3 new runs (~US$5.21) on top of it (US$1.74) exceed the US$5.50 cap.
 - **Parked:** the retro: needs S10-T8.
 - **Branch:** `s10-r2-conflict-eval`
 - **Tasks, in this order:**
@@ -753,6 +754,7 @@ HF_HUB_OFFLINE=1 EVAL_CONFLICTS_PATH=eval/candidates/conflicts-v0-draft.yaml mak
 - **Part 2:** 3 runs of 45 answer calls (43 golden + c01, c02) on stored vectors and routes: 0 router calls and 0 Voyage requests. Cap US$5.50 (estimate ~US$4.7).
 - **Credit at sitting:** US$11.58 (2026-10-11). Check-ins show `Anthropic ~US$N left`.
 - **Credit after part 1:** US$11.57, stated by the developer (2026-10-11). It matches the estimate (US$11.58 − US$0.01 for `make eval-routes`).
+- **Spent in part 2:** run 1, US$1.74 ($0.0388 per golden question, vs. the $0.034 estimate; the 2 new questions $0.07). Estimate ~US$9.83 left. 3 runs at that rate: ~US$5.21, under the US$5.50 cap.
 - **Langfuse:** none (the eval isn't traced). **Hugging Face:** none (`HF_HUB_OFFLINE=1`). **Package installs:** none.
 
 ## Retro (fill in at the end)
