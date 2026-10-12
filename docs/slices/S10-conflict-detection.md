@@ -84,6 +84,12 @@ These mirror `docs/backlog.md`; details live here.
 - **Done when:** hand-worked unit tests pass; T8's run 1 keeps AC1–AC3 at 100%.
 - **Deps:** T5.
 
+### S10-T5c: A KEP's future milestone stays out of the prompt `[core]`
+
+- **Goal:** a KEP's latest milestone appears in the claim line and the rule-found summary only when it is older than the target release (decision Q2 after run 1; ADR-010 D1 amended). A future milestone is a plan, and q48 was answered from it.
+- **Done when:** hand-worked unit tests pass; q48 asked 3 times after the change gives `insufficient_evidence` 3 of 3 (3 asks before it are reported, not gated).
+- **Deps:** T5.
+
 ### S10-T6: Conflict set format, loader and metrics `[core]`
 
 - **Goal:** the conflict set's format and loader with a label check (ADR-007 D4); conflict precision, recall and AC4 in the eval, its summary and the table; `make eval-conflicts` (free).
@@ -110,7 +116,7 @@ These mirror `docs/backlog.md`; details live here.
   - run 1 keeps AC1–AC3 at 100% with 0 errors
   - the row and its spread are committed
   - `docs/evaluation.md` states pass or fail against the improvement rule, and lists the seed summaries for the developer
-- **Deps:** T5b, T7.
+- **Deps:** T5b, T5c, T7.
 
 ## Risks & unknowns
 
@@ -412,15 +418,17 @@ HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --smoke --name conflict-smoke
 
 ### Run S10-R2: the conflict set and the S10 eval (one PR, two parts)
 
-- **Status:** PR open; part 2 stopped at T8's run 1 (q48 decision)
-- **Part 2 so far (2026-10-12):** T8 step 0 (`run.json` records the conflict file) done; the free gate passed; run 1 `conflict-20261012T055648Z` kept (US$1.74). It missed its gate on q48.
-- **Parked:** S10-T8 runs 2–3, the write-up and the thresholds: run 1 got AC3 6/7 (and AC1 37/37), against the pinned 7/7 (36/36). Unanswerable q48 was answered ("GA being targeted for Kubernetes 1.38") from the claim line's "(latest milestone v1.38)" (ADR-010 D1, added in S10-T5), which q48's label calls the unseen part of its trap. Fixing it departs from ADR-010 D1: the developer decides. Step 0 and run 1's folder are committed, not stashed (the contract keeps the folder). `/run-bundle` resumes at T8 run 1 once the decision is recorded here. A prompt fix voids run 1: 3 new runs (~US$5.21) on top of it (US$1.74) exceed the US$5.50 cap.
+- **Status:** PR open; part 2 resumes at S10-T5c (q48 decided 2026-10-12, "Decisions after run 1")
+- **Part 2 so far (2026-10-12):** T8 step 0 (`run.json` records the conflict file) done; the free gate passed; run 1 `conflict-20261012T055648Z` (US$1.74) missed its gate on q48 and is void (decision Q5).
+- **Unparked (2026-10-12):** S10-T8 runs 2–3, the write-up and the thresholds were parked here: run 1 got AC3 6/7 (and AC1 37/37), against the pinned 7/7 (36/36). Unanswerable q48 was answered ("GA being targeted for Kubernetes 1.38") from the claim line's "(latest milestone v1.38)" (ADR-010 D1, added in S10-T5), which q48's label calls the unseen part of its trap. Fixing it departs from ADR-010 D1: the developer decides. Step 0 and run 1's folder are committed, not stashed (the contract keeps the folder). `/run-bundle` resumes at T8 run 1 once the decision is recorded here. A prompt fix voids run 1: 3 new runs (~US$5.21) on top of it (US$1.74) exceed the US$5.50 cap. Decided in "Decisions after run 1" (Q1–Q6).
 - **Parked:** the retro: needs S10-T8.
+- **Resume:** `/run-bundle` starts at S10-T5c, then T8 from step 0b (below).
 - **Branch:** `s10-r2-conflict-eval`
 - **Tasks, in this order:**
   - **Part 1:** S10-T5b (the settle line) → S10-T6 (format, loader, metrics) → S10-T7a (Claude's draft).
   - **Pause:** S10-T7 `[human]`, the developer's sign-off, committed on this branch.
   - **Part 2 (`/run-bundle` resumes):** S10-T8 (`run.json` records the conflict file, then the eval run) → the retro (`/slice-retro`, as the last commit).
+  - **After run 1 (decided 2026-10-12):** S10-T5c (with q48's before and after check) → S10-T8 from step 0b → the retro.
 - **Closes the slice:** yes, after part 2.
 - **Part 1 ends** with T8 and the retro parked ("needs S10-T7, a human task"), the PR open, one Greptile review, and a check-in pointing to the sheet.
 - **Goal (plain words):**
@@ -502,6 +510,33 @@ Made by the developer after part 1 (PR #43), interactively.
 |---|---|---|---|
 | R1 | **Keep the contract's merge key** (same question, kind and set of documents). When several disputed items are one fact, the developer keeps one per question at T7, and Claude merges their sources | Group passes by overlapping sources | Both keys leave the split rate above 0.20 (0.526 vs. 0.354), so precision is provisional either way. The overlap rule glued distinct facts (T7a review; Greptile on PR #43) |
 | R2 | **`run.json` records the conflict file:** `conflicts_path` and `conflicts_sha256`, None without a file and in older folders. Built and tested as T8's first step, before its free gate (~10 lines, 1 unit test, free). The table still groups rows by the golden file | T8's write-up copies the hash by hand | The key will change after T8 (fixes after the judging, S11's labels), so each score must name the key it used |
+
+#### Decisions after run 1 (2026-10-12)
+
+Made by the developer after T8's run 1 missed its gate on q48, interactively. A devil's advocate argued against Q2's recommendation first.
+
+| # | Choice | Rejected | Why |
+|---|---|---|---|
+| Q1 | **Fix q48, don't accept AC3 6/7.** ADR-010 D1 is amended; run 1 is void | Keep run 1 and accept 6/7 for this slice (~US$3.5 cheaper) | AC3 exists to catch a guessed future release; relaxing the gate after the fact hides a real bug |
+| Q2 | **B2: a KEP's latest milestone shows only when older than the target release,** in the claim line and the rule-found summary. A milestone at or after the target is left out | B3: keep it, marked "planned, not released by 1.37"; B1: keep it and add a prompt rule against answering from it | Run 1's answer already called it "only a planned target" and still answered, so labeling it as a plan likely won't stop it; B1 relies on the model obeying, and its wording is false for shipped KEPs. B2 is deterministic, free to test, and keeps the stale-KEP signal D1 exists for (q01: v1.22, 15 releases old). Devil's advocate: it hides a true plan (KEP-4858 targets GA in 1.38) and changes the summary on q16–q20 and q48 (AC4 seed q18's stable-vs-beta conflict stays). The developer's choice of Q1 says "planned for 1.38" is a guess, not an answer |
+
+Claude's calls, confirmed in the read-back:
+
+| # | Choice | Why |
+|---|---|---|
+| Q3 | S10-T5c `[core]` holds the change and its unit tests; ADR-010 is amended now, with the decision | One task per behavior change |
+| Q4 | q48 asked 3 times on today's code, then 3 times after T5c; after must be 3 of 3 `insufficient_evidence`, else park before T8's runs | Run 1 failed q48 once; without a baseline, a passing check can't tell the fix from luck (devil's advocate) |
+| Q5 | Run 1's folder leaves the tree (kept in history at `3872104`); `make eval-table` regenerates | The table groups runs by name, so a void run would join the new `conflict` row |
+| Q6 | Cap for the new spend US$5.80; credit at decision US$9.83 | Check ~US$0.30 + 3 runs ~US$5.21 + margin |
+
+#### Pinned: T5c
+
+- **Claim line** (`_milestone`): the milestone part only when the milestone is v1.N or 1.N with N before the target: " (latest milestone v1.22, 15 releases before 1.37)" as now. N at or after the target, an unparsable milestone, or no `authority` → no part. q48's KEP-4858 at 1.37: `claimed: implemented/stable`.
+- **Rule-found summary** (`claim_mismatch`): " (latest milestone M)" only under the same rule, against the conflict's release. KEP-4858 at 1.37: `kep:4858 claims stable; the feature-gate reference at 1.37 says beta.`
+- **System prompt:** unchanged.
+- **Retrieval and matching:** unchanged. `make eval-retrieval` prints the S09/R1 lines and `make eval-conflicts` its T8 gate lines; a difference parks.
+- **q48's check (paid, decision Q4):** `HF_HUB_OFFLINE=1 uv run orgknow ask "In which Kubernetes release will StrictIPCIDRValidation graduate to GA?"`, 3 times before the first T5c edit and 3 times after. Each records `answer_status` and the first 200 characters of the answer. Pass: after = 3 of 3 `insufficient_evidence`. Before is reported, never gated.
+- **ADR-010:** amended at decision time ("Changes after S10-T8's run 1"); T5c doesn't edit it.
 
 #### Pinned: the conflict set (ADR-007 D4)
 
@@ -635,12 +670,13 @@ With every conflict reachable, the line is just `Reachable: 5 of 5.` The flagged
 #### Pinned: T8
 
 0. **Record the conflict file (decision R2):** `RunInfo` gains `conflicts_path: str | None = None` and `conflicts_sha256: str | None = None`, after `golden_sha256`; `run` fills them when the file exists. A unit test checks both, and that an older `run.json` loads with None.
+0b. **Void run 1 (decision Q5):** `git rm -r eval/results/conflict-20261012T055648Z`, then `make eval-table`: the `conflict` row is gone, older rows unchanged.
 1. **Free gate:**
    - Postgres; `make check`.
    - `HF_HUB_OFFLINE=1 make eval-retrieval` prints the S09/R1 lines exactly (R1's "Pinned: output formats").
    - `HF_HUB_OFFLINE=1 make eval-conflicts` on the verified file: `Unmatched sides: 0`, and the rule-found line equals the counts taken by hand from the file.
-2. **Credit:** the balance from the sheet, else US$11.58 minus part 1's spend. Under US$5.50 → park.
-3. **Run 1:** `HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --name conflict`. It must show 0 errors, AC1 36/36, AC2 43/43 and AC3 7/7. Otherwise park runs 2–3 and keep the folder.
+2. **Credit:** US$9.83 (decision Q6) minus T5c's check. Under US$5.50 → park.
+3. **Run 1** (the first run after T5c; the void run doesn't count): `HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --name conflict`. It must show 0 errors, AC1 36/36, AC2 43/43 and AC3 7/7. Otherwise park runs 2–3 and keep the folder.
 4. **Runs 2 and 3,** then `make eval-table`.
 5. **`docs/evaluation.md`, in the "Conflicts" section:**
    - the row vs. `authority`: retrieval identical, AC1–AC3, false refusals, p95, cost (new questions included)
@@ -652,6 +688,7 @@ With every conflict reachable, the line is just `Reachable: 5 of 5.` The flagged
    - loser-only answers
    - ADR-010 D4's switch rule (retrieved seeds only) and its KEP-2572 fallback check
    - pass or fail against AC7's improvement rule
+   - the void run (`3872104`), q48's miss, and T5c's before and after check
 6. **Thresholds** in the product spec, by decision 6.
 
 #### Handoffs between tasks
@@ -660,6 +697,7 @@ With every conflict reachable, the line is just `Reachable: 5 of 5.` The flagged
 - **T7a → T7:** the draft, the pass files and the sheet.
 - **T7 → T8:** the verified file and the balance.
 - **T5b → T8:** the prompt T8 measures.
+- **T5c → T8:** the claim line and summary T8 measures; q48's check passed. T5c parks → T8 parks.
 - **If a task parks:** T6 parks → T7a parks, and part 2 can't start. T5b parks → T8 parks.
 
 #### Edge cases
@@ -679,6 +717,7 @@ With every conflict reachable, the line is just `Reachable: 5 of 5.` The flagged
   - `tests/fixtures/conflicts/demo-sample.yaml` and small loader fixtures
   - `eval/candidates/conflicts-v0-draft.yaml`, `eval/candidates/conflicts-v0-passes/`, `eval/candidates/conflicts-v0-spot-check.md`
   - **Part 2:** 3 `eval/results/conflict-<UTC>/` folders, and the developer's `eval/golden_set/conflicts-v0.yaml` (T7)
+  - **After run 1:** removed, `eval/results/conflict-20261012T055648Z/` (decision Q5); changed, `src/orgknow/generation/{prompt,conflicts}.py`, `tests/unit/test_generation.py`, `tests/unit/test_conflicts.py` (T5c)
 - **Changed:**
   - **Config:** `.env.example`; `Makefile`
   - **Code:** `src/orgknow/settings.py` (`EVAL_CONFLICTS_PATH`); `src/orgknow/eval/{runner,table,__main__}.py`; `src/orgknow/generation/prompt.py`; tests that build a summary, the table or the prompt
@@ -697,7 +736,7 @@ With every conflict reachable, the line is just `Reachable: 5 of 5.` The flagged
   - `eval/golden_set/` by Claude
   - `src/orgknow/retrieval/`
   - migrations and chunking
-  - every older results folder (no `make eval-resummarize` in this run)
+  - every older results folder (no `make eval-resummarize` in this run), except the void run's removal
 
 #### Proof map
 
@@ -710,6 +749,9 @@ With every conflict reachable, the line is just `Reachable: 5 of 5.` The flagged
 | T6 | **Real data** | `HF_HUB_OFFLINE=1 EVAL_CONFLICTS_PATH=tests/fixtures/conflicts/demo-sample.yaml make eval-conflicts` → the pinned lines | Sitting evidence |
 | T6 | Nothing else moves | `HF_HUB_OFFLINE=1 make eval-retrieval` → the S09/R1 lines exactly; `make eval-table` → older rows' cells unchanged, 3 new columns n/a | R1 |
 | T7a | The draft | `EVAL_CONFLICTS_PATH=eval/candidates/conflicts-v0-draft.yaml HF_HUB_OFFLINE=1 make eval-conflicts`: `Unmatched sides: 0`; every non-seed conflict reachable; the seeds' retrieval as observed; the split rate; the sheet built by script | Stored text |
+| T5c | The milestone rule | Unit, at target 1.37: v1.22 → "(latest milestone v1.22, 15 releases before 1.37)"; v1.36 → "…, 1 release before 1.37)"; v1.37 → no part; v1.38 → no part; unparsable → no part. Summary for KEP-4858 at 1.37 has no milestone; one with v1.22 at 1.37 keeps "(latest milestone v1.22)" | By hand |
+| T5c | Nothing else moves | `HF_HUB_OFFLINE=1 make eval-retrieval` and `make eval-conflicts` print the T8 gate lines | R1; the verified file |
+| T5c | **Real data** | q48 asked 3 before and 3 after (pinned in "T5c") | q48's label |
 | T8 | Gate, run 1, row | As pinned in "T8" above | S09's row; the verified file |
 
 If a pinned number differs, the task parks that item with both numbers and keeps the code, as in R1.
@@ -719,6 +761,7 @@ If a pinned number differs, the task parks that item with both numbers and keeps
 - **T6:** let one chunk satisfy both sides of a `texts` conflict → the "two different chunks" test fails.
 - **T6:** count unreachable conflicts in recall → the metrics test fails.
 - **T5b:** drop the settle line → the prompt test fails.
+- **T5c:** show a milestone at or after the target again → the v1.38 test fails.
 
 #### Real-data demo
 
@@ -755,6 +798,7 @@ HF_HUB_OFFLINE=1 EVAL_CONFLICTS_PATH=eval/candidates/conflicts-v0-draft.yaml mak
 - **Credit at sitting:** US$11.58 (2026-10-11). Check-ins show `Anthropic ~US$N left`.
 - **Credit after part 1:** US$11.57, stated by the developer (2026-10-11). It matches the estimate (US$11.58 − US$0.01 for `make eval-routes`).
 - **Spent in part 2:** run 1, US$1.74 ($0.0388 per golden question, vs. the $0.034 estimate; the 2 new questions $0.07). Estimate ~US$9.83 left. 3 runs at that rate: ~US$5.21, under the US$5.50 cap.
+- **After run 1 (decision Q6):** credit at decision US$9.83 (2026-10-12, stated by the developer). T5c's check: 6 `ask`s (6 answer calls, 6 router calls, 6 Voyage requests), ~US$0.30. T8's 3 runs as above, ~US$5.21. Cap US$5.80 for both; ~US$4.30 left after, which is low (under US$5).
 - **Langfuse:** none (the eval isn't traced). **Hugging Face:** none (`HF_HUB_OFFLINE=1`). **Package installs:** none.
 
 ## Retro (fill in at the end)

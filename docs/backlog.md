@@ -343,6 +343,10 @@ Tasks:
   - "Settle conflicts at release 1.N." in the prompt, so the answer text and the code's list settle at the same release (S10-R2 decision 4).
   - Done when: hand-worked unit tests pass; T8's run 1 keeps AC1–AC3 at 100%.
   - Deps: T5.
+- [ ] **S10-T5c `[core]` A KEP's future milestone stays out of the prompt.**
+  - The claim line and the rule-found summary show a KEP's latest milestone only when it is older than the target release (decided after T8's run 1 answered unanswerable q48 from "latest milestone v1.38"; ADR-010 D1 amended).
+  - Done when: hand-worked unit tests pass; q48 asked 3 times after the change gives `insufficient_evidence` 3 of 3.
+  - Deps: T5.
 - [x] **S10-T6 `[core]` Conflict set format, loader and metrics.**
   - ADR-007 D4's format and label check; precision, recall and AC4 per seed in the eval, the summary and the table; `make eval-conflicts` (free).
   - Done when: hand-worked unit tests pass; `make eval-conflicts` on the demo sample prints the R2 contract's lines.
@@ -352,7 +356,7 @@ Tasks:
   - Done when: the loader's check passes on the draft; the split rate is reported.
   - Deps: T6.
 - [x] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
-- [ ] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T7.
+- [ ] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T5c, T7.
 
 ### ⬜ S11 Corrective agentic retrieval *(Stage 8)*
 
