@@ -70,11 +70,17 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 | Temporal accuracy | 0.344 (31 of 90 dated HISTORY hits) | ≥ 0.51 (S09: 47 of 90; 46/90 = 0.511, rounded down) |
 | Authority-selection accuracy | 0.333 (3 of 9 CURRENT questions) | ≥ 0.88 (S09: 9 of 9; 8/9 = 0.889, rounded down) |
 | Router accuracy | n/a (no router) | ≥ 0.90, i.e. ≥ 33 of 36 (ADR-009; S09: 35 of 36) |
+| Conflict precision, judged | n/a (no conflict step) | ≥ 0.90 (S10: worst run 21 of 22; 20/22 = 0.909, rounded down) |
+| Conflict recall | n/a (no conflict step) | ≥ 0.30 (S10: worst run 19 of 60; 18/60 = 0.300) |
+| AC4 | n/a (no conflict step) | 4 of 4 (the hard gate above; S10: 2 of 4, both misses not retrieved) |
 
 - **A stage improves its target metric (AC7)** when that metric rises by at least 0.03 (about one question's worth), no other retrieval metric drops by more than 0.03, and AC1–AC3 stay at or above, and false refusals at or below, the baseline's 3-run range. A paired statistical test is the upgrade once a golden set passes ~100 questions.
 - **The +0.08 targets are about 3 questions' worth**, one rule for every metric. Hybrid search and reranking gains on this corpus are unknown, so a target that proves too easy or out of reach is revised in writing.
 - **The 4 S09 rows come from the final S09 mode, not the dense baseline** (S09-R2 decision 5; S09-T8, 2026-10-11): `authority`'s result over its 3 runs, loosened by one unit of its own count (1 hit or 1 question), rounded to 2 decimals toward the loose side. Router accuracy keeps ADR-009's ≥ 0.90. Their dense column is from `make eval-retrieval` (free).
-- **Metrics not measured yet get their threshold in the slice that first measures them:** conflict precision/recall (S10); faithfulness once a grader exists.
+- **The 2 conflict rows come from S10's 3 `conflict` runs on conflict set v0 (`887201b7`)** (S10-R2 decision 6; S10-T8, 2026-10-12): each metric's worst run, minus one conflict (1 ÷ that run's count), rounded down to 2 decimals. AC4 stays a hard gate.
+  - Precision is the judged one. The set's 3 labeling passes split 0.526 of the time (above 0.20), so every flag outside the set got Claude's verdict (`docs/evaluation.md`).
+  - Raw, the worst run is 18 of 22 (17/22 = 0.77). If the borderline verdict (q35) is reversed, the judged worst run is 20 of 22 (19/22 = 0.86).
+- **Metrics not measured yet get their threshold in the slice that first measures them:** faithfulness once a grader exists.
 
 ## Golden set v0
 

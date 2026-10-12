@@ -418,11 +418,10 @@ HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --smoke --name conflict-smoke
 
 ### Run S10-R2: the conflict set and the S10 eval (one PR, two parts)
 
-- **Status:** PR open; part 2 resumes at S10-T5c (q48 decided 2026-10-12, "Decisions after run 1")
+- **Status:** PR open; S10-T5c and S10-T8 done (2026-10-12); the retro next
 - **Part 2 so far (2026-10-12):** T8 step 0 (`run.json` records the conflict file) done; the free gate passed; run 1 `conflict-20261012T055648Z` (US$1.74) missed its gate on q48 and is void (decision Q5).
 - **Unparked (2026-10-12):** S10-T8 runs 2–3, the write-up and the thresholds were parked here: run 1 got AC3 6/7 (and AC1 37/37), against the pinned 7/7 (36/36). Unanswerable q48 was answered ("GA being targeted for Kubernetes 1.38") from the claim line's "(latest milestone v1.38)" (ADR-010 D1, added in S10-T5), which q48's label calls the unseen part of its trap. Fixing it departs from ADR-010 D1: the developer decides. Step 0 and run 1's folder are committed, not stashed (the contract keeps the folder). `/run-bundle` resumes at T8 run 1 once the decision is recorded here. A prompt fix voids run 1: 3 new runs (~US$5.21) on top of it (US$1.74) exceed the US$5.50 cap. Decided in "Decisions after run 1" (Q1–Q6).
-- **Parked:** the retro: needs S10-T8.
-- **Resume:** `/run-bundle` starts at S10-T5c, then T8 from step 0b (below).
+- **Resume:** `/run-bundle` continues at the retro.
 - **Branch:** `s10-r2-conflict-eval`
 - **Tasks, in this order:**
   - **Part 1:** S10-T5b (the settle line) → S10-T6 (format, loader, metrics) → S10-T7a (Claude's draft).
@@ -800,6 +799,7 @@ HF_HUB_OFFLINE=1 EVAL_CONFLICTS_PATH=eval/candidates/conflicts-v0-draft.yaml mak
 - **Spent in part 2:** run 1, US$1.74 ($0.0388 per golden question, vs. the $0.034 estimate; the 2 new questions $0.07). Estimate ~US$9.83 left. 3 runs at that rate: ~US$5.21, under the US$5.50 cap.
 - **After run 1 (decision Q6):** credit at decision US$9.83 (2026-10-12, stated by the developer). T5c's check: 6 `ask`s (6 answer calls, 6 router calls, 6 Voyage requests), ~US$0.30. T8's 3 runs as above, ~US$5.21. Cap US$5.80 for both; ~US$4.30 left after, which is low (under US$5).
 - **Spent after run 1:** T5c's check, 6 `ask`s, ~US$0.29 (answer calls US$0.140 before, ~US$0.13 after, by Langfuse usage at the generation prices; ~US$0.02 for the untraced router calls). q48: before 0 of 3 `insufficient_evidence`, after 3 of 3. Estimate ~US$9.54 left.
+- **Spent in T8 (2026-10-12):** 3 runs, US$1.70 + US$1.69 + US$1.69 = US$5.08 (each run's golden and new questions at the generation prices; 0 router calls, 0 Voyage requests). With T5c's ~US$0.29: ~US$5.37, under the US$5.80 cap. Estimate **~US$4.46 left: low** (under US$5).
 - **Langfuse:** none (the eval isn't traced). **Hugging Face:** none (`HF_HUB_OFFLINE=1`). **Package installs:** none.
 
 ## Retro (fill in at the end)

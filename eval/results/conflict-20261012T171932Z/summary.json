@@ -1,7 +1,7 @@
 {
   "name": "conflict",
   "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
-  "started_at": "2026-10-12T05:56:48Z",
+  "started_at": "2026-10-12T17:19:32Z",
   "questions": 43,
   "answerable": 36,
   "errors": 0,
@@ -11,27 +11,27 @@
   "ndcg": 0.5347974618791838,
   "distinct_sections": 8.277777777777779,
   "ac1": {
-    "pass": 37,
-    "total": 37
+    "pass": 36,
+    "total": 36
   },
   "ac2": {
     "pass": 43,
     "total": 43
   },
   "ac3": {
-    "pass": 6,
+    "pass": 7,
     "total": 7
   },
   "false_refusals": {
     "count": 0,
     "total": 36
   },
-  "input_tokens": 285725,
-  "output_tokens": 26222,
-  "latency_s_mean": 12.318697674418603,
-  "latency_s_p95": 16.419,
-  "retrieve_s_p95": 6.807,
-  "cost_usd_mean": 0.0387753488372093,
+  "input_tokens": 285061,
+  "output_tokens": 23966,
+  "latency_s_mean": 11.028511627906976,
+  "latency_s_p95": 14.854,
+  "retrieve_s_p95": 6.338,
+  "cost_usd_mean": 0.037664279069767444,
   "stale": {
     "count": 0,
     "total": 100
@@ -49,11 +49,11 @@
     "total": 9
   },
   "conflicts_rule": 8,
-  "conflicts_model": 15,
+  "conflicts_model": 13,
   "loser_only_answers": 0,
   "conflict_precision": {
     "pass": 20,
-    "total": 23
+    "total": 21
   },
   "conflict_precision_rule": {
     "pass": 8,
@@ -61,7 +61,7 @@
   },
   "conflict_precision_model": {
     "pass": 12,
-    "total": 15
+    "total": 13
   },
   "conflict_recall": {
     "pass": 21,

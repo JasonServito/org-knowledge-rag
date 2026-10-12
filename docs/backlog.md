@@ -356,7 +356,7 @@ Tasks:
   - Done when: the loader's check passes on the draft; the split rate is reported.
   - Deps: T6.
 - [x] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
-- [ ] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T5c, T7.
+- [x] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T5c, T7.
 
 ### ⬜ S11 Corrective agentic retrieval *(Stage 8)*
 
