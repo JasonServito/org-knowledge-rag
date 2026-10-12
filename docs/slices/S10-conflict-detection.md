@@ -799,6 +799,7 @@ HF_HUB_OFFLINE=1 EVAL_CONFLICTS_PATH=eval/candidates/conflicts-v0-draft.yaml mak
 - **Credit after part 1:** US$11.57, stated by the developer (2026-10-11). It matches the estimate (US$11.58 − US$0.01 for `make eval-routes`).
 - **Spent in part 2:** run 1, US$1.74 ($0.0388 per golden question, vs. the $0.034 estimate; the 2 new questions $0.07). Estimate ~US$9.83 left. 3 runs at that rate: ~US$5.21, under the US$5.50 cap.
 - **After run 1 (decision Q6):** credit at decision US$9.83 (2026-10-12, stated by the developer). T5c's check: 6 `ask`s (6 answer calls, 6 router calls, 6 Voyage requests), ~US$0.30. T8's 3 runs as above, ~US$5.21. Cap US$5.80 for both; ~US$4.30 left after, which is low (under US$5).
+- **Spent after run 1:** T5c's check, 6 `ask`s, ~US$0.29 (answer calls US$0.140 before, ~US$0.13 after, by Langfuse usage at the generation prices; ~US$0.02 for the untraced router calls). q48: before 0 of 3 `insufficient_evidence`, after 3 of 3. Estimate ~US$9.54 left.
 - **Langfuse:** none (the eval isn't traced). **Hugging Face:** none (`HF_HUB_OFFLINE=1`). **Package installs:** none.
 
 ## Retro (fill in at the end)

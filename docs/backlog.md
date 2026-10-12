@@ -343,7 +343,7 @@ Tasks:
   - "Settle conflicts at release 1.N." in the prompt, so the answer text and the code's list settle at the same release (S10-R2 decision 4).
   - Done when: hand-worked unit tests pass; T8's run 1 keeps AC1–AC3 at 100%.
   - Deps: T5.
-- [ ] **S10-T5c `[core]` A KEP's future milestone stays out of the prompt.**
+- [x] **S10-T5c `[core]` A KEP's future milestone stays out of the prompt.**
   - The claim line and the rule-found summary show a KEP's latest milestone only when it is older than the target release (decided after T8's run 1 answered unanswerable q48 from "latest milestone v1.38"; ADR-010 D1 amended).
   - Done when: hand-worked unit tests pass; q48 asked 3 times after the change gives `insufficient_evidence` 3 of 3.
   - Deps: T5.

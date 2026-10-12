@@ -63,6 +63,21 @@ HISTORY_LINE = re.compile(
     r"^\s*[-*]?\s*(\d{4}-\d{2}-\d{2}):?\s+.*?\bv?1\.(\d+)\b.*\breleased\b", re.IGNORECASE
 )
 
+# A KEP's latest milestone, as its kep.yaml writes it ("v1.22", or "1.17"): group 1 is the minor
+# (S10-R1, pinned).
+MILESTONE = re.compile(r"^v?1\.(\d+)")
+
+
+def releases_before(milestone: object, release: int) -> int | None:
+    """How many releases a KEP's latest milestone is before `release`: 15 for "v1.22" at 1.37
+    (S10-T5c, ADR-010 D1). None when it is at or after `release` (a plan, not a release), or
+    isn't a string like v1.N or 1.N."""
+    match = MILESTONE.match(milestone) if isinstance(milestone, str) else None
+    if match is None:
+        return None
+    before = release - int(match[1])
+    return before if before > 0 else None
+
 
 def claim_mismatches(
     hits: Sequence[Hit],
@@ -95,7 +110,7 @@ def claim_mismatches(
             continue
         milestone = version.metadata.get("latest-milestone")
         claim = version.claimed_stage
-        if milestone is not None:
+        if releases_before(milestone, release) is not None:  # only one older than `release`
             claim = f"{claim} (latest milestone {milestone})"
         conflicts.append(
             Conflict(

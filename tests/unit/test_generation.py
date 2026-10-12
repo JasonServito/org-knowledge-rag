@@ -391,19 +391,10 @@ def test_the_system_prompts_last_bullet_asks_for_conflicts_and_states_adr_003_d6
             KEP_AT_37,
             "claimed: implementable/alpha (latest milestone v1.36, 1 release before 1.37)",
         ),
-        # At or after the target: no "before".
-        (
-            ("implemented", "stable"),
-            "v1.37",
-            KEP_AT_37,
-            "claimed: implemented/stable (latest milestone v1.37)",
-        ),
-        (
-            ("implemented", "stable"),
-            "v1.38",
-            KEP_AT_37,
-            "claimed: implemented/stable (latest milestone v1.38)",
-        ),
+        # At or after the target: a plan, not a release, so left out (S10-T5c). v1.38 at 1.37 is
+        # q48's KEP-4858.
+        (("implemented", "stable"), "v1.37", KEP_AT_37, "claimed: implemented/stable"),
+        (("implemented", "stable"), "v1.38", KEP_AT_37, "claimed: implemented/stable"),
         # No "v", printed as written; 37 - 17 = 20.
         (
             ("implementable", "alpha"),
@@ -435,7 +426,7 @@ def test_the_system_prompts_last_bullet_asks_for_conflicts_and_states_adr_003_d6
         "no-authority",
     ],
 )
-def test_the_claim_line_shows_the_latest_milestone(
+def test_the_claim_line_shows_the_latest_milestone_only_before_the_target(
     claimed: tuple[str, str], milestone: str | None, authority: Authority | None, line: str
 ) -> None:
     metadata = {"title": "PSP Replacement Policy"}
@@ -533,7 +524,8 @@ def test_no_hits_answers_insufficient_evidence_without_calling_the_model(
 
 # --- Rule-found conflicts on every path, and their prompt block (S10-T4) -------------------------
 
-# KEP-4858 at 1.37 as `rule_conflicts` words it (S10-R1, pinned), about chunks 101 and 102.
+# KEP-4858 at 1.37 as `rule_conflicts` words it (S10-R1, pinned; its v1.38 milestone left out,
+# S10-T5c), about chunks 101, 102.
 # KEP-2579's real history line, about chunk 205: v1.23 was released 2021-12-07, 34 days after the
 # line's date.
 CLAIM = Conflict(
@@ -541,10 +533,7 @@ CLAIM = Conflict(
     found_by="rule",
     chunk_ids=[101, 102],
     documents=["kep:4858"],
-    summary=(
-        "kep:4858 claims stable (latest milestone v1.38); the feature-gate reference at 1.37 "
-        "says beta."
-    ),
+    summary="kep:4858 claims stable; the feature-gate reference at 1.37 says beta.",
     resolution="observed_beats_claimed",
     prevails=None,
 )
@@ -618,8 +607,8 @@ def test_the_prompt_lists_a_rule_conflict_on_2_chunks_after_the_evidence(
             SYSTEM_PROMPT,
             "Evidence:\n\n" + block.format(101) + "\n\n" + block.format(102) + "\n\n"
             "Conflicts found by code:\n"
-            "- chunks 101, 102: kep:4858 claims stable (latest milestone v1.38); the feature-gate "
-            "reference at 1.37 says beta. Resolved: observed beats claimed."
+            "- chunks 101, 102: kep:4858 claims stable; the feature-gate reference at 1.37 says "
+            "beta. Resolved: observed beats claimed."
             "\n\nSettle conflicts at release 1.37."
             "\n\nQuestion: What enforces pod security standards in-tree?",
         )
@@ -633,8 +622,8 @@ def test_the_prompt_names_a_conflict_on_1_chunk_and_lists_each_conflict() -> Non
         "\n\nConflicts found by code:\n"
         "- chunk 205: kep:2579 says v1.23 was released 2021-11-03; the releases table says "
         "2021-12-07. Resolved: observed beats claimed.\n"
-        "- chunks 101, 102: kep:4858 claims stable (latest milestone v1.38); the feature-gate "
-        "reference at 1.37 says beta. Resolved: observed beats claimed."
+        "- chunks 101, 102: kep:4858 claims stable; the feature-gate reference at 1.37 says "
+        "beta. Resolved: observed beats claimed."
         "\n\nSettle conflicts at release 1.37."
         "\n\nQuestion: What enforces pod security standards in-tree?"
     )
