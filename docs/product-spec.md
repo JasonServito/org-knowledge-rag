@@ -22,7 +22,7 @@ An engineer asks a question about Kubernetes release process, authentication/sec
 7. Structured output per blueprint §18. Citations resolve to stored chunks.
 8. Bounded LangGraph corrective retrieval (≤ 3 iterations). It is kept only if it measurably helps. Tested in S11 and not adopted (ADR-011, 2026-10-12).
 9. A fixed golden set and a one-command eval run, producing an ablation table.
-10. A FastAPI `/query` endpoint and Langfuse traces.
+10. A FastAPI `/query` endpoint and Langfuse traces. Done in S12-T2: `POST /query` (`make serve`) answers through the same pipeline as `orgknow ask`, with one Langfuse trace per request.
 
 ## Non-goals (Phase 1)
 
@@ -41,10 +41,28 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 | AC2 | 0 fabricated citations: no chunk IDs or URLs that aren't in the retrieved evidence | Eval harness |
 | AC3 | All seed UNANSWERABLE questions return `insufficient_evidence` with a reason. This includes the 4 gated-Google-Doc cases. | Golden set |
 | AC4 | On the 4 seed conflict cases, the answer surfaces the conflict (claimed vs. observed, or old vs. new) rather than asserting one side | Conflict set v0 (ADR-007 D4), end to end: the seed questions are fixed without looking at their results, and each reports whether search retrieved it (S10-R2 decision 3) |
-| AC5 | CURRENT questions: the primary claim is supported by evidence valid at the latest release on every seed CURRENT question | Golden set |
-| AC6 | HISTORY questions naming a release or date: the cited evidence is valid within the requested window | Golden set |
+| AC5 | CURRENT questions: the primary claim is supported by evidence valid at the latest release on every seed CURRENT question | Golden set, by the rule in the AC5 note below (S12-R1) |
+| AC6 | HISTORY questions naming a release or date: the cited evidence is valid within the requested window | Golden set, by the rule in the AC6 note below (S12-R1) |
 | AC7 | The ablation table covers the full sequence: dense → +lexical/RRF → +rerank → +temporal/authority → +conflict → +corrective. Every stage kept either improves its target metric or has its retention justified in writing. +corrective was tested in the S11-R1 sitting and not adopted (ADR-011): its evidence is retrieval-only sitting probes, not an ablation row. | README / eval report |
 | AC8 | Reproducibility: re-ingesting the same manifest yields identical version counts and hashes. `make eval` (or equivalent) runs end to end locally. | CI or manual run |
+
+**AC4–AC6 at Phase 1's close (S12-R1 sitting, 2026-10-12).** Phase 1 closes with these 3 as stated exceptions: each fails, with its measured cause written down, rather than being re-scoped to pass (`docs/m1-report.md`).
+
+- **AC4 note: 1 of 4 at Phase 1's close: a stated exception (S12-R1 decision 2).** The 3 causes (`docs/evaluation.md`, "Phase 1 closeout (S12)"):
+  - q01 (KEP-2572): the flagged pair matches the seed's sides, but its summary names the wrong disagreement (S11-R1 Step 0). The separate detector that fixed it had judged precision 0.690, below 0.90, and wasn't adopted (ADR-010, amendment 2026-10-12).
+  - q08 (KEP-2579's date): a search miss. Its text is rank 10 in hybrid mode and rank 20 after the reranker, so the reranker pushes it out of the top 10.
+  - c01 (`versioning.md`'s "every three months"): a search miss. As routed (HISTORY, 1.30), none of `versioning.md`'s texts is among its 20 candidates.
+  - **v1's AC4 wording, written now:** "On the v1 seed conflict cases, fixed before any v1 result, every seed counts, search misses included. A seed is surfaced only when a flagged conflict matches its sides and its summary names the seed's fact."
+  - Decided in the S12-R1 sitting, after S10's saved runs. Rejected: counting only the seeds search retrieved (still 1 of 2, and it moves the goalposts S10-R2 set).
+- **AC5 note: the rule (S12-R1 decision 3).** Per CURRENT golden question: the answer is `answered` and **every** citation has a release window that holds the latest release (1.37; an open window holds it). A refusal or an error fails.
+  - **8 of 10: a stated exception,** in each of the final pipeline's 3 runs. q01 and q16 also cite older release notes.
+  - It checks citation validity, not claim support: no grader reads the answer's claims.
+  - Chosen in the S12-R1 sitting on S10's saved runs, with a negative control: a rule the time-blind dense baseline also passes proves nothing. Dense scores 2 of 10 under this rule; "at least one citation valid" would give dense 8–9 of 10.
+- **AC6 note: the rule and population (S12-R1 decision 4).** Over the 9 HISTORY golden questions with a golden release window: the answer is `answered` and **at least one** citation's release windows overlap that window exactly (no slack). A refusal or an error fails.
+  - **8 of 9: a stated exception,** in each of the final pipeline's 3 runs. q02's citations all postdate "before 2021".
+  - The criterion's literal population, questions naming a release or date, is 7 of the 9 (not q12, q17): 6 of 7 by the same rule.
+  - Chosen in the S12-R1 sitting on S10's saved runs, with the same negative control: dense scores 6 of 9. "At least one" rather than "every": history is often written down later, so "every citation inside" fails every system (0–3 of 9).
+  - Golden set v1 is the first test of both rules on questions they weren't chosen on.
 
 **Measured, with thresholds set after the baseline.** Setting numbers before a baseline exists would be guesswork. The dense baseline set the first ones (below):
 - Recall@10, MRR, nDCG
@@ -92,3 +110,5 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 ## Done means
 
 Blueprint §30.1 is satisfied, and AC1–AC8 pass.
+
+- **Phase 1 closed (M1) in S12 with 3 stated exceptions:** AC1–AC3, AC7 and AC8 pass, and must-have 10 is done; AC4 is 1 of 4, AC5 8 of 10 and AC6 8 of 9, each with its measured cause (notes above). The proof for each is in `docs/m1-report.md`.

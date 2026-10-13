@@ -68,3 +68,12 @@ Orchestration then: LangGraph (S11-R1 decision 4), pinned exactly, imported in o
   - Probes 4 and 5 reused v0's routes for the rephrased questions (the router matched 35 of 36 modes).
   - The rephrased set is spot-checked, not fully verified, by the developer.
 - **Revisit triggers:** golden set v1 with a verified hard set; a grader model with a measured sufficiency judgement; a faster reranker (a second search costs ~5.5 s, mostly CPU reranking).
+
+## Amendment 2026-10-12 (S12-R1 sitting)
+
+- **The Evidence line's "prints every number below" overstates it (S12-R1 triage c).** `summarize.py` prints probes 1–5's results. 4 numbers above are computed from printed ones:
+  - 0.065 and 0.035, probe 3's MRR falls: 0.813 − 0.748 and 0.606 − 0.571.
+  - ~1.5 questions, probe 4's gain: (0.468 − 0.427) × 36 = 1.48.
+  - ~$0.0006, the grader's cost per question: `probe_grader.log`'s total, $0.0283, ÷ 45 questions.
+  - Others come from the folder's logs and README: ~5.5 s per second search (`probe_confirm.log`, `second_s`) and the spend (`README.md`).
+- No decision changes. Rejected: editing line 6 in place (an accepted ADR's text stays unchanged; `docs/decisions/README.md`).

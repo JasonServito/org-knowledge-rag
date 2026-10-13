@@ -48,7 +48,6 @@ src/orgknow/
   embeddings/                 embedding interface, provider, content-hash cache
   retrieval/                  dense, lexical, fusion, rerank, temporal/authority scoring
   generation/                 prompts, structured output, citation validation
-  agent/                      LangGraph workflow (S11)
   eval/                       golden-set loader, metrics, runners
   api/                        FastAPI app; thin, no business logic
   cli.py
@@ -65,7 +64,7 @@ eval/results/                 committed eval outputs
 1. Manifest → snapshot reader → normalize + hash → document versions with release/date validity windows (ADR-002).
 2. Structure-aware chunks with deterministic metadata headers → embeddings (cached by content hash) → Postgres (pgvector + full-text search).
 3. Retrieval, built up one stage at a time: dense → + lexical/RRF → + cross-encoder rerank → + temporal/authority adjustment (ADR-003).
-4. Conflict detection → bounded LangGraph corrective loop → structured answer with citations, or `insufficient_evidence`.
+4. Conflict detection → structured answer with citations, or `insufficient_evidence` (corrective retrieval tested and not adopted, ADR-011).
 
 **Pipeline map**, used in every brief to show where the work fits (bold the stage it touches):
 
@@ -272,6 +271,10 @@ In a run, these park instead of stopping.
 - changing the DB schema beyond what the task specifies
 - creating or editing anything in `eval/golden_set/`. Labels are human-owned. You may propose candidates in a separate file.
   - **Bulk human review:** when a `[human]` task means reviewing many items, offer up front to verify every item yourself while the developer spot-checks a stratified sample (about 1 per class plus 1 random). Build the spot-check sheet from excerpts a script copies from the source, so the developer runs no SQL. Record the sign-off rule in the slice doc.
+  - **Getting a file in:** Claude can't write there; a deny rule blocks edits and a Bash `cp` alike. Never route around it.
+    1. Build the file in the scratchpad, run every free check on it (the loader, `make eval-check`, `make eval-conflicts`) and note its sha256.
+    2. After the developer's OK, give the exact copy command, for the developer to type in the Claude Code prompt with a `!` prefix (not PowerShell, which can't see WSL paths).
+    3. Confirm the copied file's hash and `cmp`, then commit.
 - changing retrieval scoring, weights, or thresholds not specified by the task
 - deviating from an ADR or the product spec, or editing files unrelated to the task
 - spending money beyond the task's needs, e.g. embedding the full corpus or running the full eval. Default to fixtures and caches. Check the Anthropic credit first (see Anthropic credit).

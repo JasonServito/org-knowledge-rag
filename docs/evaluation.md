@@ -39,12 +39,14 @@ The 3 time metrics (S09) are pooled over hits instead, by each question's golden
 | **AC1** | An `answered` answer cites ≥ 1 chunk, each with a source URL, release windows and source type, and a tier or the superseded-proposal flag (S09-T6) | Citations are present and resolvable |
 | **AC2** | Every cited chunk id was retrieved for this question | No invented citations |
 | **AC3** | An unanswerable question gets `insufficient_evidence` with a reason | The system says "I don't know" when it should |
+| **AC5** | Per CURRENT question: the answer is `answered` and every citation has a release window holding the latest release (an open window holds it); a refusal or an error fails (S12-T1) | A "now" answer cites only text that is still valid |
+| **AC6** | Per HISTORY question with a golden window: the answer is `answered` and at least one citation's release windows overlap the exact golden window; a refusal or an error fails (S12-T1) | A "back then" answer cites text from the time asked about |
 | **False refusal** | An answerable question gets `insufficient_evidence` | The system gives up when it shouldn't |
 | **p95 latency** | 95th percentile (nearest rank: the ⌈0.95 × n⌉-th smallest; the 41st of 43) of a question's retrieve + answer time | The slow-question experience |
 | **Retrieve p95** | The same over the retrieval step alone; n/a for runs before S08-T3, which didn't time it | What retrieval, e.g. a reranker, adds to the wait |
 | **Cost per question** | Input tokens × $4/M + output tokens × $20/M (ADR-006 D1 prices, `GENERATION_PRICE_*`; output includes reasoning), averaged over the questions with a model call | What one answer costs |
 
-The ablation table (`eval/results/ablation.md`) shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns, the 3 time metrics as `Stale rate`, `Temporal acc.` and `Router acc.`, and authority selection as `Authority sel.`.
+The ablation table (`eval/results/ablation.md`) shows AC5 and AC6 as counts ("8 of 10"), since each is per question. It shows the last 3 as its `p95 latency (s)`, `Retrieve p95 (s)` and `Cost/question ($)` columns, the 3 time metrics as `Stale rate`, `Temporal acc.` and `Router acc.`, and authority selection as `Authority sel.`.
 
 - **Stale means replaced, not "not valid at 1.37".** A CHANGELOG section is valid only at its own release, but isn't stale until an edit replaces it. On v0's 105 CURRENT, CHANGE and WHY labels, "replaced" flags 2 correct labels; "not valid at 1.37" would flag 26.
 - **Temporal accuracy uses the exact golden window,** not one widened by 1 release. The planned HISTORY filter keeps texts within ±1 release (S09-R1 decision 2), so a widened window would read 100% by construction.
@@ -736,11 +738,89 @@ Every run, not the mean: once a model writes the queries, retrieval varies from 
   - Its costs: ~5.5 s more per question (ADR-011), and it would run on unanswerable questions too (q48).
   - Its test: golden set v1's verified rephrased set, with ADR-011 D2's rule.
 
+## Phase 1 closeout (S12)
+
+S12-R1 sitting, 2026-10-12 (UTC). Phase 1 closes with 3 stated exceptions (AC4, AC5, AC6), each with its measured cause (`docs/product-spec.md`, `docs/m1-report.md`). The pipeline doesn't change: S12 adds the AC5 and AC6 checks, scored on every saved run, and `POST /query`.
+
+- The sitting's scripts and outputs are committed in `eval/results/s12-sitting/`. Its `README.md` lists each script's command, cost and output.
+- Every number below is copied from those outputs, from `make eval-table`, or from the S10 section above (the answer call's column).
+- **Spent:** US$0.099 (the detector probe). Everything else is free.
+
+**The detector probe (ADR-010 D4).** S10's switch rule fired once q01 was read as a miss (S11-R1 Step 0), so a separate detector call was due. The sitting ran ADR-010's "one-off comparison" as a probe:
+
+- `claude-haiku-5-5` at effort low lists the pairs of chunks that disagree, before the answer, on the same 10 hits as conflict run 1 (checked equal).
+- 45 questions (v0's 43, plus c01 and c02), in 2 prompt wordings: A neutral; B adds a line on a KEP whose claimed status is out of date. q01 was asked 3 times in each.
+- **Pass criteria, fixed before the run** (`probe_detector.py`): q01's summary check in 3 of 3 calls, and raw precision ≥ 0.70 (the answer call's worst run: 10 of 14).
+
+| | Answer call (S10, 3 runs) | Detector A (neutral) | Detector B (+ out-of-date KEP status) |
+|---|---|---|---|
+| Model pairs | 13–14 | 58 | 79 |
+| Raw precision, model pairs | 0.71–0.92 | 0.707 (41 of 58) | 0.620 (49 of 79) |
+| Recall | 0.317–0.350 | 0.550 (33 of 60) | 0.583 (35 of 60) |
+| q01 summary check (3 calls) | fail ×3 | fail ×3 | pass ×3 |
+| Latency p50 / p95 | — | 4.24 / 5.77 s | 5.14 / 6.43 s |
+
+- **Seeds:** both wordings surface k01 (q18) and k02 (q01) by matching; k03 (q08) and k04 (c01) aren't retrieved, so no detector can see them.
+- **q01's summaries** (`probe_detector.log`, verbatim):
+  - A, call 1: "Chunk 7600 says Kubernetes releases happen about three times per year, while chunk 33441 says the project currently releases 4 times per year." The S10 failure again: the cadence, not KEP-2572's status.
+  - B, call 1: "KEP-2572 frames the move from 4 to 3 releases per year as a proposal still at alpha, while the 1.22 changelog records it as already official." It names the status.
+- **Neither wording passed both criteria.** A fails q01; B fails raw precision (0.620).
+- **B's 30 flags outside conflict set v0, judged one by one** (`verdicts_B.md`, S10-T8's precedents):
+  - 3 real (U11, U16, and U15 borderline). Judged precision (57 + 3) ÷ 87 = 0.690; without U15, 59 ÷ 87 = 0.678; model flags only, (49 + 3) ÷ 79 = 0.658.
+  - All are below the spec's ≥ 0.90.
+  - 19 of the 27 false flags compare a claim line from a KEP version that isn't valid at the target release with a later state. B's added line invites exactly that comparison.
+  - The judging was chosen after B's raw-precision fail, and is labeled so.
+- **Verdict (S12-R1 decision 1): no detector.** The stale-KEP rule isn't built either: a rule-found conflict can't match k02, a two-text conflict (`eval/conflicts.py`, `matches`). ADR-010's amendment 2026-10-12 records both.
+- Detector A's recall (0.33 → 0.55) is a proposed addition, to be tested on conflict set v1.
+
+**AC4's causes** (`probe_ranks.log`, free: q08's and c01's whole candidate pools, 20 texts each, from the stored vectors and routes):
+
+- **q01 (k02):** the summary check, above. The pair matches k02's sides; its fact is the cadence, not KEP-2572's out-of-date status.
+- **q08 (k03, KEP-2579's beta date):** KEP-2579's Implementation History (chunk 15419) is rank 10 in hybrid mode and rank 20 in rerank and authority modes. The reranker pushes it out of the top 10.
+- **c01 (k04, `versioning.md`'s "every three months"):** as routed (HISTORY, 1.30), no `versioning.md` text is among its 20 candidates. Only kep:1498 (rank 1), one of k04's second sides, is.
+- **S11's lead was a false match.** S11 found k04 "reachable" with no window (`eval/results/s11-sitting/probe_c01.log`): ranks 1–2 are chunks 36376 (1.35–1.36) and 36383 (1.36–now). Both say "every four months"; the seed's "every three months" is chunk 36362 (the S10 and S12 slice docs).
+- **Verdict (S12-R1 decision 2):** AC4 closes at 1 of 4 as a stated exception. No in-scope change moves it: retrieval tuned for q08 or c01 would be tuned on frozen v0.
+  - q08 is reported as a reranker regression against hybrid mode (a proposed addition).
+  - Golden/conflict set v1's AC4 wording is written now (product spec).
+
+**AC5 and AC6: the readings and the negative control** (`probe_ac56_control.log`, free). Each candidate rule, scored on every saved run (runs 1, 2, 3); 10 CURRENT questions, 9 HISTORY questions with a golden window:
+
+| Reading | dense | hybrid | rerank | authority | conflict |
+|---|---|---|---|---|---|
+| AC5: every citation valid at 1.37 | 2, 2, 2 | 1, 3, 2 | 3, 3, 3 | 8, 8, 8 | 8, 8, 8 |
+| AC5: at least one valid at 1.37 | 9, 8, 9 | 8, 9, 9 | 10, 10, 10 | 10, 10, 10 | 10, 10, 10 |
+| AC6: at least one inside the exact window | 6, 6, 6 | 6, 6, 6 | 6, 6, 6 | 8, 8, 8 | 8, 8, 8 |
+| AC6: at least one inside, or a golden label | 8, 8, 8 | 8, 8, 8 | 8, 8, 8 | 9, 9, 9 | 9, 9, 9 |
+| AC6: every citation within ±1 release | 4, 5, 5 | 5, 5, 5 | 4, 4, 5 | 8, 8, 8 | 8, 8, 8 |
+| AC6: every citation inside the exact window | 0, 1, 1 | 1, 0, 0 | 1, 0, 2 | 1, 1, 1 | 3, 1, 1 |
+
+- **The negative control:** dense retrieval knows nothing about time, so a reading it passes proves nothing about the time-aware stages. A devil's advocate argued the first picks were the most lenient readings, chosen on the runs they score; the control changed both picks.
+- **The chosen readings are rows 1 and 3** (S12-R1 decisions 3 and 4): dense 2 of 10 and 6 of 9, the final pipeline 8 of 10 and 8 of 9.
+  - Row 2 passes dense at 8–9 of 10. Row 4 rescues only q02 and passes dense at 8 of 9.
+  - Row 5 passes the time filter by construction (it keeps ±1 release). Row 6 fails every system: history is often written down later.
+- **The final pipeline's fails:** AC5 q01 and q16 (they also cite older release notes); AC6 q02 (all its citations, its top label included, postdate "before 2021").
+- **AC6's population** is the 9 questions with a golden window (S09's temporal-accuracy population). The spec's literal "naming a release or date" is 7 (not q12, q17): 6 of 7 by the same rule.
+- **S12-T1 scores both rules in code,** from saved rows, for every run (`make eval-resummarize`, then `make eval-table`). The ablation table's AC5 and AC6 columns equal rows 1 and 3:
+
+| Pipeline | Runs | AC5 | AC6 |
+|---|---|---|---|
+| dense | 3 | 2 of 10 (2–2) | 6 of 9 (6–6) |
+| hybrid | 3 | 2 of 10 (1–3) | 6 of 9 (6–6) |
+| rerank | 3 | 3 of 10 (3–3) | 6 of 9 (6–6) |
+| authority | 3 | 8 of 10 (8–8) | 8 of 9 (8–8) |
+| conflict-smoke | 1 | 1 of 3 | 2 of 2 |
+| conflict | 3 | 8 of 10 (8–8) | 8 of 9 (8–8) |
+
+- **AC5 checks citation validity, not claim support.** No grader reads the answer, so an answer can cite only valid text and still state a stale claim.
+- **Both rules were chosen on the runs they score,** and the negative control is the guard. Golden set v1 is their first out-of-sample test.
+- **The three runs aren't three confirmations:** retrieval is deterministic, so they differ only in which hits the model cites.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
 - **37 of the 43 questions were checked by Claude only.** The developer spot-checked 6.
-- **Latency leaves out the question embedding, the router call and the reranker's load.** The vectors and routes are stored, so a live `orgknow ask` adds one Voyage call and, in temporal and authority modes, one router call (p95 4.27 s). It also loads the reranker (~7.5 s) on every ask, until the API keeps it loaded (S12).
+- **Latency leaves out the question embedding, the router call and the reranker's load.** The vectors and routes are stored, so a live `orgknow ask` adds one Voyage call and, in temporal and authority modes, one router call (p95 4.27 s). Each `orgknow ask` also loads the reranker (~7.5 s); the API (`make serve`, S12-T2) loads it once at startup, so a `POST /query` request doesn't.
+- **AC5 and AC6 check citations' release windows, not claim support,** and their rules were chosen on the runs they score (S12). Golden set v1 is their clean test.
 - **Retrieve p95 is n/a for the dense and hybrid runs.** They ran before the retrieval step was timed (S08-T3).
   - Their p95 latency and cost were added to each `summary.json` from its `questions.jsonl` by `make eval-resummarize`, and match the numbers above.
 - **The time metrics are n/a for the dense, hybrid and rerank runs.** Their hits don't record whether they're current or their release windows (S09-T3). `make eval-retrieval` scores both for any mode, free.

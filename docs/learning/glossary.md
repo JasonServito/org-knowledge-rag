@@ -54,6 +54,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **LLM tracing (observability)** | Recording each step of one request (retrieve, generate, validate) with its inputs, outputs, tokens and latency, so a bad answer can be debugged later. Here: Langfuse, one trace per ask. |
 | **MRR** | Mean Reciprocal Rank: the average of 1 / (rank of the first relevant result). |
 | **nDCG** | Normalized Discounted Cumulative Gain: a rank-quality score that rewards relevant results appearing higher. |
+| **Negative control** | A baseline that shouldn't pass a check, run to prove the check can tell systems apart. S12 picked AC5's and AC6's rules so that the time-blind dense baseline scores low on them (2 of 10, 6 of 9) and the time-aware pipeline higher (8 of 10, 8 of 9). |
 | **Oracle (for grading)** | An independent source of truth used to check a heuristic's output. S02 graded git's rename guesses against the site's redirects, Hugo aliases and gate titles. |
 | **Query rewriting** | Having a model rewrite the user's question into a search query in the corpus's own words (full names, not slang), then searching with it, usually beside the original. A proposed addition after S11, for informally worded questions. |
 | **Query router** | A step before search that sorts a question by what it asks for (here an LLM call returning a query mode and the release or year it names), so retrieval can pick a plan per kind of question. Code, not the model, turns the release or year into a release window (ADR-009). |

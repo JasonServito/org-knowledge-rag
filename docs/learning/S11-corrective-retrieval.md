@@ -41,7 +41,7 @@
    - v0 already finds a labeled source for every answerable question, so I used S09's 36 blind rewordings, scored with v0's labels.
    - Search is worse on them (Recall@10 0.427, q08 and q31 find no labeled source); the developer spot-checked 5, Claude read all 36.
 5. **Q: Why LangGraph rather than a plain loop?** (follow-up)
-   - The spike: the same flow took 82 lines with LangGraph and 30 as a plain loop, plus 1 type cast for mypy.
+   - The spike: the same flow took 82 lines with LangGraph and 30 as a plain loop, and the LangGraph version needs 1 type cast to pass mypy --strict (not in the committed spike).
    - Picked for a future attempt with guardrails: pinned, imported in one file, StateGraph only. Nothing is built now.
 
 ## Numbers to remember
