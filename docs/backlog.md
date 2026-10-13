@@ -358,7 +358,7 @@ Tasks:
 - [x] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
 - [x] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T5c, T7.
 
-### 🟨 S11 Corrective agentic retrieval *(Stage 8)*
+### ✅ S11 Corrective agentic retrieval *(Stage 8)*
 
 - **Outcome:** corrective retrieval is tested and not adopted (ADR-011): the S11-R1 sitting's probes found no grader that tells thin evidence from enough, and no second-search design that passes the keep rule fixed before its test.
 - **Slice doc:** `docs/slices/S11-corrective-retrieval.md`
@@ -373,12 +373,12 @@ Tasks:
   - S11's tasks; S12's two AC4 items; the ADR queue (011 corrective retrieval, 012 deployment); the proposed additions from the sitting.
   - Done when: each item in the run contract's list is in the backlog; `make check` is green.
   - Deps: T1.
-- [ ] **S11-T4 `[commodity]` The S11 retro.**
+- [x] **S11-T4 `[commodity]` The S11 retro.**
   - `/slice-retro S11` as the run's last commit: the slice brief, S11 ✅ and S12 🟨, `docs/architecture.md`, the memory review.
   - Done when: the retro's exit checks pass.
   - Deps: T2, T3.
 
-### ⬜ S12 Phase 1 closeout
+### 🟨 S12 Phase 1 closeout
 
 - **Outcome:** the product spec's AC1–AC8 are verified and M1 is declared.
 - **Candidate tasks:**

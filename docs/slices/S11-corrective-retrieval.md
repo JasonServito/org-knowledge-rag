@@ -1,9 +1,9 @@
 # S11: Corrective agentic retrieval
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Stage 8 (agentic orchestration: §17; trajectory metrics: §19.2; trace fields: §20)
 - **Started:** 2026-10-12
-- **Finished:**
+- **Finished:** 2026-10-12
 
 ## Outcome
 
@@ -18,11 +18,11 @@ Corrective retrieval is tested and **not adopted** (ADR-011): the S11-R1 sitting
 
 ## Exit checks
 
-- [ ] ADR-011 (corrective retrieval: not adopted) is Accepted.
-- [ ] The sitting's probes, raw outputs and `summarize.py` are committed; `summarize.py` prints every number in the write-up.
-- [ ] `docs/evaluation.md` has the S11 section; the product spec's must-have 8 and AC7 say the stage was tested and not adopted.
-- [ ] AC4's open seeds have owners in the backlog's S12 (S11-R1 decisions 1 and 6).
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] ADR-011 (corrective retrieval: not adopted) is Accepted.
+- [x] The sitting's probes, raw outputs and `summarize.py` are committed; `summarize.py` prints every number in the write-up (probes 1–5; the extra findings trace to the committed logs and `spike/`, ~5.5 s to ADR-011 and `probe_confirm.log`).
+- [x] `docs/evaluation.md` has the S11 section; the product spec's must-have 8 and AC7 say the stage was tested and not adopted.
+- [x] AC4's open seeds have owners in the backlog's S12 (S11-R1 decisions 1 and 6).
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -206,7 +206,31 @@ Free: it reads the saved JSON only.
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - **S11-R1** (1 PR, docs and config only); T1 (ADR-011) was decided in the sitting:
+    - **Sitting evidence:** 5 numbered probes, 5 small probes and a LangGraph spike, committed with their raw outputs; `summarize.py` re-prints probes 1–5 for free.
+    - **T2:** `docs/evaluation.md`'s S11 section; the spec's must-have 8 and AC7 notes; ADR-006 and ADR-010 amendments; the ADR index; the Greptile list; 3 glossary terms.
+    - **T3:** the backlog: S11's tasks, S12's 2 AC4 items, the ADR queue (011, 012), 2 new proposed additions (query rewriting; conflict set v1 candidates).
+    - **T4:** this retro and the slice brief.
+  - **Result:** corrective retrieval is not adopted (ADR-011 D1); no ablation row, so AC7's sequence ends at +conflict.
+  - **Code:** 0 files changed in `src/` and `tests/`; 853 unit tests, as at S10's close.
+  - **Paid in S11:** ~US$0.40, all in the sitting (Haiku US$0.24, router US$0.15, Voyage under US$0.01); the run spent US$0. Credit ~US$9.05 left.
+  - **Greptile:** skipped (docs and config only); 17/50 credits.
 - **Surprises:**
+  - **The grader said "enough" on hard questions:** all 12 v0 questions with Recall@10 < 0.5, and rephrased q31 with no labeled source in its 10 (probes 1, 2).
+  - **Offered "stop", it stopped too often:** 32–33 of v0's 36 answerable questions and 24–25 of the rephrased 36 (probe 5).
+  - **The candidate-pool test:** rephrased q08's second search held 4 of its 8 labels, at ranks 14–20 against the informal question; the first held 0 of 8 in 20.
+  - **Probe 5 moved MRR, not recall:** on the rephrased set, MRR rose in every run (+0.053, +0.049, +0.046) while Hit@10 fell 0.028 in every run.
+  - **c01's seed k04 is reachable with no window:** `versioning.md`'s support section ranks 1–2. No mode or window change retrieves q08's k03.
+  - **The LangGraph spike:** the same flow took 82 lines with LangGraph and 30 as a plain loop, plus 1 type cast for mypy.
 - **What didn't work / negative results:**
+  - **A grader-gated retry** (the blueprint's §17 design) fired on 2 of 45 v0 questions and 2 of 36 rephrased ones, and changed nothing (probes 1, 2).
+  - **Scoring a second search's texts against the original question:** MRR 0.813 → 0.748 on v0, 0.606 → 0.571 on the rephrased set (probe 3).
+  - **Probe 4's gain didn't hold:** rephrased Recall@10 0.427 → 0.468 in 1 run; behind a stop/search grader (probe 5) it was −0.006, +0.008, −0.007.
+  - **Probe 5 failed checks 1 and 2** (recall; v0 MRR −0.031 in run 3). It passed p95 (17.0–20.0 s) and q48 (no future-release text).
+  - **No +corrective ablation row;** AC4 stays at 1 of 4 until S12.
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S11-*.md`
+  - Probe the slice's key assumption before planning the build: ~US$0.40 of probes replaced the first draft's T2–T6 and ~US$6 of paid runs.
+  - Fix the keep rule before any test, and judge every run, not the mean.
+- **Open for the developer:**
+  - `CLAUDE.md` still plans a LangGraph corrective loop (Target pipeline step 4; the repo map's `agent/` line), stale after ADR-011; outside this run's scope.
+- **Slice brief:** `docs/learning/S11-corrective-retrieval.md`
