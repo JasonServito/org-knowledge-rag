@@ -83,7 +83,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S11-R1: close S11 as a measured negative result
 
-- **Status:** planned
+- **Status:** PR open
 - **Tasks:** T2, T3, T4 (T1 was decided in the sitting). Docs only; no change to `src/` or `tests/`.
 - **Goal (plain words):** write down what the sitting measured, why the stage isn't adopted, and who owns AC4's open seeds; then close the slice.
 
