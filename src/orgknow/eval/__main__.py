@@ -38,12 +38,15 @@ the question loop, and time the load (S08-T2).
 - `table`: rebuild the ablation table from every results folder (`table.py`).
 - `resummarize`: rebuild the `summary.json` of every results folder that has one and a
   `questions.jsonl`, from its saved rows (S08-T3), so an older folder gains the newer summary
-  fields. Prints one line per folder and writes nothing else; `table` then shows them.
+  fields. AC5 and AC6 (S12-T1) read the golden file (EVAL_GOLDEN_PATH, its labels checked as `run`
+  checks them) and the latest release in the database. Prints one line per folder and writes
+  nothing else; `table` then shows them.
 
 Errors go to stderr, one line each. Exit codes: 0 done, 1 an error, 2 bad usage (argparse).
 """
 
 import argparse
+import hashlib
 import sys
 import time
 from collections.abc import Sequence
@@ -55,6 +58,8 @@ import psycopg
 
 from orgknow.cli import load_reranker
 from orgknow.db.eval import canonical_ids, document_texts
+from orgknow.db.models import Release
+from orgknow.db.releases import list_releases
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.eval import runner
 from orgknow.eval.conflicts import (
@@ -67,6 +72,7 @@ from orgknow.eval.conflicts import (
     set_line,
 )
 from orgknow.eval.golden import (
+    GoldenSet,
     GoldenSetError,
     check_labels,
     check_line,
@@ -289,18 +295,36 @@ def table(settings: Settings) -> int:
     return 0
 
 
+def _golden_and_latest(settings: Settings) -> tuple[GoldenSet, str, Release]:
+    """What AC5 and AC6 read (S12-T1): the golden set, checked as `run` checks it, its file's
+    hash, and the latest stored release."""
+    path = settings.eval_golden_path
+    with psycopg.connect(settings.database_url) as conn:
+        golden, _ = runner.check_golden(conn, path)
+        latest = list_releases(conn)[-1]  # oldest first; a labeled text implies a release
+    return golden, hashlib.sha256(path.read_bytes()).hexdigest(), latest
+
+
 def resummarize(settings: Settings) -> int:
     """`make eval-resummarize`: rebuild each results folder's summary from its saved rows, and
-    print its p95 latencies and cost per question. A folder without both files is skipped."""
+    print its p95 latencies and cost per question. A folder without both files is skipped. 1 when
+    the golden file is invalid or a label matches no stored text."""
 
     def seconds(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.3f} s"
 
+    try:
+        golden, golden_sha256, latest = _golden_and_latest(settings)
+    except GoldenSetError as error:
+        return _invalid(settings.eval_golden_path, error)
+    except runner.EvalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     for summary_path in sorted(settings.eval_results_dir.glob("*/summary.json")):
         folder = summary_path.parent
         if not (folder / "questions.jsonl").is_file():
             continue
-        summary = runner.resummarize(folder, settings)
+        summary = runner.resummarize(folder, settings, golden, golden_sha256, latest)
         cost = "n/a" if summary.cost_usd_mean is None else f"${summary.cost_usd_mean:.6f}"
         print(
             f"{folder}: p95 latency {seconds(summary.latency_s_p95)}, "

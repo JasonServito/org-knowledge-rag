@@ -29,6 +29,9 @@ loaded once, before the question loop.
 `resummarize` (S08-T3, `make eval-resummarize`) rebuilds a folder's `summary.json` from its saved
 rows, so a summary written before a new summary field gains it with no new run.
 
+AC5 and AC6 (S12-T1) are scored per golden question in `summarize`, by `run` and `resummarize`
+alike, from the golden file's modes and windows and the latest stored release.
+
 The question routes (S09-T2, ADR-009 D3) are stored like the vectors, one file per router model,
 keyed the same way: `route_missing` (`make eval-routes`) routes only questions with no route. In
 temporal and authority modes (S09-T4, S09-T7), `run` fills the missing routes too, and both `run`
@@ -57,10 +60,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from orgknow.cli import ASK_ERRORS
 from orgknow.db.lifecycle import newest_versions, observations
-from orgknow.db.models import Authority, Hit, TemporalFilter
+from orgknow.db.models import Authority, Hit, Release, TemporalFilter
 from orgknow.db.releases import list_releases
 from orgknow.embeddings.embedder import DIMENSIONS, Embedder, EmbedResult, InputType
-from orgknow.eval.checks import AnswerChecks, check_answer
+from orgknow.eval.checks import AnswerChecks, check_ac5, check_ac6, check_answer
 from orgknow.eval.conflicts import (
     ConflictCounts,
     ConflictSet,
@@ -315,6 +318,12 @@ class Summary(BaseModel):
     conflict_unreachable: int | None = None
     ac4: Rate | None = None
     ac4_seeds: list[SeedResult] | None = None
+    # S12-T1 (S12-R1 decisions 3 and 4), per golden question: AC5 over the answerable CURRENT
+    # ones, AC6 over the answerable HISTORY ones with a golden window; None when no such question
+    # ran, and in a summary written before S12-T1. The latest stored release AC5 read ("1.37").
+    ac5: Rate | None = None
+    ac6: Rate | None = None
+    latest_release: str | None = None
 
 
 # The summary fields `resummarize` keeps from the old summary: `run` counted them with what the
@@ -707,9 +716,12 @@ def run(
         rerank_load_s=rerank_load_s,
     )
     labels = {question.id: question.labels for question in questions}
+    golden_questions = {question.id: question for question in questions}
+    latest = list_releases(conn)[-1]  # oldest first
     summary = summarize(
-        name, golden_sha256, started_at, rows, settings, labels, conflict_set, new_rows
-    )
+        name, golden_sha256, started_at, rows, settings, labels, conflict_set, new_rows,
+        golden_questions, latest,
+    )  # fmt: skip
     (folder / "run.json").write_text(run_info.model_dump_json(indent=2) + "\n", encoding="utf-8")
     (folder / "questions.jsonl").write_text(
         "".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8"
@@ -1106,16 +1118,22 @@ def summarize(
     labels: Mapping[str, Sequence[Label]] | None = None,
     conflict_set: ConflictSet | None = None,
     new_rows: Sequence[QuestionRow] = (),
+    questions: Mapping[str, Question] | None = None,
+    latest: Release | None = None,
 ) -> Summary:
     """The run's totals: metric means over the answerable questions, for each check how many of
     the rows it applies to (not None) passed, the p95 latencies and the mean cost per question
     at the settings' prices (S08-T3), the S09 time counts over the rows' hits (S09-T3), router
     accuracy over the answerable rows with a route (S09-T4), authority selection (S09-T7), the
-    rule-found conflicts (S10-T4), the model-found ones and the loser-only answers (S10-T5), and,
-    with a conflict set, the conflict metrics (S10-T6).
+    rule-found conflicts (S10-T4), the model-found ones and the loser-only answers (S10-T5), AC5
+    and AC6 (S12-T1), and, with a conflict set, the conflict metrics (S10-T6).
 
     Authority selection needs each row's golden labels, by question id in `labels`, to find its
     first labeled hit: a row holds its label tiers, not its labels. None without `labels`.
+
+    AC5 and AC6 read each row's golden question, by id in `questions` (its mode, window and
+    answerability: rows written before S09-T3 hold no window), and AC5 the `latest` release.
+    None, with no latest release recorded, without both.
 
     `rows` are the golden questions'; `new_rows` the conflict set's new questions'. The conflict
     counts and metrics read both; every other field reads the golden rows only."""
@@ -1127,6 +1145,17 @@ def summarize(
     if labels is not None:
         by_labels = [(row.mode, labels[row.id], row.label_tiers, row.hits) for row in rows]
         authority = _rate_of(authority_count(by_labels))
+    ac5 = ac6 = None
+    if questions is not None and latest is not None:
+        # Each row's golden question. Unanswerable questions and the conflict set's new ones
+        # (`new_rows`) are in neither.
+        golden = [(questions[row.id], row.answer) for row in rows]
+        current = [a for q, a in golden if q.answerable and q.mode == "CURRENT"]
+        history = [(golden_window(q), a) for q, a in golden if q.answerable and q.mode == "HISTORY"]
+        ac5 = _applied(check_ac5(answer, latest.minor) for answer in current)
+        ac6 = _applied(
+            check_ac6(answer, window) for window, answer in history if window is not None
+        )
     summary = Summary(
         name=name,
         golden_sha256=golden_sha256,
@@ -1167,6 +1196,9 @@ def summarize(
         conflicts_rule=sum(1 for row in every for c in row.conflicts if c.found_by == "rule"),
         conflicts_model=sum(1 for row in every for c in row.conflicts if c.found_by == "model"),
         loser_only_answers=sum(row.checks.loser_only is True for row in every),
+        ac5=ac5,
+        ac6=ac6,
+        latest_release=None if latest is None else latest.version,
     )
     if conflict_set is None:
         return summary
@@ -1189,7 +1221,9 @@ def summarize(
     )
 
 
-def resummarize(folder: Path, settings: Settings) -> Summary:
+def resummarize(
+    folder: Path, settings: Settings, golden: GoldenSet, golden_sha256: str, latest: Release
+) -> Summary:
     """`make eval-resummarize` (S08-T3): rebuild the folder's `summary.json` with `summarize` from
     its `questions.jsonl`, keeping the summary's name, golden hash, start time, authority
     selection (S09-T7: it needs the golden labels, which the rows don't hold; `run` counted it)
@@ -1197,22 +1231,34 @@ def resummarize(folder: Path, settings: Settings) -> Summary:
     `loser_only`, so a count would say 0 where none was looked for), and its conflict metrics
     (S10-T6: `run` scored them against the conflict set, which this doesn't re-read, so a folder
     written before S10 keeps None in each); write it and return it. Nothing else in the folder
-    changes."""
+    changes.
+
+    AC5 and AC6 (S12-T1) are scored again from `golden`, the golden file whose bytes hash to
+    `golden_sha256`, and the `latest` stored release, for a folder that ran that file. A folder
+    that ran another golden file keeps its AC5, AC6 and latest release: its question ids name
+    that file's questions."""
     path = folder / "summary.json"
     old = Summary.model_validate_json(path.read_text(encoding="utf-8"))
     lines = (folder / "questions.jsonl").read_text(encoding="utf-8").splitlines()
     rows = [QuestionRow.model_validate_json(line) for line in lines]
-    summary = summarize(old.name, old.golden_sha256, old.started_at, rows, settings)
-    summary = summary.model_copy(update={field: getattr(old, field) for field in KEPT_FIELDS})
+    same_golden = old.golden_sha256 == golden_sha256
+    questions = {question.id: question for question in golden.questions} if same_golden else None
+    summary = summarize(
+        old.name, old.golden_sha256, old.started_at, rows, settings,
+        questions=questions, latest=latest,
+    )  # fmt: skip
+    kept = KEPT_FIELDS if same_golden else (*KEPT_FIELDS, "ac5", "ac6", "latest_release")
+    summary = summary.model_copy(update={field: getattr(old, field) for field in kept})
     path.write_text(summary.model_dump_json(indent=2) + "\n", encoding="utf-8")
     return summary
 
 
 def summary_line(summary: Summary) -> str:
-    """The summary in one line, for the terminal, ending with the conflict counts (S10-R1,
-    pinned): " Conflicts: {n} ({r} rule, {m} model), {k} loser-only answers.", then the conflict
-    metrics with a conflict set (S10-R2, pinned): " Conflict precision 0.850 (17 of 20), recall
-    0.800 (16 of 20 reachable), AC4 3 of 4 (q08: not retrieved)." with nothing after it."""
+    """The summary in one line, for the terminal, with AC5 and AC6 after AC3 (S12-T1; n/a when
+    None), ending with the conflict counts (S10-R1, pinned): " Conflicts: {n} ({r} rule, {m}
+    model), {k} loser-only answers.", then the conflict metrics with a conflict set (S10-R2,
+    pinned): " Conflict precision 0.850 (17 of 20), recall 0.800 (16 of 20 reachable), AC4 3 of 4
+    (q08: not retrieved)." with nothing after it."""
 
     def number(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.3f}"
@@ -1223,6 +1269,9 @@ def summary_line(summary: Summary) -> str:
     def count(value: int | None) -> str:
         return "n/a" if value is None else str(value)
 
+    def applied(value: Rate | None) -> str:
+        return "n/a" if value is None else rate(value)
+
     rule, model = summary.conflicts_rule, summary.conflicts_model
     total = None if rule is None or model is None else rule + model
 
@@ -1231,7 +1280,8 @@ def summary_line(summary: Summary) -> str:
         f"{summary.errors} errors. Recall@10 {number(summary.recall)}, "
         f"Hit@10 {number(summary.hit)}, MRR {number(summary.mrr)}, "
         f"nDCG@10 {number(summary.ndcg)}. AC1 {rate(summary.ac1)}, AC2 {rate(summary.ac2)}, "
-        f"AC3 {rate(summary.ac3)}, false refusals {summary.false_refusals.count}/"
+        f"AC3 {rate(summary.ac3)}, AC5 {applied(summary.ac5)}, AC6 {applied(summary.ac6)}, "
+        f"false refusals {summary.false_refusals.count}/"
         f"{summary.false_refusals.total}. Tokens: {summary.input_tokens:,} in, "
         f"{summary.output_tokens:,} out. Mean latency {summary.latency_s_mean:.1f} s. "
         f"Conflicts: {count(total)} ({count(rule)} rule, {count(model)} model), "
@@ -1291,6 +1341,12 @@ def _count(parts: tuple[int, int] | None) -> Count | None:
 def _rate_of(parts: tuple[int, int] | None) -> Rate | None:
     """A metric's (passed, total) as a `Rate`; None stays None."""
     return None if parts is None else Rate(pass_=parts[0], total=parts[1])
+
+
+def _applied(results: Iterable[bool]) -> Rate | None:
+    """Passes and total over a check's questions; None when it applied to none."""
+    rate = _rate(results)
+    return rate if rate.total else None
 
 
 def _now() -> datetime:

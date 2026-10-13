@@ -11,7 +11,7 @@ copied to make the cases readable, but nothing here reads the database.
 import copy
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ import pytest
 import yaml  # type: ignore[import-untyped]
 from tests.conftest import FakeEmbedder, FakeGenerator
 
+from orgknow.db.models import Release
 from orgknow.eval import __main__ as eval_main
 from orgknow.eval import runner
 from orgknow.eval.checks import AnswerChecks
@@ -845,6 +846,11 @@ def test_run_json_records_the_conflict_file_or_none_and_older_folders_load_with_
     )
     monkeypatch.setattr(runner, "document_tiers", lambda conn, questions: {})
     monkeypatch.setattr(runner, "_run_question", lambda question, *args: _row(question.id, [], []))
+    # S12-T1: the latest release AC5 reads; the dates are filler.
+    latest = Release(
+        version="1.37", release_date=date(2026, 4, 22), end_of_life_date=date(2027, 6, 28)
+    )
+    monkeypatch.setattr(runner, "list_releases", lambda conn: [latest])
 
     def run_json(conflicts_path: Path, name: str) -> RunInfo:
         settings = _settings(

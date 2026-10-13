@@ -4,7 +4,8 @@ and loser-only counts and the run's summary line (S10-T5), and `make eval-resumm
 hand-built rows; `make eval-retrieval`'s timing line (S08-T4), time line
 (S09-T3), authority line (S09-T7) and rule-conflict line (S10-T2), from hand-written values; and a
 row's conflicts on the answered and the error path (S10-T4), with retrieval and the rule-found
-conflicts replaced by hand-built ones.
+conflicts replaced by hand-built ones; and AC5 and AC6 per golden question (S12-T1), in the summary,
+its line and `make eval-resummarize`.
 
 Every expected value is by hand: a nearest-rank p95 is the value at sorted index
 ceil(n * 0.95) - 1 (0-based), a median of an even count is the mean of the 2 middle values, a
@@ -12,17 +13,17 @@ question's cost is (input * $4 + output * $20) / 1,000,000, and a rate is count 
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 from tests.conftest import FakeGenerator
 
-from orgknow.db.models import Authority, Hit
+from orgknow.db.models import Authority, Hit, Release
 from orgknow.eval import __main__ as eval_main
 from orgknow.eval import runner
 from orgknow.eval.checks import AnswerChecks
-from orgknow.eval.golden import Label, Mode, Question
+from orgknow.eval.golden import GoldenSet, Label, Mode, Question, ReleaseWindow
 from orgknow.eval.runner import (
     Count,
     QuestionRow,
@@ -40,7 +41,7 @@ from orgknow.eval.runner import (
     timing_line,
 )
 from orgknow.generation.conflicts import Conflict, ConflictKind
-from orgknow.generation.schema import Answer, ModelAnswer, TokenUsage
+from orgknow.generation.schema import Answer, Evidence, ModelAnswer, TokenUsage
 from orgknow.retrieval.router import TimeScope
 from orgknow.settings import Settings
 
@@ -265,9 +266,36 @@ def _old_rows() -> str:
     return "".join(row.model_dump_json(exclude=old) + "\n" for row in rows)
 
 
+# The latest release, 1.37 (minor 37), as `list_releases` returns it; the dates are filler.
+LATEST = Release(version="1.37", release_date=date(2026, 4, 22), end_of_life_date=date(2027, 6, 28))
+
+
+def _golden(
+    qid: str, mode: Mode | None, window: dict[str, str] | None = None, answerable: bool = True
+) -> Question:
+    """A golden question; AC5 and AC6 read only its mode, release window and answerability."""
+    return Question(
+        id=qid,
+        question="filler",
+        mode=mode,
+        answerable=answerable,
+        expected_answer="filler",
+        release_window=None if window is None else ReleaseWindow.model_validate(window),
+        smoke=False,
+        labels=[],
+    )
+
+
+# The golden set of `_old_rows`: q01, unanswerable, so in neither AC5 nor AC6.
+OLD_GOLDEN = GoldenSet(version="v0", questions=[_golden("q01", None, answerable=False)])
+
+
 def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # S12-T1: the golden set and the latest release, which the command reads from the golden file
+    # and the database, are given by hand: no database.
+    monkeypatch.setattr(eval_main, "_golden_and_latest", lambda settings: (OLD_GOLDEN, SHA, LATEST))
     folder = tmp_path / "dense-20261008T100000Z"
     folder.mkdir()
     (folder / "summary.json").write_text(OLD_SUMMARY_JSON, encoding="utf-8")
@@ -307,6 +335,11 @@ def test_resummarize_adds_the_new_fields_and_keeps_every_old_value(
         "conflict_unreachable": None,
         "ac4": None,
         "ac4_seeds": None,
+        # S12-T1: no answerable CURRENT or dated HISTORY question, so no AC5 or AC6; the latest
+        # release is recorded.
+        "ac5": None,
+        "ac6": None,
+        "latest_release": "1.37",
     }
     # Only the summary is written: the rows are unchanged, and there is no table.
     assert (folder / "questions.jsonl").read_text(encoding="utf-8") == _old_rows()
@@ -341,7 +374,7 @@ def test_resummarize_keeps_the_authority_selection_run_counted(tmp_path: Path) -
     (folder / "summary.json").write_text(json.dumps(counted), encoding="utf-8")
     (folder / "questions.jsonl").write_text(_old_rows(), encoding="utf-8")
 
-    summary = resummarize(folder, _settings())
+    summary = resummarize(folder, _settings(), OLD_GOLDEN, SHA, LATEST)
 
     assert summary.authority == Rate(pass_=9, total=9)
     assert summary.conflicts_rule == 5
@@ -750,3 +783,153 @@ def test_an_error_row_keeps_the_rule_conflicts(monkeypatch: pytest.MonkeyPatch) 
         "GenerationError: no usable answer from the model (stop reason: max_tokens)"
     )
     assert row.conflicts == [CLAIM]
+
+
+# --- S12-T1: AC5 and AC6 per golden question ------------------------------------------------------
+
+
+def _evidence(window: tuple[str, str | None]) -> Evidence:
+    """A citation with one release window; AC5 and AC6 read only the windows."""
+    return Evidence(
+        chunk_id=1,
+        document="web:/docs/a/",
+        title="A",
+        section=None,
+        source_type="docs_page",
+        release_windows=[window],
+        claimed_status=None,
+        claimed_stage=None,
+        tier=1,
+        source_url="https://github.com/kubernetes/website/blob/0/content/en/docs/a.md",
+    )
+
+
+def _cited(*windows: tuple[str, str | None]) -> Answer:
+    """An `answered` answer with one citation per release window."""
+    return Answer(
+        question="q",
+        answer_status="answered",
+        answer="a",
+        evidence=[_evidence(window) for window in windows],
+        insufficient_evidence_reason=None,
+        model="m",
+    )
+
+
+REFUSED = Answer(
+    question="q",
+    answer_status="insufficient_evidence",
+    answer="",
+    evidence=[_evidence(("1.20", "1.20"))],
+    insufficient_evidence_reason="The sources don't say.",
+    model="m",
+)
+
+
+def _answer_row(qid: str, answer: Answer | None) -> QuestionRow:
+    """A row with no golden mode or window of its own (rows written before S09-T3 have no window):
+    AC5 and AC6 read the golden question's."""
+    return _row(5.0).model_copy(update={"id": qid, "answer": answer})
+
+
+GOLDEN = {
+    "q01": _golden("q01", "CURRENT"),
+    "q02": _golden("q02", "CURRENT"),
+    "q03": _golden("q03", "CURRENT"),
+    "q04": _golden("q04", "CURRENT", answerable=False),
+    "q05": _golden("q05", "HISTORY", {"until": "1.20"}),
+    "q06": _golden("q06", "HISTORY", {"from": "1.28", "until": "1.28"}),
+    "q07": _golden("q07", "HISTORY"),
+    "q08": _golden("q08", "CHANGE"),
+}
+
+
+def test_the_summary_scores_ac5_and_ac6_per_golden_question() -> None:
+    rows = [
+        _answer_row("q01", _cited(("1.24", None))),  # AC5 pass: open, so valid at 1.37
+        _answer_row("q02", _cited(("1.24", None), ("1.30", "1.36"))),  # AC5 fail: one ended
+        _answer_row("q03", None),  # AC5 fail: an error row
+        _answer_row("q04", _cited(("1.24", None))),  # unanswerable: in neither
+        _answer_row("q05", _cited(("1.30", None), ("1.18", "1.20"))),  # AC6 pass: 1.18-1.20
+        _answer_row("q06", REFUSED),  # AC6 fail: a refusal
+        _answer_row("q07", _cited(("1.24", None))),  # HISTORY with no golden window: in neither
+        _answer_row("q08", _cited(("1.24", None))),  # CHANGE: in neither
+    ]
+    # The conflict set's new question (no golden question): in neither.
+    new_rows = [_answer_row("c01", _cited(("1.24", None)))]
+
+    summary = summarize(
+        "conflict", SHA, STARTED_AT, rows, _settings(), new_rows=new_rows,
+        questions=GOLDEN, latest=LATEST,
+    )  # fmt: skip
+
+    # AC5: q01 of q01-q03; AC6: q05 of q05-q06.
+    assert summary.ac5 == Rate(pass_=1, total=3)
+    assert summary.ac6 == Rate(pass_=1, total=2)
+    assert summary.latest_release == "1.37"
+
+
+def test_ac5_and_ac6_are_none_when_no_question_applies() -> None:
+    rows = [_answer_row("q08", _cited(("1.24", None)))]  # a CHANGE question only
+
+    summary = summarize("x", SHA, STARTED_AT, rows, _settings(), questions=GOLDEN, latest=LATEST)
+
+    assert (summary.ac5, summary.ac6, summary.latest_release) == (None, None, "1.37")
+    # Without the golden questions and the latest release, none at all.
+    assert (_summary(rows).ac5, _summary(rows).ac6, _summary(rows).latest_release) == (None,) * 3
+
+
+def test_the_summary_line_shows_ac5_and_ac6_after_ac3() -> None:
+    # One unanswerable row that passes AC3: 1/1; no false refusal applies: 0/0.
+    summary = _summary([_row(5.0)])
+    scored = summary.model_copy(
+        update={"ac5": Rate(pass_=8, total=10), "ac6": Rate(pass_=8, total=9)}
+    )
+
+    assert "AC3 1/1, AC5 8/10, AC6 8/9, false refusals 0/0." in runner.summary_line(scored)
+    assert "AC3 1/1, AC5 n/a, AC6 n/a, false refusals 0/0." in runner.summary_line(summary)
+
+
+def _old_folder(tmp_path: Path, summary: dict[str, object], rows: list[QuestionRow]) -> Path:
+    folder = tmp_path / "conflict-20261012T170000Z"
+    folder.mkdir()
+    (folder / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    lines = [row.model_dump_json(exclude={"release_window"}) + "\n" for row in rows]
+    (folder / "questions.jsonl").write_text("".join(lines), encoding="utf-8")
+    return folder
+
+
+def test_resummarize_scores_ac5_and_ac6_from_the_golden_questions(tmp_path: Path) -> None:
+    # Rows written with no release window: q01 passes AC5 (open); q05's only citation, 1.24 on,
+    # is after "until 1.20", so it fails AC6.
+    rows = [_answer_row("q01", _cited(("1.24", None))), _answer_row("q05", _cited(("1.24", None)))]
+    folder = _old_folder(tmp_path, OLD_SUMMARY, rows)
+
+    summary = resummarize(
+        folder, _settings(), GoldenSet(version="v0", questions=list(GOLDEN.values())), SHA, LATEST
+    )
+
+    assert (summary.ac5, summary.ac6) == (Rate(pass_=1, total=1), Rate(pass_=0, total=1))
+    written = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    assert (written["ac5"], written["ac6"]) == ({"pass": 1, "total": 1}, {"pass": 0, "total": 1})
+    assert written["latest_release"] == "1.37"
+
+
+def test_resummarize_keeps_ac5_and_ac6_of_a_run_of_another_golden_file(tmp_path: Path) -> None:
+    # The folder ran another golden file: its question ids don't name this file's questions, so
+    # the values its run counted stay.
+    other = {
+        **OLD_SUMMARY,
+        "golden_sha256": "f" * 64,
+        "ac5": {"pass": 8, "total": 10},
+        "ac6": {"pass": 8, "total": 9},
+        "latest_release": "1.36",
+    }
+    folder = _old_folder(tmp_path, other, [_answer_row("q01", None)])
+
+    summary = resummarize(
+        folder, _settings(), GoldenSet(version="v0", questions=list(GOLDEN.values())), SHA, LATEST
+    )
+
+    assert (summary.ac5, summary.ac6) == (Rate(pass_=8, total=10), Rate(pass_=8, total=9))
+    assert summary.latest_release == "1.36"

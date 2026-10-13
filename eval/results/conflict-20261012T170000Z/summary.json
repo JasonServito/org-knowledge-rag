@@ -105,5 +105,14 @@
       "retrieved": false,
       "surfaced": false
     }
-  ]
+  ],
+  "ac5": {
+    "pass": 8,
+    "total": 10
+  },
+  "ac6": {
+    "pass": 8,
+    "total": 9
+  },
+  "latest_release": "1.37"
 }

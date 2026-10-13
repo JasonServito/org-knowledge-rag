@@ -1,6 +1,7 @@
 """Answer checks: score one question's answer against AC1-AC3 (product spec), flag a false
 refusal (S06-R1 pinned formats), and flag an answer citing only the losing side of a model-found
-conflict (S10-T5, ADR-010 D3).
+conflict (S10-T5, ADR-010 D3). And the AC5 and AC6 rules on one answer's citations (S12-T1),
+which the summary applies per golden question.
 
 Pure: a question, its hits and its answer in, a record out. No database, no network. The
 answer is None when the ask failed (an error row).
@@ -12,7 +13,8 @@ from pydantic import BaseModel
 
 from orgknow.db.models import Hit
 from orgknow.eval.golden import Question
-from orgknow.generation.schema import Answer
+from orgknow.eval.metrics import GoldenWindow, in_window
+from orgknow.generation.schema import Answer, Evidence
 
 
 class AnswerChecks(BaseModel):
@@ -93,3 +95,43 @@ def _loser_only(answer: Answer | None) -> bool | None:
         and any(chunk_id in cited for chunk_id in conflict.chunk_ids)
         for conflict in answer.conflicts
     )
+
+
+# AC5 and AC6 (S12-T1; S12-R1 decisions 3 and 4). The summary picks the questions each applies to,
+# from the golden file: AC5 the answerable CURRENT ones, AC6 the answerable HISTORY ones with a
+# golden window. A refusal or an error row (no answer) fails both.
+
+
+def check_ac5(answer: Answer | None, latest: int) -> bool:
+    """AC5: the answer is `answered` and every citation is valid at the latest release (`latest`,
+    a minor): one of its release windows holds it, from <= latest <= until, an open until holding
+    it. An `answered` answer with no citations fails, as AC1 does."""
+    return (
+        answer is not None
+        and answer.answer_status == "answered"
+        and bool(answer.evidence)
+        # Holding a release is overlapping the one-release window [latest, latest].
+        and all(in_window(_minors(c), (latest, latest)) for c in answer.evidence)
+    )
+
+
+def check_ac6(answer: Answer | None, window: GoldenWindow) -> bool:
+    """AC6: the answer is `answered` and at least one citation's release windows overlap the
+    golden `window` (minors), exactly: `in_window`, with no slack."""
+    return (
+        answer is not None
+        and answer.answer_status == "answered"
+        and any(in_window(_minors(c), window) for c in answer.evidence)
+    )
+
+
+def _minors(citation: Evidence) -> list[tuple[int, int | None]]:
+    """A citation's release windows as minors: ("1.24", None) is (24, None)."""
+
+    def minor(release: str) -> int:
+        return int(release.removeprefix("1."))
+
+    return [
+        (minor(start), None if until is None else minor(until))
+        for start, until in citation.release_windows
+    ]
