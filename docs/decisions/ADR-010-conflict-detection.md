@@ -86,3 +86,30 @@ Decided by the developer after run 1 missed its AC3 gate; the evidence is in `do
 ## Amendment 2026-10-12
 
 - **Consequences' "S11's grader … Revisit with S11's design" closes (S11-R1 sitting):** there is no grader, because corrective retrieval wasn't adopted (ADR-011 D1). The revisit trigger "the S11 graph" closes with it. No decision here changes. Rejected: keeping the note open, with no grader to revisit (ADR-011 D1).
+
+## Amendment 2026-10-12 (S12-R1 sitting)
+
+D4's outcome, decided by the developer in the S12-R1 sitting. The evidence is in `eval/results/s12-sitting/` (each script, output and cost in its `README.md`) and `docs/slices/S12-phase1-closeout.md`, run S12-R1. No decision changes except D4's outcome.
+
+- **D4's switch rule fired (S11-R1 Step 0):** q01's flagged pair matches seed k02, but its summary names "4 times per year", not KEP-2572's out-of-date status. So k02 counts as missed in all 3 of S10-T8's runs.
+- **The one-off comparison ran in the S12-R1 sitting,** not as a run's first step: a separate detector call, `claude-haiku-5-5` at effort low, on the same 10 hits as conflict run 1, for v0's 43 questions plus c01 and c02, in 2 prompt wordings. The pass criteria were fixed before it ran (`probe_detector.py`): q01's summary check in 3 of 3 calls, and raw precision ≥ 0.70.
+
+| | Answer call (S10, 3 runs) | Detector A (neutral) | Detector B (+ a line on out-of-date KEP status) |
+|---|---|---|---|
+| Model pairs | 13–14 | 58 | 79 |
+| Raw precision, model pairs | 0.71–0.92 | 0.707 (41 of 58) | 0.620 (49 of 79) |
+| Recall | 0.317–0.350 | 0.550 (33 of 60) | 0.583 (35 of 60) |
+| q01 summary check (3 calls) | fail ×3 | fail ×3 | pass ×3 |
+| Latency p50 / p95 | — | 4.24 / 5.77 s | 5.14 / 6.43 s |
+
+- **Neither wording passed both criteria.** A fails q01's summary check. B passes it, but its raw precision is 0.620.
+- **B's 30 flags outside conflict set v0, judged one by one** (`verdicts_B.md`): 3 real. Judged precision 0.690 (60 of 87), below the spec's 0.90. 19 of the 27 false flags compare a claim line from a KEP version that isn't valid at the target release with a later state.
+- **The detector is not adopted.** The answer call keeps listing pairs (D1).
+- **The KEP-2572 fallback (the stale-KEP rule) isn't built:** a rule-found conflict can't match seed k02, a two-text conflict (`eval/conflicts.py`, `matches`).
+- **AC4 closes Phase 1 at 1 of 4, a stated exception** (S12-R1 decision 2; product spec).
+- **Spent:** US$0.099 (576,293 tokens in, 82,675 out).
+- **Revisit trigger:** a detector design that passes judged precision ≥ 0.90 on conflict set v1.
+- **Rejected:**
+  - Build B: it fixes q01, but its judged precision is 0.690.
+  - Build A: q01 stays unfixed (recall 0.33 → 0.55, judged precision unknown; a proposed addition).
+  - Stop at B's raw-precision fail without judging. The judging was chosen after that fail, and is labeled so.

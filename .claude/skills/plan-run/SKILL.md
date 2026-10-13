@@ -9,6 +9,8 @@ disable-model-invocation: true
 
 Slice: `$ARGUMENTS`. The developer is here, and every decision for the run is made now. Follow `CLAUDE.md` ("Decisions", "Writing for the developer") and `docs/ai-workflow.md` section 4. Wait for answers.
 
+**Track open questions.** Don't move to the next step while an earlier question is unanswered, and don't treat an unanswered one as defaulted. End each message with the items still open, numbered. State a default only if the developer has agreed to defaults.
+
 1. **Load context.** Read `CLAUDE.md`, the slice's entry in `docs/backlog.md`, its slice doc and earlier run contracts (if any), the ADRs it references, and the last run's brief. Count Greptile credits (`CLAUDE.md`, "Greptile").
 2. **Step 0, scope check.**
    - Triage parked items one by one: keep (→ Proposed additions) or drop.
@@ -20,11 +22,12 @@ Slice: `$ARGUMENTS`. The developer is here, and every decision for the run is ma
 4. **Step 2, the bundle as a whole.** The tasks, what each hands to the next, and what later tasks assume about earlier ones.
 5. **Step 3, pre-mortem.** "Imagine the run failed. Why?" List edge cases per task and across tasks. Check them against real data where possible, showing the command and its output.
 6. **Step 4, decisions.** One at a time, with the decision protocol.
-   - For an ADR-level decision, start a `devils-advocate` subagent with the question, the options and your recommendation. Show its case before the developer decides.
+   - **Core decisions only.** First sort the candidates. Ask: scope changes, ADR-level close calls, and anything the developer asked about. Take the recommendation on minor or one-sided ones, one line each, and list them in the read-back so the contract records them.
+   - For an ADR-level decision you ask, start a `devils-advocate` subagent with the question, the options and your recommendation. Show its case before the developer decides.
    - If nothing needs deciding, say "No decisions needed".
 7. **Step 5, verification plan.** Per task: the proof map ("done when" → proof → source of expected values), 1–3 break-it rules, and the real-data demo command. Then the bundle-level check. Expected values never come from the code under test.
 8. **Step 6, PR plan.** Is there a natural seam? 1 or 2 PRs. Paid calls allowed: none unless the developer lists them. If any are listed, ask for the current Anthropic credit (console → Plans & Billing, USD) and record it as `Credit at sitting: US$N (date)`. Flag it if the listed calls would leave less than US$5 (`CLAUDE.md`, "Anthropic credit").
-9. **Step 7, teach-back.** Ask the developer to explain the bundle in 2–3 sentences. Fix any gaps in at most 3 bullets.
+9. **Step 7, teach-back.** Offer a short, plain explanation of the bundle (3 bullets) and ask the developer to confirm or correct it. Fix any gaps in at most 3 bullets.
 10. **Step 8, read-back and go.**
     - List every decision ("Here's what you decided") and get confirmation.
     - Branch: `git switch main && git pull --ff-only && git switch -c sNN-rN-<name>`, where N is the next run number in this slice.

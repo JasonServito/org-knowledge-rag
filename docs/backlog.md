@@ -378,24 +378,22 @@ Tasks:
   - Done when: the retro's exit checks pass.
   - Deps: T2, T3.
 
-### 🟨 S12 Phase 1 closeout
+### ✅ S12 Phase 1 closeout
 
-- **Outcome:** the product spec's AC1–AC8 are verified and M1 is declared.
-- **Candidate tasks:**
-  - ADR-010 D4's fallbacks: a separate detector call and the stale-KEP rule, measured as their own row (S11-R1 decision 1). AC4's q01.
-  - AC4 plan for q08 (k03) and c01 (k04), decided in the S12 sitting (S11-R1 decision 6). Lead: c01's k04 is reachable when its 1.30 window is dropped (`eval/results/s11-sitting/probe_pool.log`).
-  - FastAPI `POST /query`
-  - Langfuse on the API path
-  - Streamlit dev UI
-  - README ablation table and results narrative
-  - `docs/architecture.md` update
-  - slice-brief consolidation
+- **Outcome:** Phase 1 closes (M1) with 3 stated exceptions (AC4 1 of 4, AC5 8 of 10, AC6 8 of 9), each with its measured cause, in `docs/m1-report.md`. `POST /query` answers through the same pipeline as `orgknow ask`, with one Langfuse trace per request.
+- **Metrics to move:** none by design; AC5 and AC6 are now measured on every saved run.
+- **The candidate tasks, as the S12-R1 sitting decided them:**
+  - ADR-010 D4's fallbacks: the separate detector was probed in the sitting and not adopted (judged precision 0.690 < 0.90); the stale-KEP rule isn't built (ADR-010, amendment 2026-10-12).
+  - AC4's q08 and c01: AC4 closes at 1 of 4 as a stated exception (decision 2); S11's c01 lead was a false match.
+  - FastAPI `POST /query` and Langfuse on the API path: T2.
+  - Streamlit dev UI: not built; FastAPI's `/docs` page instead (a proposed addition for S17's sitting).
+  - README table and narrative, `docs/architecture.md`, slice-brief consolidation (the M1 report's slice table): T3.
 - **Slice doc:** `docs/slices/S12-phase1-closeout.md`
 
 - [x] **S12-T1 `[core]` AC5 and AC6 answer-side checks.** Scored from saved eval rows, in the summary and the ablation table. Deps: none.
 - [x] **S12-T2 `[commodity]` `POST /query` with Langfuse.** The `ask` pipeline over HTTP; the reranker loaded once per process; one trace per request. Deps: none.
-- [ ] **S12-T3 `[commodity]` Closeout docs and the M1 report.** Deps: T1, T2.
-- [ ] **S12-T4 `[commodity]` The S12 retro.** Deps: T3.
+- [x] **S12-T3 `[commodity]` Closeout docs and the M1 report.** Deps: T1, T2.
+- [x] **S12-T4 `[commodity]` The S12 retro.** Deps: T3.
 
 ---
 
@@ -403,7 +401,7 @@ Tasks:
 
 | Slice | Stage | Outcome |
 |---|---|---|
-| ⬜ **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
+| 🟨 **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
 | ⬜ **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; a local queue abstraction shaped like SQS; idempotent worker; request IDs; structured logs; timeouts and retries. |
 | ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-012 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
 | ⬜ **S16 CI/CD** | Stage 12 | ECR build/push, deploy to EC2, smoke eval in CI. |
@@ -446,7 +444,6 @@ ADRs are decided when their slice starts, not earlier.
 - **S14: keep past `head` SHAs in the lock.** (Moved from S05 in the S05 sitting, 2026-10-07: it matters only when the lock is refreshed; S05 keeps the 2026-09-30 lock.) Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.) The 18 CHANGELOG versions too: a lock refresh re-dates them and gives a history mismatch (S05-R2, PR #29 parked 17).
 - **Golden set v1: "any of" label groups (ADR-007 amendment).** Reason: v0's A-primary rule leaves equally good copies (CHANGELOG pre-release sections, passing mentions) unlabeled, so a hit on one scores 0, while labeling them all would fill Recall's denominator with duplicates. A group credited once when any member is hit fixes both. Needs an ADR-007 amendment, loader and metric changes, and a relabel into v1 (re-baselined). (S06-T5 decision 2, 2026-10-08.)
 - **S10 conflict-set candidates found while labeling v0 (input to S10-T7a; kept in the S10-R1 sitting; S10-R2 labels them where a question's results hold both sides: q21, q25).** `versioning.md` (1.36+) says 4 minor releases are supported vs. 3 in the version-skew page; legacy apt/yum repos deprecated Aug 31 (deprecation blog) vs. Sep 13, 2023 (1.29 upcoming-changes blog); `gate:ServiceTopology` "Deprecated 1.20" vs. alpha in the v1.20 docs; release page "currently four times per year" stale in v1.21–v1.23. (S06-T5, 2026-10-08.)
-- **Trace: log the rule-found conflicts when the answer call fails.** Reason: on a generation error, the `generate` span doesn't log them (the eval row keeps them). Fits S12's "Langfuse on the API path". (S10-R1, PR #42 parked; kept in the S10-R2 sitting.)
 - **Chunker: a test for the HTML-table half of the "never cut" guard.** Reason: removing it fails no test today. (S05-R3, PR #30 parked 4; kept in the S06-R1 sitting.)
 - **Report: remove `counts_by_release`'s unprinted per-type values and 1 duplicate fingerprint test case.** Reason: dead code. (S05-R3, PR #30 parked 9; kept in the S06-R1 sitting.)
 - **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)
@@ -464,6 +461,10 @@ ADRs are decided when their slice starts, not earlier.
 - **Trace coverage.** Reason: no test checks the `retrieve` span's route, window and filter (PR #39 parked 11), there is no router span, so a live ask's router latency isn't traced (parked 12), and the S07 (1) and S08 (3) trace gaps above. One task could cover them. (Kept in the S09-R2 sitting.)
 - **Record the router effort in the routes file (PR #39, Greptile).** Reason: after a `ROUTER_EFFORT` change the eval reuses old routes while `run.json` shows the new effort. (Kept in the S09-R2 sitting.)
 - **Atomic saves for the routes and question-vector files (PR #39, Greptile).** Reason: a plain overwrite interrupted midway could lose them (worst case: re-pay ~$0.18). (Kept in the S09-R2 sitting.)
-- **S12 sitting: define AC6.** Reason: AC6 says cited evidence must be valid within the window, but v0 labels later documents as primary sources for HISTORY questions, and a hit cites the newest copy of its text. Out of S09's scope (S09-R2 sitting).
 - **Query rewriting for informal wording (S11-R1 sitting lead).** A second search on every question with a Haiku-written query, RRF with the first 10. Rephrased Recall@10 0.427 → 0.468 and MRR 0.607 → 0.671, v0 neutral; 1 run, the best of 4 designs, v0's routes reused; ~5.5 s more per question; it would run on unanswerable questions too (q48). Test it on golden v1's verified rephrased set with ADR-011 D2's rule.
 - **Conflict set v1 candidates (S10-T8; parked in the S11-R1 sitting).** q18 `gate:StrictIPCIDRValidation` 10419 vs. 10420; q34 `gate:KMSv2` 9930 vs. 9931; q35 the v1.28 blog 41925 vs. 42160 (borderline).
+- **Detector A for conflict recall (S12-R1 sitting).** Reason: a separate Haiku call with the neutral wording raised recall 0.33 → 0.55 on conflict set v0 (raw precision 0.707, judged precision unknown), but failed q01's summary check (`eval/results/s12-sitting/`). Test it on conflict set v1, with ADR-010's revisit rule (judged precision ≥ 0.90).
+- **q08's reranker regression (S12-R1 sitting).** Reason: KEP-2579's Implementation History (seed k03) is rank 10 in hybrid mode and rank 20 after the reranker (`probe_ranks.log`), one of AC4's 3 causes. Look at it on golden v1, not by tuning on v0.
+- **c01's search miss (S12-R1 sitting).** Reason: as routed (HISTORY, 1.30), none of seed k04's `versioning.md` texts is among c01's 20 candidates; only kep:1498 (a second side) is (`probe_ranks.log`). S11's "no window" lead matched the "every four months" versions, not the seed's text.
+- **Freeze the AC5 and AC6 rules for golden set v1 (S12-R1 sitting).** Reason: both rules were chosen on the runs they score (decisions 3 and 4), with a negative control as the only guard. Fix them, and v1's AC4 wording (product spec), before any v1 result.
+- **Streamlit dev UI: a note for S17's sitting (S12-R1 sitting).** Reason: S12 used FastAPI's `/docs` page, the CLI and Langfuse instead (0 lines, 0 dependencies); S17 builds the real UI, so decide there whether a Streamlit step is worth it.

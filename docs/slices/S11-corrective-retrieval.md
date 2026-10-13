@@ -94,7 +94,7 @@ The table is in ADR-011 ("Sitting evidence"). The scripts, their raw outputs and
 - **c01:** as routed (HISTORY, 1.30 ± 1), its top 10 holds kep:1498, 2 sections of the v1.30 release blog and 7 release-note chunks; with no window, `versioning.md`'s support section is at ranks 1–2 and k04 is reachable (`probe_relax.log`, `probe_c01.log`, `probe_pool.log`).
 - **q08:** no mode or window change retrieves KEP-2579's date line (k03) (`probe_relax.log`).
 - **The devil's advocate's candidate-pool test** (`probe_pool.log`): rephrased q08's first search holds 0 of its 8 labels among 20 candidates; the second search holds 4, at ranks 14–20 against the informal question. Rephrased q31's label is in neither.
-- **The LangGraph spike** (`spike/`): the same flow on fakes takes 82 lines with LangGraph and 30 as a plain loop, with 1 type cast for mypy; both skip the grader at 0 retries.
+- **The LangGraph spike** (`spike/`): the same flow on fakes takes 82 lines with LangGraph and 30 as a plain loop, and the LangGraph version needs 1 type cast to pass mypy --strict (not in the committed spike); both skip the grader at 0 retries.
 
 #### Decisions (made in the sitting, 2026-10-12)
 
@@ -221,7 +221,7 @@ Free: it reads the saved JSON only.
   - **The candidate-pool test:** rephrased q08's second search held 4 of its 8 labels, at ranks 14–20 against the informal question; the first held 0 of 8 in 20.
   - **Probe 5 moved MRR, not recall:** on the rephrased set, MRR rose in every run (+0.053, +0.049, +0.046) while Hit@10 fell 0.028 in every run.
   - **c01's seed k04 is reachable with no window:** `versioning.md`'s support section ranks 1–2. No mode or window change retrieves q08's k03.
-  - **The LangGraph spike:** the same flow took 82 lines with LangGraph and 30 as a plain loop, plus 1 type cast for mypy.
+  - **The LangGraph spike:** the same flow took 82 lines with LangGraph and 30 as a plain loop, and the LangGraph version needs 1 type cast to pass mypy --strict (not in the committed spike).
 - **What didn't work / negative results:**
   - **A grader-gated retry** (the blueprint's §17 design) fired on 2 of 45 v0 questions and 2 of 36 rephrased ones, and changed nothing (probes 1, 2).
   - **Scoring a second search's texts against the original question:** MRR 0.813 → 0.748 on v0, 0.606 → 0.571 on the rephrased set (probe 3).

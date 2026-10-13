@@ -1,9 +1,9 @@
 # S12: Phase 1 closeout
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** Phase 1 closeout (§30.1); product spec AC1–AC8, must-have 10
 - **Started:** 2026-10-12
-- **Finished:**
+- **Finished:** 2026-10-13
 
 ## Outcome
 
@@ -19,12 +19,12 @@ Every Phase 1 acceptance criterion (AC1–AC8) and must-have 10 has a recorded p
 
 ## Exit checks
 
-- [ ] AC5 and AC6 are scored on cited evidence for every saved run, free, by the rules decided in the S12-R1 sitting.
-- [ ] `POST /query` returns the same answer shape as `orgknow ask`, loads the reranker once per process, and leaves one Langfuse trace per request (rule-found conflicts logged when the answer call fails).
-- [ ] ADR-010 records the detector probe (not adopted); the product spec records AC4–AC6's results and definitions; `docs/evaluation.md` has the S12 section.
-- [ ] The README has the ablation table and a results narrative; `docs/architecture.md` matches the code.
-- [ ] The M1 report lists AC1–AC8 and must-have 10, each with its proof command and result, and the 3 stated exceptions with their causes.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] AC5 and AC6 are scored on cited evidence for every saved run, free, by the rules decided in the S12-R1 sitting.
+- [x] `POST /query` returns the same answer shape as `orgknow ask`, loads the reranker once per process, and leaves one Langfuse trace per request (rule-found conflicts logged when the answer call fails).
+- [x] ADR-010 records the detector probe (not adopted); the product spec records AC4–AC6's results and definitions; `docs/evaluation.md` has the S12 section.
+- [x] The README has the ablation table and a results narrative; `docs/architecture.md` matches the code.
+- [x] The M1 report lists AC1–AC8 and must-have 10, each with its proof command and result, and the 3 stated exceptions with their causes.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -88,7 +88,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S12-R1: Phase 1 closeout
 
-- **Status:** planned
+- **Status:** PR open
 - **Tasks:** T1, T2, T3, T4.
 - **Goal (plain words):** add the two missing answer checks, serve the pipeline over HTTP, and write down how Phase 1 ends (3 stated exceptions, each with its cause), then close the slice.
 
@@ -288,7 +288,34 @@ curl -s -X POST localhost:8000/query -H 'Content-Type: application/json' \
 ## Retro (fill in at the end)
 
 - **Shipped (with numbers):**
+  - **S12-R1** (1 run, 4 tasks), split after T2 into 2 stacked PRs (code │ docs): the code alone is ~1,700 reviewable lines, over the ~800 alarm.
+    - **Sitting evidence:** the detector probe (US$0.099), AC4's seed ranks and the AC5/AC6 readings (free), 2 devil's-advocate reviews; all in `eval/results/s12-sitting/`.
+    - **T1:** AC5 and AC6 per golden question, in `summary.json` and 2 ablation-table columns. All 16 saved runs re-summarized; each matches `probe_ac56_control.log`; no earlier value changed.
+    - **T2:** `POST /query` and `make serve` (uvicorn, ADR-004 amendment), through one pipeline function shared with `orgknow ask`.
+      - Demo (2026-10-13, authority mode): 2 requests, HTTP 200, 12.0 s and 11.2 s, the reranker loaded once, 1 trace each.
+    - **T3:** ADR-010 and ADR-011 amendments, the ADR index; the spec's must-have 10 and AC4–AC6 notes; `docs/evaluation.md`'s S12 section; the README's table, narrative and API section.
+      - Also `docs/architecture.md`, `docs/m1-report.md`, triage items a–e (3 memory notes into the repo), 1 glossary term.
+    - **T4:** this retro and the slice brief.
+  - **Result:** Phase 1 closes (M1) with 3 stated exceptions: AC4 1 of 4, AC5 8 of 10, AC6 8 of 9 (the dense baseline: 2 of 10, 6 of 9).
+  - **Metrics:** none moved, by design; the final row stays Recall@10 0.552, MRR 0.813, p95 16.3 s, $0.0378 per question.
+  - **Tests:** 896 unit (853 at S11's close), 189 integration.
+  - **Reviews:** 0 must-fix in T1 and T2; 2 in T3 (a "rank 40" wording the log contradicts; ADR status lines edited in place), both fixed.
+  - **Paid in S12:** ~US$0.17 (the sitting's probe US$0.099, the T2 demo ~US$0.07). Credit ~US$8.89 left. Greptile 17/50 before the PRs.
 - **Surprises:**
+  - **Detector B fixed q01 but flagged false conflicts:** it passed q01's summary check 3 of 3 times, but 19 of its 27 false flags compared a KEP claim not valid at the target release with a later state.
+  - **S11's c01 lead was a false match:** the texts found with no window (chunks 36376, 36383) say "every four months"; the seed's "every three months" is chunk 36362.
+  - **The reranker drops q08's source:** KEP-2579's Implementation History is rank 10 in hybrid mode and rank 20 after the reranker.
+  - **The first AC5/AC6 picks were the lenient readings:** "at least one valid citation" passes the time-blind dense baseline 8–9 of 10. The negative control changed both picks.
+  - **"Every citation inside the exact window" fails every system** (0–3 of 9): history is often written down later.
+  - **The router call isn't in the trace** (no router span), so the demo's router cost (~US$0.008) is an estimate.
 - **What didn't work / negative results:**
+  - **A separate detector call (ADR-010 D4):** wording A failed q01's check 3 of 3 times; wording B's raw precision was 0.620, judged 0.690, under the spec's 0.90. Not adopted.
+  - **Detector A's recall gain (0.33 → 0.55)** has an unknown judged precision: a proposed addition, for conflict set v1.
+  - **The stale-KEP rule:** not built; a rule-found conflict can't match k02, a two-text conflict.
+  - **AC4 stays at 1 of 4:** no in-scope change reaches q08 or c01 without tuning on frozen v0.
 - **Do differently next slice:**
+  - Fix a new metric's rule and its negative control before seeing any score; S12's AC5/AC6 rules were picked on the runs they score. S13's decision-chain completeness metric is next.
+  - Check a lead down to the chunk text before handing it on: S11's c01 lead found the right page but the wrong text.
+  - Estimate each task's reviewable lines in the sitting: moving the ask pipeline out of `cli.py` (T2) made the code alone ~1,700 lines.
+  - After moving code, search the old module's name in docstrings: 3 stale ones were parked (2 still say "the CLI").
 - **Slice brief:** `docs/learning/S12-phase1-closeout.md`
