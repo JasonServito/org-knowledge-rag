@@ -378,7 +378,7 @@ Tasks:
   - Done when: the retro's exit checks pass.
   - Deps: T2, T3.
 
-### 🟨 S12 Phase 1 closeout
+### ✅ S12 Phase 1 closeout
 
 - **Outcome:** Phase 1 closes (M1) with 3 stated exceptions (AC4 1 of 4, AC5 8 of 10, AC6 8 of 9), each with its measured cause, in `docs/m1-report.md`. `POST /query` answers through the same pipeline as `orgknow ask`, with one Langfuse trace per request.
 - **Metrics to move:** none by design; AC5 and AC6 are now measured on every saved run.
@@ -393,7 +393,7 @@ Tasks:
 - [x] **S12-T1 `[core]` AC5 and AC6 answer-side checks.** Scored from saved eval rows, in the summary and the ablation table. Deps: none.
 - [x] **S12-T2 `[commodity]` `POST /query` with Langfuse.** The `ask` pipeline over HTTP; the reranker loaded once per process; one trace per request. Deps: none.
 - [x] **S12-T3 `[commodity]` Closeout docs and the M1 report.** Deps: T1, T2.
-- [ ] **S12-T4 `[commodity]` The S12 retro.** Deps: T3.
+- [x] **S12-T4 `[commodity]` The S12 retro.** Deps: T3.
 
 ---
 
@@ -401,7 +401,7 @@ Tasks:
 
 | Slice | Stage | Outcome |
 |---|---|---|
-| ⬜ **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
+| 🟨 **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
 | ⬜ **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; a local queue abstraction shaped like SQS; idempotent worker; request IDs; structured logs; timeouts and retries. |
 | ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-012 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
 | ⬜ **S16 CI/CD** | Stage 12 | ECR build/push, deploy to EC2, smoke eval in CI. |

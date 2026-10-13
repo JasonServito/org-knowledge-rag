@@ -55,7 +55,8 @@ The answer path, `answer_question` (`pipeline.py`), which `orgknow ask "<questio
      │  search_lexical (every question word, by full-text rank); fuse (retrieval/fusion.py):
      │  RRF over the two lists (k = RRF_K, 60), the RETRIEVAL_TOP_K best
      │  RETRIEVAL_MODE=rerank: hybrid's whole fused pool (no top-K cut) → CrossEncoderReranker
-     │  (retrieval/cross_encoder.py, loaded once by main) scores each (question, text) pair →
+     │  (retrieval/cross_encoder.py, loaded once per process: by the CLI's main or the API's
+     │  startup) scores each (question, text) pair →
      │  rerank (retrieval/rerank.py): the RETRIEVAL_TOP_K best by score, ties in fused order
      │  RETRIEVAL_MODE=temporal: rerank, with the route's filter inside both searches (a text is
      │  kept when some version holding it passes), before each one's RETRIEVAL_CANDIDATES
