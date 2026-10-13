@@ -1,7 +1,7 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed fetch-github ingest lifecycle ingest-report \
-	reset-corpus embed eval-check eval-check-chains eval-sections eval-retrieval eval-conflicts \
-	eval-routes eval-smoke eval eval-table eval-resummarize serve
+	reset-corpus embed chains eval-check eval-check-chains eval-sections eval-retrieval \
+	eval-conflicts eval-routes eval-smoke eval eval-table eval-resummarize serve
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -82,8 +82,10 @@ ingest-report:
 	uv run python -m orgknow.ingestion.report
 
 # Empty the DEV database's corpus: documents, aliases, versions and chunks, with ids restarting at
-# 1 (S05-R1 decision 2). `releases` and `embeddings` are kept: vectors are a cache keyed by content
-# hash. Then run `make ingest` to rebuild. `make test-int` uses its own database, untouched here.
+# 1 (S05-R1 decision 2). CASCADE also empties the decision chains (`decisions`,
+# `decision_evidence`; S13-T3), which reference them. `releases` and `embeddings` are kept: vectors
+# are a cache keyed by content hash. Then run `make ingest` (and `make chains`) to rebuild.
+# `make test-int` uses its own database, untouched here.
 reset-corpus:
 	docker compose exec -T db psql -U orgknow -d orgknow -c \
 		"TRUNCATE documents, document_aliases, document_versions, chunks RESTART IDENTITY CASCADE"
@@ -94,6 +96,15 @@ reset-corpus:
 # makes 0 requests. Needs `make ingest`.
 embed:
 	uv run python -m orgknow.embeddings.embed
+
+# Rebuild every decision chain the manifest lists (`decision_chains`; S13-T3, ADR-012): per seed
+# KEP, 6 steps by rules over the stored links and dates, each citing a stored chunk with its date
+# and how it was found, or missing with its reason. Each chain is replaced in one transaction, so a
+# re-run stores the same rows (new ids and build time). Prints one line per chain. Free and local:
+# current docs compare stored vectors, no API call. Needs `make ingest` and `make embed`. Read a
+# chain with `uv run orgknow chain kep:2572`.
+chains:
+	uv run python -m orgknow.provenance.build
 
 # Validate the golden set (EVAL_GOLDEN_PATH, default eval/golden_set/v0.yaml), then check every
 # label against the dev database: one line per label with the distinct chunk texts it matches,
