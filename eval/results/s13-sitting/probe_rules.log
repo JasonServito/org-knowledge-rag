@@ -1,0 +1,44 @@
+== 1. Tracking-issue template fields (Enhancement Proposal, Discussion Link, KEP update PRs)
+#2572 Defining the Kubernetes release cadence | state closed
+- Kubernetes Enhancement Proposal: https://github.com/kubernetes/enhancements/pull/2567
+- Discussion Link: https://github.com/kubernetes/sig-release/discussions/1290
+  - [ ] KEP (`k/enhancements`) update PR(s): https://github.com/kubernetes/enhancements/pull/2567
+#2579 PodSecurity admission (PodSecurityPolicy replacement) | state closed
+- Kubernetes Enhancement Proposal:  https://github.com/kubernetes/enhancements/blob/master/keps/sig-auth/2579-psp-replacement/
+- Discussion Link: https://docs.google.com/document/d/1woLGRoONE3EBVx-wTb4pvp4CI7tmLZ6lS26VTbosLKM/view#bookmark=id.km06bp3uzuco
+  - [x] KEP (`k/enhancements`) update PR(s): https://github.com/kubernetes/enhancements/pull/2582
+#2799 Reduction of Secret-based Service Account Tokens | state closed
+- Kubernetes Enhancement Proposal: https://github.com/kubernetes/enhancements/tree/master/keps/sig-auth/2799-reduction-of-secret-based-service-account-token
+- Discussion Link: [sig-auth](https://docs.google.com/document/d/1woLGRoONE3EBVx-wTb4pvp4CI7tmLZ6lS26VTbosLKM/edit#heading=h.ndbiu8xlfycy)
+  - [x] KEP (`k/enhancements`) update PR(s):
+#4858 IP/CIDR validation improvements | state open
+- Kubernetes Enhancement Proposal: https://github.com/kubernetes/enhancements/tree/master/keps/sig-network/4858-ip-cidr-validation
+- Discussion Link: https://github.com/kubernetes/kubernetes/pull/122550 has background; I am belatedly writing a KEP to centralize further discussion and because it will just be easier to track this work with a KEP.
+  - [X] KEP (`k/enhancements`) update PR(s): https://github.com/kubernetes/enhancements/pull/4899
+#1498 Increase Kubernetes support window to one year | state closed
+- Kubernetes Enhancement Proposal: (link to kubernetes/enhancements file, if none yet, link to PR) #1497 
+
+== 2. Stored texts linking each KEP (blog, release record, docs, governance), earliest first
+2572|web:/blog/2021/07/20/new-kubernetes-release-cadence/|blog_post|2021-07-20
+2579|web:/blog/2021/04/06/podsecuritypolicy-deprecation-past-present-and-future/|blog_post|2021-04-06
+2579|web:/blog/2021/08/04/kubernetes-1-22-release-announcement/|blog_post|2021-08-04
+2579|web:/blog/2021/12/01/contribution-containers-and-cricket-the-kubernetes-1.22-release-interview/|blog_post|2021-12-01
+2579|web:/blog/2021/12/09/pod-security-admission-beta/|blog_post|2021-12-09
+2579|web:/blog/2022/08/23/kubernetes-v1-25-release/|blog_post|2022-08-23
+2579|changelog:1.22|release_record|2026-09-30
+2579|changelog:1.21|release_record|2026-09-30
+2799|web:/blog/2023/12/13/kubernetes-v1-29-release/|blog_post|2023-12-13
+
+== 3. Current docs: nearest texts valid at 1.37 to each KEP's first Summary chunk vector
+kep:2572|1|web:/releases/release/|The Release Cycle|0.201
+kep:2572|2|web:/releases/release/||0.219
+kep:2572|3|web:/docs/setup/release/|Upcoming Release|0.222
+kep:2579|1|web:/docs/concepts/security/pod-security-admission/|Pod Security Admission labels for namespaces|0.113
+kep:2579|2|web:/docs/concepts/security/pod-security-admission/|{{% heading "whatsnext" %}}|0.128
+kep:2579|3|web:/docs/setup/best-practices/enforcing-pod-security-standards/|Using the built-in Pod Security Admission Controller|0.131
+kep:2799|1|web:/docs/concepts/security/security-checklist/|Secrets|0.191
+kep:2799|2|web:/docs/concepts/security/hardening-guide/authentication-mechanisms/|ServiceAccount secret tokens|0.214
+kep:2799|3|web:/docs/concepts/security/service-accounts/||0.229
+kep:4858|1|gate:StrictIPCIDRValidation||0.176
+kep:4858|2|web:/docs/reference/networking/virtual-ips/|IP address assignment to Services > IP address allocation tracking > IP address allocation tracking using the Kubernetes API|0.355
+kep:4858|3|web:/docs/concepts/services-networking/dual-stack/||0.368

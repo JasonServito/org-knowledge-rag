@@ -1,6 +1,6 @@
 # ADR-002: Versioning and document identity
 
-- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S05-R2 sitting (2026-10-07). See the two "Changes" tables at the end.
+- **Status:** Accepted (2026-10-01), amended on the S02 spike's evidence and in the S05-R2 (2026-10-07) and S13-R1 (2026-10-13) sittings. See the three "Changes" tables at the end.
 - **Date:** 2026-09-22
 - **Blueprint refs:** §10, §13, §15; readiness gaps #3 and #13
 - **Evidence:** `docs/research/corpus-spike-report.md` (cited below as "spike §N")
@@ -64,6 +64,7 @@ A `releases` table (`version`, `release_date`, `end_of_life_date`) is the bridge
 | CHANGELOG | `changelog:1.R`; chunks anchored per patch section | Not needed |
 | Blog | `web:<URL path>` at publication, from the site's permalink config (`/:section/:year/:month/:day/:slug/`, with the front-matter `url:` override and Hugo's date and slug fallbacks) | Not needed for file moves: the URL survived all 349 measured moves of the 2026 year-folder reorganization. A URL changed after publication is linked through a redirect or `aliases` (spike §5 J). |
 | Governance | `community:<path>`, `sig-release:<path>`, from the first path | Same path, then git similarity ≥ 50% between adjacent snapshots, as for docs; later paths become aliases (S05-R2) |
+| GitHub issue, PR, discussion (Phase 2, ADR-012) | `gh:<repo key>/<issues\|pull\|discussions>/<number>`, e.g. `gh:sig-release/discussions/1290` | Not needed: GitHub numbers don't change (a transferred item keeps its first id) |
 
 ### D5. Status is stored twice
 
@@ -147,3 +148,10 @@ Decided by the developer in the S05-R2 sitting; the evidence was checked on the 
 | D4 governance renames | `git log --follow` (never run) | Same path, then git similarity ≥ 50% between adjacent snapshots; the first path is the id | The only moves in range: 8 files in sig-release PR #2984 (1.36 → 1.37), at 66–100%. The per-commit log shows the same 8 pairs and no edit before a move. A devil's advocate argued for `--follow`; its concession condition holds |
 | D4 old single-file KEPs | No id (only the known limit) | `kep:<sig folder>/<file name>`; still separate documents | 25 files at the 1.20 snapshot, none with a KEP number |
 
+## Changes from the S13-R1 sitting (2026-10-13)
+
+Decided by the developer in the S13-R1 sitting (`docs/slices/S13-provenance-mvp.md`, run S13-R1; ADR-012 D3).
+
+| Where | Was | Now | Evidence |
+|---|---|---|---|
+| D4 GitHub items | (no row; Phase 2 only, ADR-001) | `gh:<repo key>/<issues\|pull\|discussions>/<number>`, the repo key from the manifest's `repos` | A chain's items are named by the URLs its tracking issue links (`eval/results/s13-sitting/probe_rules.log`) |
