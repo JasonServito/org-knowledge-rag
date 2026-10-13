@@ -9,7 +9,10 @@ says n/a. The S09 time cells (S09-T3) and the authority-selection cell (S09-T7) 
 count / total, like an AC cell; runs before S09-T3 (S09-T7 for authority selection) have none, so
 their rows say n/a. So are the conflict cells (S10-T6): conflict precision, conflict recall and
 AC4, each run's pass / total against the conflict set; n/a for runs with no conflict set and runs
-before S10-T6. A folder without `summary.json` (such as `s04/`) is skipped.
+before S10-T6. AC5 and AC6 (S12-T1) follow AC3 as counts, since each rule is per question: the
+mean of each run's passes "of" the total, then, like the other cells, the passes' range when more
+than one run has it ("8 of 10" for one run); a run before S12-T1 is left out. A folder without
+`summary.json` (such as `s04/`) is skipped.
 """
 
 from collections.abc import Sequence
@@ -23,7 +26,7 @@ GENERATED = (
 )
 COLUMNS = [
     *("Pipeline", "Set", "Runs", "Questions", "Recall@10", "Hit@10", "MRR", "nDCG@10"),
-    *("AC1", "AC2", "AC3", "Errors"),
+    *("AC1", "AC2", "AC3", "AC5", "AC6", "Errors"),
     *("p95 latency (s)", "Retrieve p95 (s)", "Cost/question ($)"),
     *("Stale rate", "Temporal acc.", "Router acc.", "Authority sel."),
     *("Conflict prec.", "Conflict rec.", "AC4"),
@@ -64,6 +67,8 @@ def ablation_table(runs: Sequence[tuple[str, Summary]]) -> str:
                     _cell([_pass_rate(s.ac1) for s in summaries]),
                     _cell([_pass_rate(s.ac2) for s in summaries]),
                     _cell([_pass_rate(s.ac3) for s in summaries]),
+                    _count_cell([s.ac5 for s in summaries]),
+                    _count_cell([s.ac6 for s in summaries]),
                     _cell([float(s.errors) for s in summaries]),
                     _cell([s.latency_s_p95 for s in summaries], decimals=1),
                     _cell([s.retrieve_s_p95 for s in summaries], decimals=1),
@@ -97,6 +102,21 @@ def _cell(values: Sequence[float | None], decimals: int = 3) -> str:
     cell = f"{sum(known) / len(known):.{decimals}f}"
     if len(known) > 1:
         cell += f" ({min(known):.{decimals}f}\N{EN DASH}{max(known):.{decimals}f})"
+    return cell
+
+
+def _count_cell(rates: Sequence[Rate | None]) -> str:
+    """The mean of the passes of the rates that aren't None, to 1 decimal with no trailing ".0",
+    "of" each distinct total (as the Questions cell), with the passes' range, min and max joined
+    by an en dash, when there are several."""
+    known = [rate for rate in rates if rate is not None]
+    if not known:
+        return "n/a"
+    passes = [rate.pass_ for rate in known]
+    totals = ", ".join(str(n) for n in sorted({rate.total for rate in known}))
+    cell = f"{round(sum(passes) / len(passes), 1):g} of {totals}"
+    if len(known) > 1:
+        cell += f" ({min(passes)}\N{EN DASH}{max(passes)})"
     return cell
 
 

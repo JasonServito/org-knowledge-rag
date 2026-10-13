@@ -2,8 +2,10 @@
 
 import os
 import subprocess
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -126,3 +128,48 @@ class FakeRouter:
     def route(self, question: str) -> Route:
         self.calls.append(question)
         return self.routes[question]
+
+
+class FakeObservation:
+    """A Langfuse span or generation with no network: records its name, its fields (`update`
+    replaces a field) and the observations started inside it."""
+
+    trace_id = "fake-trace-id"
+
+    def __init__(self, name: str, **fields: Any) -> None:
+        self.name = name
+        self.fields: dict[str, Any] = dict(fields)
+        self.children: list[FakeObservation] = []
+
+    def update(self, **fields: Any) -> None:
+        self.fields.update(fields)
+
+    def start_observation(self, name: str, **fields: Any) -> "FakeObservation":
+        child = FakeObservation(name, **fields)
+        self.children.append(child)
+        return child
+
+    @contextmanager
+    def start_as_current_observation(self, name: str, **fields: Any) -> Iterator["FakeObservation"]:
+        yield self.start_observation(name, **fields)
+
+    def end(self) -> None:
+        pass
+
+
+class FakeLangfuse:
+    """The Langfuse client calls an ask makes, with no network: one root observation per trace,
+    and a count of flushes."""
+
+    def __init__(self) -> None:
+        self.traces: list[FakeObservation] = []
+        self.flushes = 0
+
+    @contextmanager
+    def start_as_current_observation(self, name: str, **fields: Any) -> Iterator[FakeObservation]:
+        root = FakeObservation(name, **fields)
+        self.traces.append(root)
+        yield root
+
+    def flush(self) -> None:
+        self.flushes += 1

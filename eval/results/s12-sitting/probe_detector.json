@@ -1,0 +1,4419 @@
+{
+ "model": "claude-haiku-5-5",
+ "effort": "low",
+ "prompts": {
+  "A": "You check evidence for disagreements before a question about Kubernetes is answered. The evidence is chunks of the Kubernetes docs and of KEPs (Kubernetes Enhancement Proposals). Each chunk starts with a line giving its id and the releases it was valid in (\"now\": still valid in the latest release), then its authority tier (1 = docs and feature-gate pages, 2 = release notes, 3 = shipped KEPs, 4 = governance docs, 5 = unshipped KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP claimed, with its latest milestone, and its stage at the asked-about release.\n\nList every pair of chunks whose texts disagree (two sources, or an older and a newer version of one text), with one sentence on what differs. Don't answer the question. Conflicts found by code are listed after the evidence: don't list them again. Return an empty list when nothing disagrees.\n",
+  "B": "You check evidence for disagreements before a question about Kubernetes is answered. The evidence is chunks of the Kubernetes docs and of KEPs (Kubernetes Enhancement Proposals). Each chunk starts with a line giving its id and the releases it was valid in (\"now\": still valid in the latest release), then its authority tier (1 = docs and feature-gate pages, 2 = release notes, 3 = shipped KEPs, 4 = governance docs, 5 = unshipped KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP claimed, with its latest milestone, and its stage at the asked-about release.\n\nList every pair of chunks whose texts disagree (two sources, or an older and a newer version of one text), with one sentence on what differs. Don't answer the question. Conflicts found by code are listed after the evidence: don't list them again. Return an empty list when nothing disagrees.\n\nA KEP whose claimed status or latest milestone is out of date, compared with what other chunks show is in force, disagrees with those chunks: list the KEP chunk with the chunk that shows it.\n"
+ },
+ "calls": [
+  {
+   "variant": "A",
+   "id": "q01",
+   "s": 5.11,
+   "stop_reason": "end_turn",
+   "in": 4905,
+   "out": 835,
+   "pairs": [
+    {
+     "first": 7600,
+     "second": 33441,
+     "summary": "Chunk 7600 says Kubernetes releases happen about three times per year, while chunk 33441 says the project currently releases 4 times per year."
+    },
+    {
+     "first": 7600,
+     "second": 33440,
+     "summary": "Chunk 7600 says releases happen about three times per year, while chunk 33440 describes the current cadence as 4 releases per year being proposed down to 3."
+    },
+    {
+     "first": 7600,
+     "second": 33023,
+     "summary": "Chunk 7600 says about three releases per year, while chunk 33023 says minor releases come every 3 months, which implies four per year."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7600,
+      33441
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "kep:2572"
+     ],
+     "summary": "Chunk 7600 says Kubernetes releases happen about three times per year, while chunk 33441 says the project currently releases 4 times per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7600,
+      33440
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "kep:2572"
+     ],
+     "summary": "Chunk 7600 says releases happen about three times per year, while chunk 33440 describes the current cadence as 4 releases per year being proposed down to 3.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7600,
+      33023
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "kep:1498"
+     ],
+     "summary": "Chunk 7600 says about three releases per year, while chunk 33023 says minor releases come every 3 months, which implies four per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    }
+   ],
+   "dropped": 0,
+   "k02": true
+  },
+  {
+   "variant": "A",
+   "id": "q02",
+   "s": 5.13,
+   "stop_reason": "end_turn",
+   "in": 7131,
+   "out": 1046,
+   "pairs": [
+    {
+     "first": 37569,
+     "second": 33454,
+     "summary": "The blog gives the 1.23 release start as week 35 (August 23) and its final week as December 7, while the KEP gives week 35 as August 30 and the end as December 14."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37569,
+      33454
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog gives the 1.23 release start as week 35 (August 23) and its final week as December 7, while the KEP gives week 35 as August 30 and the end as December 14.",
+     "resolution": "lower_tier",
+     "prevails": 33454
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q03",
+   "s": 4.86,
+   "stop_reason": "end_turn",
+   "in": 4802,
+   "out": 1063,
+   "pairs": [
+    {
+     "first": 33464,
+     "second": 37576,
+     "summary": "Chunk 33464 says the move to three releases a year effectively happened in 2020 starting with 1.19, while chunk 37576 says the change was decided when the Release Team merged the KEP on April 23, 2021."
+    },
+    {
+     "first": 33464,
+     "second": 11155,
+     "summary": "Chunk 33464 says the three-release cadence began effectively in 2020 with 1.19, while chunk 11155 says the change was made official on April 23, 2021."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33464,
+      37576
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/"
+     ],
+     "summary": "Chunk 33464 says the move to three releases a year effectively happened in 2020 starting with 1.19, while chunk 37576 says the change was decided when the Release Team merged the KEP on April 23, 2021.",
+     "resolution": "valid_at_target",
+     "prevails": 33464
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33464,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "Chunk 33464 says the three-release cadence began effectively in 2020 with 1.19, while chunk 11155 says the change was made official on April 23, 2021.",
+     "resolution": "valid_at_target",
+     "prevails": 33464
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q04",
+   "s": 2.97,
+   "stop_reason": "end_turn",
+   "in": 5351,
+   "out": 533,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q05",
+   "s": 0.89,
+   "stop_reason": "end_turn",
+   "in": 4795,
+   "out": 12,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q06",
+   "s": 2.49,
+   "stop_reason": "end_turn",
+   "in": 4825,
+   "out": 429,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q07",
+   "s": 1.88,
+   "stop_reason": "end_turn",
+   "in": 5181,
+   "out": 296,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q08",
+   "s": 5.77,
+   "stop_reason": "end_turn",
+   "in": 5940,
+   "out": 1231,
+   "pairs": [
+    {
+     "first": 15276,
+     "second": 15401,
+     "summary": "Chunk 15276 (an unresolved draft) targets GA in v1.24, while chunk 15401 says GA is targeted for v1.25."
+    },
+    {
+     "first": 15239,
+     "second": 15400,
+     "summary": "Chunk 15239 claims the KEP's stage at 1.37 is beta, while chunk 15400 claims it is stable at 1.37."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      15276,
+      15401
+     ],
+     "documents": [
+      "kep:2579"
+     ],
+     "summary": "Chunk 15276 (an unresolved draft) targets GA in v1.24, while chunk 15401 says GA is targeted for v1.25.",
+     "resolution": "valid_at_target",
+     "prevails": 15401
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15239,
+      15400
+     ],
+     "documents": [
+      "kep:2579"
+     ],
+     "summary": "Chunk 15239 claims the KEP's stage at 1.37 is beta, while chunk 15400 claims it is stable at 1.37.",
+     "resolution": "valid_at_target",
+     "prevails": 15400
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q09",
+   "s": 1.35,
+   "stop_reason": "end_turn",
+   "in": 5338,
+   "out": 12,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q10",
+   "s": 3.71,
+   "stop_reason": "end_turn",
+   "in": 6716,
+   "out": 647,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q11",
+   "s": 4.05,
+   "stop_reason": "end_turn",
+   "in": 5647,
+   "out": 821,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q12",
+   "s": 4.49,
+   "stop_reason": "end_turn",
+   "in": 5926,
+   "out": 900,
+   "pairs": [
+    {
+     "first": 15818,
+     "second": 16078,
+     "summary": "Chunk 15818 says LegacyServiceAccountTokenTracking marks legacy tokens with a new annotation, while chunk 16078 says it uses a new label."
+    },
+    {
+     "first": 15818,
+     "second": 16058,
+     "summary": "Chunk 15818 records KEP-2799 as implementable/beta at v1.26, while chunk 16058 records it as implemented/stable at v1.30."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      15818,
+      16078
+     ],
+     "documents": [
+      "kep:2799"
+     ],
+     "summary": "Chunk 15818 says LegacyServiceAccountTokenTracking marks legacy tokens with a new annotation, while chunk 16078 says it uses a new label.",
+     "resolution": "valid_at_target",
+     "prevails": 16078
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15818,
+      16058
+     ],
+     "documents": [
+      "kep:2799"
+     ],
+     "summary": "Chunk 15818 records KEP-2799 as implementable/beta at v1.26, while chunk 16058 records it as implemented/stable at v1.30.",
+     "resolution": "valid_at_target",
+     "prevails": 16058
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q13",
+   "s": 6.09,
+   "stop_reason": "end_turn",
+   "in": 5113,
+   "out": 1533,
+   "pairs": [
+    {
+     "first": 15760,
+     "second": 16072,
+     "summary": "KEP chunk 15760 gives GA as 1.26 while KEP chunk 16072 gives GA as 1.30."
+    },
+    {
+     "first": 15864,
+     "second": 16072,
+     "summary": "KEP chunk 15864 gives GA as 1.29 while KEP chunk 16072 gives GA as 1.30."
+    },
+    {
+     "first": 13176,
+     "second": 15760,
+     "summary": "The 1.30 changelog says the gate was promoted to GA in 1.30 while KEP chunk 15760 claims GA in 1.26."
+    },
+    {
+     "first": 13176,
+     "second": 15864,
+     "summary": "The 1.30 changelog says the gate was promoted to GA in 1.30 while KEP chunk 15864 claims GA in 1.29."
+    },
+    {
+     "first": 9961,
+     "second": 15760,
+     "summary": "The feature-gate reference says alpha was 1.28 and beta 1.29, while KEP chunk 15760 claims alpha 1.24 and beta 1.25."
+    },
+    {
+     "first": 9961,
+     "second": 15864,
+     "summary": "The feature-gate reference says beta was 1.29, while KEP chunk 15864 claims beta 1.28."
+    },
+    {
+     "first": 12752,
+     "second": 15760,
+     "summary": "The 1.28 changelog says the gate first became available as alpha in 1.28, while KEP chunk 15760 claims alpha in 1.24."
+    },
+    {
+     "first": 12752,
+     "second": 15864,
+     "summary": "The 1.28 changelog says the gate first became available as alpha in 1.28, while KEP chunk 15864 claims alpha in 1.27."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      15760,
+      16072
+     ],
+     "documents": [
+      "kep:2799"
+     ],
+     "summary": "KEP chunk 15760 gives GA as 1.26 while KEP chunk 16072 gives GA as 1.30.",
+     "resolution": "valid_at_target",
+     "prevails": 16072
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      15864,
+      16072
+     ],
+     "documents": [
+      "kep:2799"
+     ],
+     "summary": "KEP chunk 15864 gives GA as 1.29 while KEP chunk 16072 gives GA as 1.30.",
+     "resolution": "valid_at_target",
+     "prevails": 16072
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      13176,
+      15760
+     ],
+     "documents": [
+      "changelog:1.30",
+      "kep:2799"
+     ],
+     "summary": "The 1.30 changelog says the gate was promoted to GA in 1.30 while KEP chunk 15760 claims GA in 1.26.",
+     "resolution": "lower_tier",
+     "prevails": 13176
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      13176,
+      15864
+     ],
+     "documents": [
+      "changelog:1.30",
+      "kep:2799"
+     ],
+     "summary": "The 1.30 changelog says the gate was promoted to GA in 1.30 while KEP chunk 15864 claims GA in 1.29.",
+     "resolution": "lower_tier",
+     "prevails": 13176
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      9961,
+      15760
+     ],
+     "documents": [
+      "gate:LegacyServiceAccountTokenCleanUp",
+      "kep:2799"
+     ],
+     "summary": "The feature-gate reference says alpha was 1.28 and beta 1.29, while KEP chunk 15760 claims alpha 1.24 and beta 1.25.",
+     "resolution": "lower_tier",
+     "prevails": 9961
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      9961,
+      15864
+     ],
+     "documents": [
+      "gate:LegacyServiceAccountTokenCleanUp",
+      "kep:2799"
+     ],
+     "summary": "The feature-gate reference says beta was 1.29, while KEP chunk 15864 claims beta 1.28.",
+     "resolution": "lower_tier",
+     "prevails": 9961
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      12752,
+      15760
+     ],
+     "documents": [
+      "changelog:1.28",
+      "kep:2799"
+     ],
+     "summary": "The 1.28 changelog says the gate first became available as alpha in 1.28, while KEP chunk 15760 claims alpha in 1.24.",
+     "resolution": "lower_tier",
+     "prevails": 12752
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      12752,
+      15864
+     ],
+     "documents": [
+      "changelog:1.28",
+      "kep:2799"
+     ],
+     "summary": "The 1.28 changelog says the gate first became available as alpha in 1.28, while KEP chunk 15864 claims alpha in 1.27.",
+     "resolution": "lower_tier",
+     "prevails": 12752
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q14",
+   "s": 4.24,
+   "stop_reason": "end_turn",
+   "in": 6014,
+   "out": 669,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q15",
+   "s": 5.03,
+   "stop_reason": "end_turn",
+   "in": 7936,
+   "out": 1136,
+   "pairs": [
+    {
+     "first": 9962,
+     "second": 9963,
+     "summary": "Chunk 9962 lists the LegacyServiceAccountTokenCleanUp stable stage as open-ended from 1.30 with no end version, while chunk 9963 gives stable only through 1.31 and marks the gate removed."
+    },
+    {
+     "first": 9963,
+     "second": 16060,
+     "summary": "Chunk 9963 says the gate is removed (stable only through 1.31), while chunk 16060 claims the KEP is still stable at 1.37 and describes its token-deletion behavior as current."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      9962,
+      9963
+     ],
+     "documents": [
+      "gate:LegacyServiceAccountTokenCleanUp"
+     ],
+     "summary": "Chunk 9962 lists the LegacyServiceAccountTokenCleanUp stable stage as open-ended from 1.30 with no end version, while chunk 9963 gives stable only through 1.31 and marks the gate removed.",
+     "resolution": "valid_at_target",
+     "prevails": 9963
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      9963,
+      16060
+     ],
+     "documents": [
+      "gate:LegacyServiceAccountTokenCleanUp",
+      "kep:2799"
+     ],
+     "summary": "Chunk 9963 says the gate is removed (stable only through 1.31), while chunk 16060 claims the KEP is still stable at 1.37 and describes its token-deletion behavior as current.",
+     "resolution": "lower_tier",
+     "prevails": 9963
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q16",
+   "s": 4.76,
+   "stop_reason": "end_turn",
+   "in": 6845,
+   "out": 993,
+   "pairs": [
+    {
+     "first": 11539,
+     "second": 10420,
+     "summary": "Chunk 11539 (1.23 changelog) says Kubernetes keeps allowing leading zeros in IPv4 addresses, while chunk 10420 says the StrictIPCIDRValidation gate, on by default since 1.36, forbids leading zeros in IPv4 octets."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      11539,
+      10420
+     ],
+     "documents": [
+      "changelog:1.23",
+      "gate:StrictIPCIDRValidation"
+     ],
+     "summary": "Chunk 11539 (1.23 changelog) says Kubernetes keeps allowing leading zeros in IPv4 addresses, while chunk 10420 says the StrictIPCIDRValidation gate, on by default since 1.36, forbids leading zeros in IPv4 octets.",
+     "resolution": "valid_at_target",
+     "prevails": 10420
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q17",
+   "s": 2.14,
+   "stop_reason": "end_turn",
+   "in": 7838,
+   "out": 319,
+   "pairs": [
+    {
+     "first": 11539,
+     "second": 13818,
+     "summary": "Chunk 11539 (1.23 changelog) says Kubernetes keeps allowing leading zeros in IPv4 addresses, while chunk 13818 (1.33 changelog) says the StrictIPCIDRValidation gate, when enabled, forbids leading zeros in IPv4 octets."
+    },
+    {
+     "first": 10419,
+     "second": 10420,
+     "summary": "Chunk 10419 says StrictIPCIDRValidation is alpha with default false in 1.33 onward, while chunk 10420 says it is beta with default true from 1.36, so the default-on status differs across versions."
+    },
+    {
+     "first": 13770,
+     "second": 47405,
+     "summary": "The 1.33 changelog describes StrictIPCIDRValidation as a gated feature with warnings when disabled, while the 1.36 blog says it graduates to beta and is ready for wider use, which conflicts on its maturity and default state."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      11539,
+      13818
+     ],
+     "documents": [
+      "changelog:1.23",
+      "changelog:1.33"
+     ],
+     "summary": "Chunk 11539 (1.23 changelog) says Kubernetes keeps allowing leading zeros in IPv4 addresses, while chunk 13818 (1.33 changelog) says the StrictIPCIDRValidation gate, when enabled, forbids leading zeros in IPv4 octets.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      10419,
+      10420
+     ],
+     "documents": [
+      "gate:StrictIPCIDRValidation"
+     ],
+     "summary": "Chunk 10419 says StrictIPCIDRValidation is alpha with default false in 1.33 onward, while chunk 10420 says it is beta with default true from 1.36, so the default-on status differs across versions.",
+     "resolution": "valid_at_target",
+     "prevails": 10420
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      13770,
+      47405
+     ],
+     "documents": [
+      "changelog:1.33",
+      "web:/blog/2026/04/22/kubernetes-v1-36-release/"
+     ],
+     "summary": "The 1.33 changelog describes StrictIPCIDRValidation as a gated feature with warnings when disabled, while the 1.36 blog says it graduates to beta and is ready for wider use, which conflicts on its maturity and default state.",
+     "resolution": "valid_at_target",
+     "prevails": 47405
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q18",
+   "s": 4.46,
+   "stop_reason": "end_turn",
+   "in": 6855,
+   "out": 906,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q19",
+   "s": 3.09,
+   "stop_reason": "end_turn",
+   "in": 6593,
+   "out": 662,
+   "pairs": [
+    {
+     "first": 30886,
+     "second": 30998,
+     "summary": "Chunk 30886 says ipaddr.metadata.name and servicecidr.spec.cidrs[] already have stricter semantics than proposed, while chunk 30998 says they already have the proposed semantics, so their semantics will not change."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      30886,
+      30998
+     ],
+     "documents": [
+      "kep:4858"
+     ],
+     "summary": "Chunk 30886 says ipaddr.metadata.name and servicecidr.spec.cidrs[] already have stricter semantics than proposed, while chunk 30998 says they already have the proposed semantics, so their semantics will not change.",
+     "resolution": "valid_at_target",
+     "prevails": 30998
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q20",
+   "s": 5.44,
+   "stop_reason": "end_turn",
+   "in": 7387,
+   "out": 1040,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q21",
+   "s": 5.58,
+   "stop_reason": "end_turn",
+   "in": 5964,
+   "out": 1206,
+   "pairs": [
+    {
+     "first": 6946,
+     "second": 7433,
+     "summary": "Chunk 6946 says Kubernetes 1.19+ get about 1 year of patch support, while chunk 7433 says active patch series are supported for roughly 14 months (12 standard plus 2 maintenance)."
+    },
+    {
+     "first": 7201,
+     "second": 7433,
+     "summary": "Chunk 7201 says 1.19+ get about 1 year of patch support, while chunk 7433 says roughly 14 months including a two-month maintenance period."
+    },
+    {
+     "first": 36690,
+     "second": 7433,
+     "summary": "Chunk 36690 says 1.19+ receive approximately one year of patch support, while chunk 7433 says roughly 14 months."
+    },
+    {
+     "first": 33859,
+     "second": 7433,
+     "summary": "Chunk 33859 says the community supports releases 1.19+ for approximately 1 year, while chunk 7433 says roughly 14 months."
+    },
+    {
+     "first": 6946,
+     "second": 36383,
+     "summary": "Chunk 6946 says the project maintains three minor release branches, while chunk 36383 says four minor releases are supported at a time."
+    },
+    {
+     "first": 7201,
+     "second": 36383,
+     "summary": "Chunk 7201 says release branches are kept for the most recent three minor releases, while chunk 36383 says four minor releases are supported at a time, with a minor release supported for about 14 months."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      6946,
+      7433
+     ],
+     "documents": [
+      "web:/docs/setup/release/",
+      "web:/releases/patch-releases/"
+     ],
+     "summary": "Chunk 6946 says Kubernetes 1.19+ get about 1 year of patch support, while chunk 7433 says active patch series are supported for roughly 14 months (12 standard plus 2 maintenance).",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7201,
+      7433
+     ],
+     "documents": [
+      "web:/docs/setup/release/version-skew-policy/",
+      "web:/releases/patch-releases/"
+     ],
+     "summary": "Chunk 7201 says 1.19+ get about 1 year of patch support, while chunk 7433 says roughly 14 months including a two-month maintenance period.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      36690,
+      7433
+     ],
+     "documents": [
+      "sig-release:release-engineering/handbooks/release-manager.md",
+      "web:/releases/patch-releases/"
+     ],
+     "summary": "Chunk 36690 says 1.19+ receive approximately one year of patch support, while chunk 7433 says roughly 14 months.",
+     "resolution": "lower_tier",
+     "prevails": 7433
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33859,
+      7433
+     ],
+     "documents": [
+      "community:contributors/devel/sig-release/cherry-picks.md",
+      "web:/releases/patch-releases/"
+     ],
+     "summary": "Chunk 33859 says the community supports releases 1.19+ for approximately 1 year, while chunk 7433 says roughly 14 months.",
+     "resolution": "lower_tier",
+     "prevails": 7433
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      6946,
+      36383
+     ],
+     "documents": [
+      "web:/docs/setup/release/",
+      "sig-release:release-engineering/versioning.md"
+     ],
+     "summary": "Chunk 6946 says the project maintains three minor release branches, while chunk 36383 says four minor releases are supported at a time.",
+     "resolution": "lower_tier",
+     "prevails": 6946
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7201,
+      36383
+     ],
+     "documents": [
+      "web:/docs/setup/release/version-skew-policy/",
+      "sig-release:release-engineering/versioning.md"
+     ],
+     "summary": "Chunk 7201 says release branches are kept for the most recent three minor releases, while chunk 36383 says four minor releases are supported at a time, with a minor release supported for about 14 months.",
+     "resolution": "lower_tier",
+     "prevails": 7201
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q22",
+   "s": 4.68,
+   "stop_reason": "end_turn",
+   "in": 7028,
+   "out": 1046,
+   "pairs": [
+    {
+     "first": 7599,
+     "second": 7601,
+     "summary": "Chunk 7599 defines Code Freeze as a period of about 4 weeks before the final release, while chunk 7601 says Code Freeze starts in week ~12 and lasts about 2 weeks."
+    },
+    {
+     "first": 33993,
+     "second": 33996,
+     "summary": "Chunk 33993 defines Code Freeze as about 4 weeks before the final release, while chunk 33996 says Code Freeze starts in week ~12 and continues for about 2 weeks."
+    },
+    {
+     "first": 7599,
+     "second": 33996,
+     "summary": "Chunk 7599 gives Code Freeze as about 4 weeks before the final release, while chunk 33996 gives its duration as about 2 weeks starting in week ~12."
+    },
+    {
+     "first": 33993,
+     "second": 7601,
+     "summary": "Chunk 33993 gives Code Freeze as about 4 weeks before the final release, while chunk 7601 gives its duration as about 2 weeks starting in week ~12."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7599,
+      7601
+     ],
+     "documents": [
+      "web:/releases/release/"
+     ],
+     "summary": "Chunk 7599 defines Code Freeze as a period of about 4 weeks before the final release, while chunk 7601 says Code Freeze starts in week ~12 and lasts about 2 weeks.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33993,
+      33996
+     ],
+     "documents": [
+      "community:contributors/devel/sig-release/release.md"
+     ],
+     "summary": "Chunk 33993 defines Code Freeze as about 4 weeks before the final release, while chunk 33996 says Code Freeze starts in week ~12 and continues for about 2 weeks.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7599,
+      33996
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "community:contributors/devel/sig-release/release.md"
+     ],
+     "summary": "Chunk 7599 gives Code Freeze as about 4 weeks before the final release, while chunk 33996 gives its duration as about 2 weeks starting in week ~12.",
+     "resolution": "lower_tier",
+     "prevails": 7599
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33993,
+      7601
+     ],
+     "documents": [
+      "community:contributors/devel/sig-release/release.md",
+      "web:/releases/release/"
+     ],
+     "summary": "Chunk 33993 gives Code Freeze as about 4 weeks before the final release, while chunk 7601 gives its duration as about 2 weeks starting in week ~12.",
+     "resolution": "lower_tier",
+     "prevails": 7601
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q23",
+   "s": 5.29,
+   "stop_reason": "end_turn",
+   "in": 5603,
+   "out": 1099,
+   "pairs": [
+    {
+     "first": 7191,
+     "second": 7203,
+     "summary": "Chunk 7191 (releases 1.21\u20131.27) says kubelet may be up to two minor versions older than kube-apiserver, while chunk 7203 (1.28\u2013now) says up to three."
+    },
+    {
+     "first": 7192,
+     "second": 7204,
+     "summary": "Chunk 7192 (release 1.27) says kube-proxy may be up to two minor versions older than kube-apiserver, while chunk 7204 (1.28\u2013now) says up to three."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      7191,
+      7203
+     ],
+     "documents": [
+      "web:/docs/setup/release/version-skew-policy/"
+     ],
+     "summary": "Chunk 7191 (releases 1.21\u20131.27) says kubelet may be up to two minor versions older than kube-apiserver, while chunk 7203 (1.28\u2013now) says up to three.",
+     "resolution": "valid_at_target",
+     "prevails": 7191
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      7192,
+      7204
+     ],
+     "documents": [
+      "web:/docs/setup/release/version-skew-policy/"
+     ],
+     "summary": "Chunk 7192 (release 1.27) says kube-proxy may be up to two minor versions older than kube-apiserver, while chunk 7204 (1.28\u2013now) says up to three.",
+     "resolution": "valid_at_target",
+     "prevails": 7192
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q24",
+   "s": 3.5,
+   "stop_reason": "end_turn",
+   "in": 4221,
+   "out": 704,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q25",
+   "s": 4.63,
+   "stop_reason": "end_turn",
+   "in": 6826,
+   "out": 1000,
+   "pairs": [
+    {
+     "first": 43096,
+     "second": 42549,
+     "summary": "Chunk 43096 says the legacy repositories will go away entirely in January 2024, while chunk 42549 says they were removed on March 4, 2024."
+    },
+    {
+     "first": 43096,
+     "second": 42530,
+     "summary": "Chunk 43096 says the legacy repositories will go away in January 2024, while chunk 42530's update says they went away on March 4, 2024."
+    },
+    {
+     "first": 42954,
+     "second": 42191,
+     "summary": "Chunk 42954 says the legacy repositories were formally deprecated and frozen on September 13, 2023, while chunk 42191 says they were deprecated as of August 31, 2023 and frozen approximately September 13, 2023."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      43096,
+      42549
+     ],
+     "documents": [
+      "web:/blog/2023/12/13/kubernetes-v1-29-release/",
+      "web:/blog/2023/08/31/legacy-package-repository-deprecation/"
+     ],
+     "summary": "Chunk 43096 says the legacy repositories will go away entirely in January 2024, while chunk 42549 says they were removed on March 4, 2024.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      43096,
+      42530
+     ],
+     "documents": [
+      "web:/blog/2023/12/13/kubernetes-v1-29-release/",
+      "web:/blog/2023/08/31/legacy-package-repository-deprecation/"
+     ],
+     "summary": "Chunk 43096 says the legacy repositories will go away in January 2024, while chunk 42530's update says they went away on March 4, 2024.",
+     "resolution": "valid_at_target",
+     "prevails": 43096
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      42954,
+      42191
+     ],
+     "documents": [
+      "web:/blog/2023/11/16/kubernetes-1-29-upcoming-changes/",
+      "web:/blog/2023/08/15/pkgs-k8s-io-introduction/"
+     ],
+     "summary": "Chunk 42954 says the legacy repositories were formally deprecated and frozen on September 13, 2023, while chunk 42191 says they were deprecated as of August 31, 2023 and frozen approximately September 13, 2023.",
+     "resolution": "valid_at_target",
+     "prevails": 42954
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q26",
+   "s": 5.01,
+   "stop_reason": "end_turn",
+   "in": 6757,
+   "out": 1022,
+   "pairs": [
+    {
+     "first": 33022,
+     "second": 33027,
+     "summary": "Chunk 33022 states the goal is to extend patch support from 9 months to 1 year, while chunk 33027 states the proposal is to extend it from 9 months to 14 months (12 months of support plus 2 months of upgrade period)."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33022,
+      33027
+     ],
+     "documents": [
+      "kep:1498"
+     ],
+     "summary": "Chunk 33022 states the goal is to extend patch support from 9 months to 1 year, while chunk 33027 states the proposal is to extend it from 9 months to 14 months (12 months of support plus 2 months of upgrade period).",
+     "resolution": "unresolved",
+     "prevails": null
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q27",
+   "s": 3.47,
+   "stop_reason": "end_turn",
+   "in": 5302,
+   "out": 730,
+   "pairs": [
+    {
+     "first": 33450,
+     "second": 33464,
+     "summary": "Chunk 33450 says minor releases currently come every four months, while chunk 33464 says Kubernetes effectively moved to three releases per year starting with 1.19 in 2020."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33450,
+      33464
+     ],
+     "documents": [
+      "kep:2572"
+     ],
+     "summary": "Chunk 33450 says minor releases currently come every four months, while chunk 33464 says Kubernetes effectively moved to three releases per year starting with 1.19 in 2020.",
+     "resolution": "unresolved",
+     "prevails": null
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q30",
+   "s": 3.83,
+   "stop_reason": "end_turn",
+   "in": 8071,
+   "out": 779,
+   "pairs": [
+    {
+     "first": 4309,
+     "second": 16394,
+     "summary": "The docs example uses apiVersion apiserver.config.k8s.io/v1 and connectionInfo type KubeConfigFile, while the KEP-3221 example uses v1beta1 and type KubeConfig."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      4309,
+      16394
+     ],
+     "documents": [
+      "web:/docs/reference/access-authn-authz/authorization/",
+      "kep:3221"
+     ],
+     "summary": "The docs example uses apiVersion apiserver.config.k8s.io/v1 and connectionInfo type KubeConfigFile, while the KEP-3221 example uses v1beta1 and type KubeConfig.",
+     "resolution": "lower_tier",
+     "prevails": 4309
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q31",
+   "s": 3.38,
+   "stop_reason": "end_turn",
+   "in": 6697,
+   "out": 451,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q32",
+   "s": 4.13,
+   "stop_reason": "end_turn",
+   "in": 5936,
+   "out": 819,
+   "pairs": [
+    {
+     "first": 9927,
+     "second": 12724,
+     "summary": "The KMSv1 feature-gate reference lists KMSv1 as defaulting to true in 1.28, but the 1.28 changelog says users must set --feature-gates=KMSv1=true to use KMSv1."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      9927,
+      12724
+     ],
+     "documents": [
+      "gate:KMSv1",
+      "changelog:1.28"
+     ],
+     "summary": "The KMSv1 feature-gate reference lists KMSv1 as defaulting to true in 1.28, but the 1.28 changelog says users must set --feature-gates=KMSv1=true to use KMSv1.",
+     "resolution": "valid_at_target",
+     "prevails": 12724
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q33",
+   "s": 4.96,
+   "stop_reason": "end_turn",
+   "in": 8552,
+   "out": 1101,
+   "pairs": [
+    {
+     "first": 17549,
+     "second": 17974,
+     "summary": "Chunk 17549 records KEP-3331 as implementable/alpha, while chunk 17974 records the same KEP as implemented/stable."
+    },
+    {
+     "first": 17499,
+     "second": 17981,
+     "summary": "Chunk 17499 defines Issuer with a clientIDs field, a pointer DiscoveryURL and no audienceMatchPolicy, while chunk 17981 uses an audiences field, a plain string DiscoveryURL and an audienceMatchPolicy field."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17549,
+      17974
+     ],
+     "documents": [
+      "kep:3331"
+     ],
+     "summary": "Chunk 17549 records KEP-3331 as implementable/alpha, while chunk 17974 records the same KEP as implemented/stable.",
+     "resolution": "valid_at_target",
+     "prevails": 17549
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17499,
+      17981
+     ],
+     "documents": [
+      "kep:3331"
+     ],
+     "summary": "Chunk 17499 defines Issuer with a clientIDs field, a pointer DiscoveryURL and no audienceMatchPolicy, while chunk 17981 uses an audiences field, a plain string DiscoveryURL and an audienceMatchPolicy field.",
+     "resolution": "valid_at_target",
+     "prevails": 17499
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q34",
+   "s": 4.2,
+   "stop_reason": "end_turn",
+   "in": 6036,
+   "out": 909,
+   "pairs": [
+    {
+     "first": 9930,
+     "second": 9931,
+     "summary": "Chunk 9930 lists KMSv2 as stable from 1.29 with no end version, while chunk 9931 gives the same stable stage a toVersion of 1.31 and marks the gate as removed."
+    },
+    {
+     "first": 9931,
+     "second": 17256,
+     "summary": "Chunk 9931 says the KMSv2 gate was removed (stable only through 1.31), while KEP-3299 chunk 17256 claims the KMS v2 stage is still stable at 1.37."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      9930,
+      9931
+     ],
+     "documents": [
+      "gate:KMSv2"
+     ],
+     "summary": "Chunk 9930 lists KMSv2 as stable from 1.29 with no end version, while chunk 9931 gives the same stable stage a toVersion of 1.31 and marks the gate as removed.",
+     "resolution": "valid_at_target",
+     "prevails": 9931
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      9931,
+      17256
+     ],
+     "documents": [
+      "gate:KMSv2",
+      "kep:3299"
+     ],
+     "summary": "Chunk 9931 says the KMSv2 gate was removed (stable only through 1.31), while KEP-3299 chunk 17256 claims the KMS v2 stage is still stable at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 9931
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q35",
+   "s": 9.78,
+   "stop_reason": "end_turn",
+   "in": 4797,
+   "out": 1043,
+   "pairs": [
+    {
+     "first": 10190,
+     "second": 10191,
+     "summary": "Chunk 10190 lists beta with no end version and no stable stage, while chunk 10191 says beta ended at 1.29 and stable (default-on) began in 1.30."
+    },
+    {
+     "first": 10191,
+     "second": 10192,
+     "summary": "Chunk 10191 lists the stable stage from 1.30 with no end version, while chunk 10192 says stable ended at 1.31 and the gate was removed."
+    },
+    {
+     "first": 41925,
+     "second": 42160,
+     "summary": "Chunk 41925 says only the v1beta1 API group must be enabled to use ValidatingAdmissionPolicies, while chunk 42160 says the ValidatingAdmissionPolicy feature gate must also be enabled."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      10190,
+      10191
+     ],
+     "documents": [
+      "gate:ValidatingAdmissionPolicy"
+     ],
+     "summary": "Chunk 10190 lists beta with no end version and no stable stage, while chunk 10191 says beta ended at 1.29 and stable (default-on) began in 1.30.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      10191,
+      10192
+     ],
+     "documents": [
+      "gate:ValidatingAdmissionPolicy"
+     ],
+     "summary": "Chunk 10191 lists the stable stage from 1.30 with no end version, while chunk 10192 says stable ended at 1.31 and the gate was removed.",
+     "resolution": "valid_at_target",
+     "prevails": 10192
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      41925,
+      42160
+     ],
+     "documents": [
+      "web:/blog/2023/08/15/kubernetes-v1-28-release/"
+     ],
+     "summary": "Chunk 41925 says only the v1beta1 API group must be enabled to use ValidatingAdmissionPolicies, while chunk 42160 says the ValidatingAdmissionPolicy feature gate must also be enabled.",
+     "resolution": "valid_at_target",
+     "prevails": 42160
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q36",
+   "s": 3.79,
+   "stop_reason": "end_turn",
+   "in": 4797,
+   "out": 609,
+   "pairs": [
+    {
+     "first": 45854,
+     "second": 43794,
+     "summary": "Chunk 45854 says the configuration file format was introduced in v1.29, while chunk 43794 says the file-based configuration was added as alpha in v1.30."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      45854,
+      43794
+     ],
+     "documents": [
+      "web:/blog/2025/08/27/kubernetes-v1-34-release/",
+      "web:/blog/2024/04/25/structured-authentication-moves-to-beta/"
+     ],
+     "summary": "Chunk 45854 says the configuration file format was introduced in v1.29, while chunk 43794 says the file-based configuration was added as alpha in v1.30.",
+     "resolution": "unresolved",
+     "prevails": null
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q40",
+   "s": 3.37,
+   "stop_reason": "end_turn",
+   "in": 6061,
+   "out": 715,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q41",
+   "s": 5.71,
+   "stop_reason": "end_turn",
+   "in": 7984,
+   "out": 1279,
+   "pairs": [
+    {
+     "first": 967,
+     "second": 22033,
+     "summary": "Chunk 967 says the control plane mirrors Endpoints unless the skip-mirror label is true, while chunk 22033 says only Endpoints with the skip label set to \"true\" are mirrored."
+    },
+    {
+     "first": 45145,
+     "second": 2424,
+     "summary": "Chunk 45145 says the Endpoints controller aggregates all endpoints into one oversized object, while chunk 2424 says the deprecated Endpoints API truncates its endpoint list when it is too long."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      967,
+      22033
+     ],
+     "documents": [
+      "web:/docs/concepts/services-networking/endpoint-slices/",
+      "kep:752"
+     ],
+     "summary": "Chunk 967 says the control plane mirrors Endpoints unless the skip-mirror label is true, while chunk 22033 says only Endpoints with the skip label set to \"true\" are mirrored.",
+     "resolution": "lower_tier",
+     "prevails": 967
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      45145,
+      2424
+     ],
+     "documents": [
+      "web:/blog/2025/04/24/endpoints-deprecation/",
+      "web:/docs/concepts/services-networking/service/"
+     ],
+     "summary": "Chunk 45145 says the Endpoints controller aggregates all endpoints into one oversized object, while chunk 2424 says the deprecated Endpoints API truncates its endpoint list when it is too long.",
+     "resolution": "lower_tier",
+     "prevails": 2424
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q42",
+   "s": 3.24,
+   "stop_reason": "end_turn",
+   "in": 4680,
+   "out": 569,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q43",
+   "s": 3.04,
+   "stop_reason": "end_turn",
+   "in": 4917,
+   "out": 519,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q44",
+   "s": 4.54,
+   "stop_reason": "end_turn",
+   "in": 5675,
+   "out": 887,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q45",
+   "s": 8.15,
+   "stop_reason": "end_turn",
+   "in": 7638,
+   "out": 1490,
+   "pairs": [
+    {
+     "first": 24104,
+     "second": 24214,
+     "summary": "Chunk 24104 (older unshipped KEP text) describes a default \"ServiceCIDRConfig\" object in its upgrade example, while chunk 24214 calls the same object a default \"ServiceCIDR\" object."
+    },
+    {
+     "first": 24071,
+     "second": 24304,
+     "summary": "The KEP table of contents in chunk 24071 names the special default object \"ServiceCIDRConfig\", while chunk 24304 names it \"ServiceCIDR\"."
+    },
+    {
+     "first": 24104,
+     "second": 24402,
+     "summary": "Chunk 24104 says the KEP stage at 1.37 is alpha (claimed, not observed), whereas chunk 24402 says it is stable (observed)."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      24104,
+      24214
+     ],
+     "documents": [
+      "kep:1880"
+     ],
+     "summary": "Chunk 24104 (older unshipped KEP text) describes a default \"ServiceCIDRConfig\" object in its upgrade example, while chunk 24214 calls the same object a default \"ServiceCIDR\" object.",
+     "resolution": "lower_tier",
+     "prevails": 24214
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      24071,
+      24304
+     ],
+     "documents": [
+      "kep:1880"
+     ],
+     "summary": "The KEP table of contents in chunk 24071 names the special default object \"ServiceCIDRConfig\", while chunk 24304 names it \"ServiceCIDR\".",
+     "resolution": "lower_tier",
+     "prevails": 24304
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24104,
+      24402
+     ],
+     "documents": [
+      "kep:1880"
+     ],
+     "summary": "Chunk 24104 says the KEP stage at 1.37 is alpha (claimed, not observed), whereas chunk 24402 says it is stable (observed).",
+     "resolution": "valid_at_target",
+     "prevails": 24402
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q46",
+   "s": 3.15,
+   "stop_reason": "end_turn",
+   "in": 6557,
+   "out": 548,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q47",
+   "s": 4.37,
+   "stop_reason": "end_turn",
+   "in": 5712,
+   "out": 796,
+   "pairs": [
+    {
+     "first": 48097,
+     "second": 31536,
+     "summary": "The v1.37 blog says ipvs mode support would be removed entirely by v1.43, while the KEP's stage list places Stage 4 at 1.43 and the code Cleanup at 1.46."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      48097,
+      31536
+     ],
+     "documents": [
+      "web:/blog/2026/08/26/kubernetes-v1-37-release/",
+      "kep:5495"
+     ],
+     "summary": "The v1.37 blog says ipvs mode support would be removed entirely by v1.43, while the KEP's stage list places Stage 4 at 1.43 and the code Cleanup at 1.46.",
+     "resolution": "lower_tier",
+     "prevails": 31536
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q48",
+   "s": 5.21,
+   "stop_reason": "end_turn",
+   "in": 7773,
+   "out": 1012,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "c01",
+   "s": 1.84,
+   "stop_reason": "end_turn",
+   "in": 7323,
+   "out": 209,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "c02",
+   "s": 3.2,
+   "stop_reason": "end_turn",
+   "in": 4811,
+   "out": 552,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "A",
+   "id": "q01",
+   "s": 4.36,
+   "stop_reason": "end_turn",
+   "in": 4905,
+   "out": 956,
+   "pairs": [
+    {
+     "first": 7600,
+     "second": 33023,
+     "summary": "Chunk 7600 says Kubernetes releases about three times per year, while chunk 33023 (KEP-1498) describes minor releases every 3 months, which implies four per year."
+    },
+    {
+     "first": 7600,
+     "second": 33441,
+     "summary": "Chunk 7600 says releases currently happen about three times per year, while chunk 33441 (KEP-2572) states the project currently releases 4 times per year."
+    },
+    {
+     "first": 11155,
+     "second": 33023,
+     "summary": "Chunk 11155 (CHANGELOG-1.22) says the cadence was reduced from 4 to 3 releases per year in 2021, while chunk 33023 says minor releases come every 3 months, implying four per year."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7600,
+      33023
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "kep:1498"
+     ],
+     "summary": "Chunk 7600 says Kubernetes releases about three times per year, while chunk 33023 (KEP-1498) describes minor releases every 3 months, which implies four per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7600,
+      33441
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "kep:2572"
+     ],
+     "summary": "Chunk 7600 says releases currently happen about three times per year, while chunk 33441 (KEP-2572) states the project currently releases 4 times per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      11155,
+      33023
+     ],
+     "documents": [
+      "changelog:1.22",
+      "kep:1498"
+     ],
+     "summary": "Chunk 11155 (CHANGELOG-1.22) says the cadence was reduced from 4 to 3 releases per year in 2021, while chunk 33023 says minor releases come every 3 months, implying four per year.",
+     "resolution": "valid_at_target",
+     "prevails": 33023
+    }
+   ],
+   "dropped": 0,
+   "k02": true
+  },
+  {
+   "variant": "A",
+   "id": "q01",
+   "s": 4.02,
+   "stop_reason": "end_turn",
+   "in": 4905,
+   "out": 826,
+   "pairs": [
+    {
+     "first": 7600,
+     "second": 33023,
+     "summary": "Chunk 7600 says Kubernetes currently releases about three times per year, while chunk 33023 (KEP-1498) says minor releases come every 3 months, which implies four per year."
+    },
+    {
+     "first": 11155,
+     "second": 33441,
+     "summary": "Chunk 11155 says the cadence was reduced from 4 to 3 releases per year in April 2021, while chunk 33441 (KEP-2572) states the project currently releases 4 times per year."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7600,
+      33023
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "kep:1498"
+     ],
+     "summary": "Chunk 7600 says Kubernetes currently releases about three times per year, while chunk 33023 (KEP-1498) says minor releases come every 3 months, which implies four per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      11155,
+      33441
+     ],
+     "documents": [
+      "changelog:1.22",
+      "kep:2572"
+     ],
+     "summary": "Chunk 11155 says the cadence was reduced from 4 to 3 releases per year in April 2021, while chunk 33441 (KEP-2572) states the project currently releases 4 times per year.",
+     "resolution": "valid_at_target",
+     "prevails": 33441
+    }
+   ],
+   "dropped": 0,
+   "k02": true
+  },
+  {
+   "variant": "B",
+   "id": "q01",
+   "s": 5.42,
+   "stop_reason": "end_turn",
+   "in": 4968,
+   "out": 1150,
+   "pairs": [
+    {
+     "first": 33441,
+     "second": 7600,
+     "summary": "KEP-2572 says the project currently releases 4 times per year, while the current release-cycle docs say releases happen approximately three times per year."
+    },
+    {
+     "first": 33441,
+     "second": 11155,
+     "summary": "KEP-2572 describes the cadence as currently 4 releases per year, while the 1.22 changelog says it was made official in April 2021 as reduced to 3 releases per year."
+    },
+    {
+     "first": 33440,
+     "second": 11155,
+     "summary": "KEP-2572 frames the move from 4 to 3 releases per year as a proposal still at alpha, while the 1.22 changelog records it as already official."
+    },
+    {
+     "first": 33023,
+     "second": 7600,
+     "summary": "KEP-1498 says minor releases happen every 3 months (about 4 per year), while the current release-cycle docs say about three per year."
+    },
+    {
+     "first": 33023,
+     "second": 11155,
+     "summary": "KEP-1498 describes releases every 3 months, while the 1.22 changelog says the cadence was reduced from 4 to 3 releases per year."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33441,
+      7600
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/releases/release/"
+     ],
+     "summary": "KEP-2572 says the project currently releases 4 times per year, while the current release-cycle docs say releases happen approximately three times per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33441,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "KEP-2572 describes the cadence as currently 4 releases per year, while the 1.22 changelog says it was made official in April 2021 as reduced to 3 releases per year.",
+     "resolution": "valid_at_target",
+     "prevails": 33441
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33440,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "KEP-2572 frames the move from 4 to 3 releases per year as a proposal still at alpha, while the 1.22 changelog records it as already official.",
+     "resolution": "valid_at_target",
+     "prevails": 33440
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33023,
+      7600
+     ],
+     "documents": [
+      "kep:1498",
+      "web:/releases/release/"
+     ],
+     "summary": "KEP-1498 says minor releases happen every 3 months (about 4 per year), while the current release-cycle docs say about three per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33023,
+      11155
+     ],
+     "documents": [
+      "kep:1498",
+      "changelog:1.22"
+     ],
+     "summary": "KEP-1498 describes releases every 3 months, while the 1.22 changelog says the cadence was reduced from 4 to 3 releases per year.",
+     "resolution": "valid_at_target",
+     "prevails": 33023
+    }
+   ],
+   "dropped": 0,
+   "k02": true
+  },
+  {
+   "variant": "B",
+   "id": "q02",
+   "s": 4.2,
+   "stop_reason": "end_turn",
+   "in": 7194,
+   "out": 814,
+   "pairs": [
+    {
+     "first": 33453,
+     "second": 37576,
+     "summary": "KEP-2572 is claimed as implementable/alpha and still described as a proposal, but the blog post says the KEP was merged on April 23, 2021 and the three-release cadence is in force."
+    },
+    {
+     "first": 33454,
+     "second": 37576,
+     "summary": "KEP-2572's schedule section describes the cadence change as future alpha/beta/stable milestones, while the blog post says the KEP was already merged and the change is in effect."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33453,
+      37576
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/"
+     ],
+     "summary": "KEP-2572 is claimed as implementable/alpha and still described as a proposal, but the blog post says the KEP was merged on April 23, 2021 and the three-release cadence is in force.",
+     "resolution": "lower_tier",
+     "prevails": 33453
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33454,
+      37576
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/"
+     ],
+     "summary": "KEP-2572's schedule section describes the cadence change as future alpha/beta/stable milestones, while the blog post says the KEP was already merged and the change is in effect.",
+     "resolution": "lower_tier",
+     "prevails": 33454
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q03",
+   "s": 5.33,
+   "stop_reason": "end_turn",
+   "in": 4865,
+   "out": 1210,
+   "pairs": [
+    {
+     "first": 33440,
+     "second": 11155,
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still proposes the change, while the 1.22 changelog says the move to three releases a year was made official in April 2021 and shipped."
+    },
+    {
+     "first": 33442,
+     "second": 11155,
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still treats the three-release cadence as a proposal, while the 1.22 changelog says it was made official from April 23, 2021."
+    },
+    {
+     "first": 33455,
+     "second": 11155,
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still treats the cadence change as pending, while the 1.22 changelog says it was made official from April 23, 2021."
+    },
+    {
+     "first": 33456,
+     "second": 11155,
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still treats the cadence change as pending, while the 1.22 changelog says it was made official from April 23, 2021."
+    },
+    {
+     "first": 33464,
+     "second": 11155,
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and says the change was not yet approved in the 1.21 cycle, while the 1.22 changelog says it was made official from April 23, 2021."
+    },
+    {
+     "first": 33464,
+     "second": 37576,
+     "summary": "The KEP says the change was not submitted and approved within the 1.21 cycle, while the blog says the Release Team merged the KEP on April 23, 2021, during 1.21."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33440,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still proposes the change, while the 1.22 changelog says the move to three releases a year was made official in April 2021 and shipped.",
+     "resolution": "valid_at_target",
+     "prevails": 33440
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33442,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still treats the three-release cadence as a proposal, while the 1.22 changelog says it was made official from April 23, 2021.",
+     "resolution": "valid_at_target",
+     "prevails": 33442
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33455,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still treats the cadence change as pending, while the 1.22 changelog says it was made official from April 23, 2021.",
+     "resolution": "valid_at_target",
+     "prevails": 33455
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33456,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and still treats the cadence change as pending, while the 1.22 changelog says it was made official from April 23, 2021.",
+     "resolution": "valid_at_target",
+     "prevails": 33456
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33464,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP claims implementable/alpha with latest milestone v1.22 and says the change was not yet approved in the 1.21 cycle, while the 1.22 changelog says it was made official from April 23, 2021.",
+     "resolution": "valid_at_target",
+     "prevails": 33464
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33464,
+      37576
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/"
+     ],
+     "summary": "The KEP says the change was not submitted and approved within the 1.21 cycle, while the blog says the Release Team merged the KEP on April 23, 2021, during 1.21.",
+     "resolution": "valid_at_target",
+     "prevails": 33464
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q04",
+   "s": 3.78,
+   "stop_reason": "end_turn",
+   "in": 5414,
+   "out": 760,
+   "pairs": [
+    {
+     "first": 33440,
+     "second": 11155,
+     "summary": "KEP-2572 is still claimed as implementable/alpha with latest milestone v1.22, but the 1.22 changelog says the move to three releases per year was made official on April 23, 2021, so the KEP's claimed status is out of date."
+    },
+    {
+     "first": 33442,
+     "second": 11155,
+     "summary": "KEP-2572 is still claimed as implementable/alpha with latest milestone v1.22, but the 1.22 changelog says the move to three releases per year was made official on April 23, 2021, so the KEP's claimed status is out of date."
+    },
+    {
+     "first": 33464,
+     "second": 11155,
+     "summary": "KEP-2572 is still claimed as implementable/alpha with latest milestone v1.22, but the 1.22 changelog says the move to three releases per year was made official on April 23, 2021, so the KEP's claimed status is out of date."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33440,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "KEP-2572 is still claimed as implementable/alpha with latest milestone v1.22, but the 1.22 changelog says the move to three releases per year was made official on April 23, 2021, so the KEP's claimed status is out of date.",
+     "resolution": "valid_at_target",
+     "prevails": 33440
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33442,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "KEP-2572 is still claimed as implementable/alpha with latest milestone v1.22, but the 1.22 changelog says the move to three releases per year was made official on April 23, 2021, so the KEP's claimed status is out of date.",
+     "resolution": "valid_at_target",
+     "prevails": 33442
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33464,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "KEP-2572 is still claimed as implementable/alpha with latest milestone v1.22, but the 1.22 changelog says the move to three releases per year was made official on April 23, 2021, so the KEP's claimed status is out of date.",
+     "resolution": "valid_at_target",
+     "prevails": 33464
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q05",
+   "s": 5.25,
+   "stop_reason": "end_turn",
+   "in": 4858,
+   "out": 1176,
+   "pairs": [
+    {
+     "first": 37589,
+     "second": 33459,
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37."
+    },
+    {
+     "first": 37589,
+     "second": 33444,
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37."
+    },
+    {
+     "first": 37589,
+     "second": 33467,
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37."
+    },
+    {
+     "first": 37589,
+     "second": 33460,
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37."
+    },
+    {
+     "first": 37589,
+     "second": 33469,
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37."
+    },
+    {
+     "first": 37589,
+     "second": 33447,
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37."
+    },
+    {
+     "first": 37589,
+     "second": 33461,
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37589,
+      33459
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 33459
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37589,
+      33444
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 33444
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37589,
+      33467
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 33467
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37589,
+      33460
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 33460
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37589,
+      33469
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 33469
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37589,
+      33447
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 33447
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      37589,
+      33461
+     ],
+     "documents": [
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "kep:2572"
+     ],
+     "summary": "The blog post shows the 3-releases-per-year cadence change taking effect in 1.21 and still valid now, while KEP-2572 still claims implementable/alpha with latest milestone v1.22 and alpha stage at 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 33461
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q06",
+   "s": 2.68,
+   "stop_reason": "end_turn",
+   "in": 4888,
+   "out": 452,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q07",
+   "s": 3.08,
+   "stop_reason": "end_turn",
+   "in": 5244,
+   "out": 431,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q08",
+   "s": 5.48,
+   "stop_reason": "end_turn",
+   "in": 6003,
+   "out": 1215,
+   "pairs": [
+    {
+     "first": 15239,
+     "second": 10059,
+     "summary": "KEP 15239 claims the PodSecurity gate reached beta at 1.37 with latest milestone v1.23, but the feature gate reference shows it reached stable in 1.25 and was later removed."
+    },
+    {
+     "first": 15216,
+     "second": 10059,
+     "summary": "KEP 15216 claims alpha status with latest milestone v1.22, but the feature gate reference shows the gate reached beta in 1.23, stable in 1.25, and was later removed."
+    },
+    {
+     "first": 15276,
+     "second": 10059,
+     "summary": "KEP 15276 says the GA target is v1.24 and still lists beta as the stage, but the feature gate reference shows the gate became stable in 1.25."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15239,
+      10059
+     ],
+     "documents": [
+      "kep:2579",
+      "gate:PodSecurity"
+     ],
+     "summary": "KEP 15239 claims the PodSecurity gate reached beta at 1.37 with latest milestone v1.23, but the feature gate reference shows it reached stable in 1.25 and was later removed.",
+     "resolution": "valid_at_target",
+     "prevails": 10059
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15216,
+      10059
+     ],
+     "documents": [
+      "kep:2579",
+      "gate:PodSecurity"
+     ],
+     "summary": "KEP 15216 claims alpha status with latest milestone v1.22, but the feature gate reference shows the gate reached beta in 1.23, stable in 1.25, and was later removed.",
+     "resolution": "valid_at_target",
+     "prevails": 10059
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15276,
+      10059
+     ],
+     "documents": [
+      "kep:2579",
+      "gate:PodSecurity"
+     ],
+     "summary": "KEP 15276 says the GA target is v1.24 and still lists beta as the stage, but the feature gate reference shows the gate became stable in 1.25.",
+     "resolution": "valid_at_target",
+     "prevails": 10059
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q09",
+   "s": 2.71,
+   "stop_reason": "end_turn",
+   "in": 5401,
+   "out": 399,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q10",
+   "s": 4.19,
+   "stop_reason": "end_turn",
+   "in": 6779,
+   "out": 778,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q11",
+   "s": 4.52,
+   "stop_reason": "end_turn",
+   "in": 5710,
+   "out": 867,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q12",
+   "s": 5.77,
+   "stop_reason": "end_turn",
+   "in": 5989,
+   "out": 1246,
+   "pairs": [
+    {
+     "first": 15818,
+     "second": 16058,
+     "summary": "KEP-2799 is claimed as implementable/beta with latest milestone v1.26 in chunk 15818, but chunk 16058 shows it as implemented/stable with latest milestone v1.30, so the older status and milestone are out of date."
+    },
+    {
+     "first": 15818,
+     "second": 16078,
+     "summary": "Chunk 15818 says LegacyServiceAccountTokenTracking adds a new annotation to legacy tokens, while chunk 16078 says it adds a new label."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15818,
+      16058
+     ],
+     "documents": [
+      "kep:2799"
+     ],
+     "summary": "KEP-2799 is claimed as implementable/beta with latest milestone v1.26 in chunk 15818, but chunk 16058 shows it as implemented/stable with latest milestone v1.30, so the older status and milestone are out of date.",
+     "resolution": "valid_at_target",
+     "prevails": 16058
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      15818,
+      16078
+     ],
+     "documents": [
+      "kep:2799"
+     ],
+     "summary": "Chunk 15818 says LegacyServiceAccountTokenTracking adds a new annotation to legacy tokens, while chunk 16078 says it adds a new label.",
+     "resolution": "valid_at_target",
+     "prevails": 16078
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q13",
+   "s": 3.87,
+   "stop_reason": "end_turn",
+   "in": 5176,
+   "out": 745,
+   "pairs": [
+    {
+     "first": 15760,
+     "second": 9962,
+     "summary": "KEP chunk 15760 claims the KEP is at beta with latest milestone v1.25 and still at beta at 1.37, but the feature-gate reference shows LegacyServiceAccountTokenCleanUp reached stable (GA) from 1.30."
+    },
+    {
+     "first": 15864,
+     "second": 9962,
+     "summary": "KEP chunk 15864 claims the KEP is at beta with latest milestone v1.27 and still at beta at 1.37, but the feature-gate reference shows the gate reached stable (GA) from 1.30."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15760,
+      9962
+     ],
+     "documents": [
+      "kep:2799",
+      "gate:LegacyServiceAccountTokenCleanUp"
+     ],
+     "summary": "KEP chunk 15760 claims the KEP is at beta with latest milestone v1.25 and still at beta at 1.37, but the feature-gate reference shows LegacyServiceAccountTokenCleanUp reached stable (GA) from 1.30.",
+     "resolution": "lower_tier",
+     "prevails": 9962
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      15864,
+      9962
+     ],
+     "documents": [
+      "kep:2799",
+      "gate:LegacyServiceAccountTokenCleanUp"
+     ],
+     "summary": "KEP chunk 15864 claims the KEP is at beta with latest milestone v1.27 and still at beta at 1.37, but the feature-gate reference shows the gate reached stable (GA) from 1.30.",
+     "resolution": "lower_tier",
+     "prevails": 9962
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q14",
+   "s": 6.43,
+   "stop_reason": "end_turn",
+   "in": 6077,
+   "out": 1336,
+   "pairs": [
+    {
+     "first": 5992,
+     "second": 6096,
+     "summary": "Chunk 5992 says automatic credential creation ran before v1.22, while chunk 6096 says automatic Secret-based token generation happened before v1.24."
+    },
+    {
+     "first": 6095,
+     "second": 11774,
+     "summary": "Chunk 6095 says automatic Secret-based token generation happened before v1.22, but the 1.24 changelog (chunk 11774) says Secret token auto-generation stopped in 1.24 under LegacyServiceAccountTokenNoAutoGeneration."
+    },
+    {
+     "first": 6095,
+     "second": 43086,
+     "summary": "Chunk 6095 implies auto-generation ended before v1.22, while the v1.29 blog post (chunk 43086) says Kubernetes stopped auto-generating legacy Secret-based tokens in 1.24."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      5992,
+      6096
+     ],
+     "documents": [
+      "web:/docs/reference/access-authn-authz/service-accounts-admin/"
+     ],
+     "summary": "Chunk 5992 says automatic credential creation ran before v1.22, while chunk 6096 says automatic Secret-based token generation happened before v1.24.",
+     "resolution": "valid_at_target",
+     "prevails": 6096
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      6095,
+      11774
+     ],
+     "documents": [
+      "web:/docs/reference/access-authn-authz/service-accounts-admin/",
+      "changelog:1.24"
+     ],
+     "summary": "Chunk 6095 says automatic Secret-based token generation happened before v1.22, but the 1.24 changelog (chunk 11774) says Secret token auto-generation stopped in 1.24 under LegacyServiceAccountTokenNoAutoGeneration.",
+     "resolution": "valid_at_target",
+     "prevails": 6095
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      6095,
+      43086
+     ],
+     "documents": [
+      "web:/docs/reference/access-authn-authz/service-accounts-admin/",
+      "web:/blog/2023/12/13/kubernetes-v1-29-release/"
+     ],
+     "summary": "Chunk 6095 implies auto-generation ended before v1.22, while the v1.29 blog post (chunk 43086) says Kubernetes stopped auto-generating legacy Secret-based tokens in 1.24.",
+     "resolution": "lower_tier",
+     "prevails": 6095
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q15",
+   "s": 3.72,
+   "stop_reason": "end_turn",
+   "in": 7999,
+   "out": 794,
+   "pairs": [
+    {
+     "first": 16060,
+     "second": 9963,
+     "summary": "KEP-2799 claims the gate is stable at 1.37 with latest milestone v1.30, but the feature gate reference marks LegacyServiceAccountTokenCleanUp as removed in 1.32 and later."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      16060,
+      9963
+     ],
+     "documents": [
+      "kep:2799",
+      "gate:LegacyServiceAccountTokenCleanUp"
+     ],
+     "summary": "KEP-2799 claims the gate is stable at 1.37 with latest milestone v1.30, but the feature gate reference marks LegacyServiceAccountTokenCleanUp as removed in 1.32 and later.",
+     "resolution": "lower_tier",
+     "prevails": 9963
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q16",
+   "s": 5.14,
+   "stop_reason": "end_turn",
+   "in": 6908,
+   "out": 966,
+   "pairs": [
+    {
+     "first": 11539,
+     "second": 14310,
+     "summary": "Chunk 11539 (1.23) says Kubernetes will keep allowing leading zeros in IPv4 addresses for compatibility, while chunk 14310 (1.36) says API fields no longer allow IPs with extraneous leading zeros because the StrictIPCIDRValidation gate is on by default."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      11539,
+      14310
+     ],
+     "documents": [
+      "changelog:1.23",
+      "changelog:1.36"
+     ],
+     "summary": "Chunk 11539 (1.23) says Kubernetes will keep allowing leading zeros in IPv4 addresses for compatibility, while chunk 14310 (1.36) says API fields no longer allow IPs with extraneous leading zeros because the StrictIPCIDRValidation gate is on by default.",
+     "resolution": "unresolved",
+     "prevails": null
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q17",
+   "s": 5.74,
+   "stop_reason": "end_turn",
+   "in": 7901,
+   "out": 1167,
+   "pairs": [
+    {
+     "first": 11539,
+     "second": 10420,
+     "summary": "The 1.23 changelog says Kubernetes will keep allowing leading zeros in IPv4 addresses, while the 1.36 feature-gate reference makes rejecting them the default (beta, enabled by default)."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      11539,
+      10420
+     ],
+     "documents": [
+      "changelog:1.23",
+      "gate:StrictIPCIDRValidation"
+     ],
+     "summary": "The 1.23 changelog says Kubernetes will keep allowing leading zeros in IPv4 addresses, while the 1.36 feature-gate reference makes rejecting them the default (beta, enabled by default).",
+     "resolution": "valid_at_target",
+     "prevails": 10420
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q18",
+   "s": 5.17,
+   "stop_reason": "end_turn",
+   "in": 6918,
+   "out": 852,
+   "pairs": [
+    {
+     "first": 30877,
+     "second": 10420,
+     "summary": "KEP chunk 30877 claims implementable/alpha with latest milestone v1.33, but the feature-gate reference shows StrictIPCIDRValidation reached beta in 1.36."
+    },
+    {
+     "first": 30877,
+     "second": 31042,
+     "summary": "KEP chunk 30877 lists its latest milestone as v1.33 and stage as alpha, but the KEP implementation history records Beta in Kubernetes v1.36."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      30877,
+      10420
+     ],
+     "documents": [
+      "kep:4858",
+      "gate:StrictIPCIDRValidation"
+     ],
+     "summary": "KEP chunk 30877 claims implementable/alpha with latest milestone v1.33, but the feature-gate reference shows StrictIPCIDRValidation reached beta in 1.36.",
+     "resolution": "valid_at_target",
+     "prevails": 10420
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      30877,
+      31042
+     ],
+     "documents": [
+      "kep:4858"
+     ],
+     "summary": "KEP chunk 30877 lists its latest milestone as v1.33 and stage as alpha, but the KEP implementation history records Beta in Kubernetes v1.36.",
+     "resolution": "valid_at_target",
+     "prevails": 31042
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q19",
+   "s": 5.35,
+   "stop_reason": "end_turn",
+   "in": 6656,
+   "out": 1051,
+   "pairs": [
+    {
+     "first": 30886,
+     "second": 10420,
+     "summary": "KEP chunk 30886 claims implementable/alpha with latest milestone v1.33, but the feature-gate reference shows StrictIPCIDRValidation reached beta (default true) in 1.36."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      30886,
+      10420
+     ],
+     "documents": [
+      "kep:4858",
+      "gate:StrictIPCIDRValidation"
+     ],
+     "summary": "KEP chunk 30886 claims implementable/alpha with latest milestone v1.33, but the feature-gate reference shows StrictIPCIDRValidation reached beta (default true) in 1.36.",
+     "resolution": "valid_at_target",
+     "prevails": 10420
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q20",
+   "s": 4.02,
+   "stop_reason": "end_turn",
+   "in": 7450,
+   "out": 629,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q21",
+   "s": 5.83,
+   "stop_reason": "end_turn",
+   "in": 6027,
+   "out": 1263,
+   "pairs": [
+    {
+     "first": 7433,
+     "second": 6946,
+     "summary": "Chunk 7433 says active patch series get roughly 14 months of support (12 standard plus a 2-month maintenance period), while chunk 6946 says Kubernetes 1.19 and newer receive approximately 1 year of patch support."
+    },
+    {
+     "first": 7433,
+     "second": 7201,
+     "summary": "Chunk 7433 says patch series are supported for roughly 14 months, while chunk 7201 says 1.19 and newer receive approximately 1 year of patch support."
+    },
+    {
+     "first": 36383,
+     "second": 7201,
+     "summary": "Chunk 36383 says Kubernetes supports four minor releases at a time, while chunk 7201 says release branches are maintained for the most recent three minor releases."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7433,
+      6946
+     ],
+     "documents": [
+      "web:/releases/patch-releases/",
+      "web:/docs/setup/release/"
+     ],
+     "summary": "Chunk 7433 says active patch series get roughly 14 months of support (12 standard plus a 2-month maintenance period), while chunk 6946 says Kubernetes 1.19 and newer receive approximately 1 year of patch support.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7433,
+      7201
+     ],
+     "documents": [
+      "web:/releases/patch-releases/",
+      "web:/docs/setup/release/version-skew-policy/"
+     ],
+     "summary": "Chunk 7433 says patch series are supported for roughly 14 months, while chunk 7201 says 1.19 and newer receive approximately 1 year of patch support.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      36383,
+      7201
+     ],
+     "documents": [
+      "sig-release:release-engineering/versioning.md",
+      "web:/docs/setup/release/version-skew-policy/"
+     ],
+     "summary": "Chunk 36383 says Kubernetes supports four minor releases at a time, while chunk 7201 says release branches are maintained for the most recent three minor releases.",
+     "resolution": "lower_tier",
+     "prevails": 7201
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q22",
+   "s": 5.44,
+   "stop_reason": "end_turn",
+   "in": 7091,
+   "out": 935,
+   "pairs": [
+    {
+     "first": 7601,
+     "second": 7599,
+     "summary": "Chunk 7601 says Code Freeze starts in week ~12 and lasts about 2 weeks, while chunk 7599 defines Code Freeze as a period of about 4 weeks before the final release date."
+    },
+    {
+     "first": 33996,
+     "second": 33993,
+     "summary": "Chunk 33996 says Code Freeze starts in week ~12 and lasts about 2 weeks, while chunk 33993 defines Code Freeze as a period of about 4 weeks before the final release date."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7601,
+      7599
+     ],
+     "documents": [
+      "web:/releases/release/"
+     ],
+     "summary": "Chunk 7601 says Code Freeze starts in week ~12 and lasts about 2 weeks, while chunk 7599 defines Code Freeze as a period of about 4 weeks before the final release date.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33996,
+      33993
+     ],
+     "documents": [
+      "community:contributors/devel/sig-release/release.md"
+     ],
+     "summary": "Chunk 33996 says Code Freeze starts in week ~12 and lasts about 2 weeks, while chunk 33993 defines Code Freeze as a period of about 4 weeks before the final release date.",
+     "resolution": "unresolved",
+     "prevails": null
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q23",
+   "s": 3.13,
+   "stop_reason": "end_turn",
+   "in": 5666,
+   "out": 492,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q24",
+   "s": 3.08,
+   "stop_reason": "end_turn",
+   "in": 4284,
+   "out": 515,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q25",
+   "s": 4.94,
+   "stop_reason": "end_turn",
+   "in": 6889,
+   "out": 1011,
+   "pairs": [
+    {
+     "first": 43096,
+     "second": 42549,
+     "summary": "Chunk 43096 says the legacy repositories will go away entirely in January 2024, while chunk 42549 says they were removed on March 4, 2024."
+    },
+    {
+     "first": 42954,
+     "second": 42191,
+     "summary": "Chunk 42954 says the legacy repositories were formally deprecated on September 13, 2023, while chunk 42191 says they were deprecated as of August 31, 2023 and frozen around September 13, 2023."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      43096,
+      42549
+     ],
+     "documents": [
+      "web:/blog/2023/12/13/kubernetes-v1-29-release/",
+      "web:/blog/2023/08/31/legacy-package-repository-deprecation/"
+     ],
+     "summary": "Chunk 43096 says the legacy repositories will go away entirely in January 2024, while chunk 42549 says they were removed on March 4, 2024.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      42954,
+      42191
+     ],
+     "documents": [
+      "web:/blog/2023/11/16/kubernetes-1-29-upcoming-changes/",
+      "web:/blog/2023/08/15/pkgs-k8s-io-introduction/"
+     ],
+     "summary": "Chunk 42954 says the legacy repositories were formally deprecated on September 13, 2023, while chunk 42191 says they were deprecated as of August 31, 2023 and frozen around September 13, 2023.",
+     "resolution": "valid_at_target",
+     "prevails": 42954
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q26",
+   "s": 5.36,
+   "stop_reason": "end_turn",
+   "in": 6820,
+   "out": 1064,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q27",
+   "s": 5.83,
+   "stop_reason": "end_turn",
+   "in": 5365,
+   "out": 1171,
+   "pairs": [
+    {
+     "first": 33441,
+     "second": 37589,
+     "summary": "KEP 2572 describes the release cadence as currently four releases per year, while the blog post says the cadence was changed from four to three releases per year and is valid from 1.21 onward."
+    },
+    {
+     "first": 33450,
+     "second": 37589,
+     "summary": "KEP 2572 states that minor releases currently come every four months, while the blog post says the project changed to three minor releases per year."
+    },
+    {
+     "first": 33467,
+     "second": 39183,
+     "summary": "KEP 2572 still claims implementable/alpha status with latest milestone v1.22, but the 1.23 release interview shows the three-releases-per-year cadence was in force, so the claimed status is out of date."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33441,
+      37589
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/"
+     ],
+     "summary": "KEP 2572 describes the release cadence as currently four releases per year, while the blog post says the cadence was changed from four to three releases per year and is valid from 1.21 onward.",
+     "resolution": "lower_tier",
+     "prevails": 33441
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33450,
+      37589
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/blog/2021/07/20/new-kubernetes-release-cadence/"
+     ],
+     "summary": "KEP 2572 states that minor releases currently come every four months, while the blog post says the project changed to three minor releases per year.",
+     "resolution": "lower_tier",
+     "prevails": 33450
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33467,
+      39183
+     ],
+     "documents": [
+      "kep:2572",
+      "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/"
+     ],
+     "summary": "KEP 2572 still claims implementable/alpha status with latest milestone v1.22, but the 1.23 release interview shows the three-releases-per-year cadence was in force, so the claimed status is out of date.",
+     "resolution": "valid_at_target",
+     "prevails": 33467
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q30",
+   "s": 5.01,
+   "stop_reason": "end_turn",
+   "in": 8134,
+   "out": 1094,
+   "pairs": [
+    {
+     "first": 16386,
+     "second": 4308,
+     "summary": "KEP-3221 claims the feature is implemented and stable at 1.37, but the docs page still presents StructuredAuthorizationConfiguration as a feature-gated feature-state item in 1.37."
+    },
+    {
+     "first": 16403,
+     "second": 16386,
+     "summary": "The KEP's design details say the feature-flag code path applies while the feature is in alpha and beta, which contradicts its claimed stable status."
+    },
+    {
+     "first": 16394,
+     "second": 4309,
+     "summary": "The KEP story example uses apiserver.config.k8s.io/v1beta1 and the KubeConfig connection type, while the current docs example uses apiserver.config.k8s.io/v1 and the KubeConfigFile connection type."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      16386,
+      4308
+     ],
+     "documents": [
+      "kep:3221",
+      "web:/docs/reference/access-authn-authz/authorization/"
+     ],
+     "summary": "KEP-3221 claims the feature is implemented and stable at 1.37, but the docs page still presents StructuredAuthorizationConfiguration as a feature-gated feature-state item in 1.37.",
+     "resolution": "lower_tier",
+     "prevails": 4308
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      16403,
+      16386
+     ],
+     "documents": [
+      "kep:3221"
+     ],
+     "summary": "The KEP's design details say the feature-flag code path applies while the feature is in alpha and beta, which contradicts its claimed stable status.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      16394,
+      4309
+     ],
+     "documents": [
+      "kep:3221",
+      "web:/docs/reference/access-authn-authz/authorization/"
+     ],
+     "summary": "The KEP story example uses apiserver.config.k8s.io/v1beta1 and the KubeConfig connection type, while the current docs example uses apiserver.config.k8s.io/v1 and the KubeConfigFile connection type.",
+     "resolution": "lower_tier",
+     "prevails": 4309
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q31",
+   "s": 2.69,
+   "stop_reason": "end_turn",
+   "in": 6760,
+   "out": 350,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q32",
+   "s": 3.78,
+   "stop_reason": "end_turn",
+   "in": 5999,
+   "out": 689,
+   "pairs": [
+    {
+     "first": 9927,
+     "second": 12724,
+     "summary": "The KMSv1 feature gate reference lists it as deprecated with defaultValue true in 1.28, meaning it is on by default, but the 1.28 changelog says users must set --feature-gates=KMSv1=true to use KMSv1."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      9927,
+      12724
+     ],
+     "documents": [
+      "gate:KMSv1",
+      "changelog:1.28"
+     ],
+     "summary": "The KMSv1 feature gate reference lists it as deprecated with defaultValue true in 1.28, meaning it is on by default, but the 1.28 changelog says users must set --feature-gates=KMSv1=true to use KMSv1.",
+     "resolution": "valid_at_target",
+     "prevails": 12724
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q33",
+   "s": 6.42,
+   "stop_reason": "end_turn",
+   "in": 8615,
+   "out": 1332,
+   "pairs": [
+    {
+     "first": 17974,
+     "second": 17549,
+     "summary": "Chunk 17974 says KEP-3331 was implemented/stable at 1.28, while chunk 17549 says it was implementable/alpha at 1.28."
+    },
+    {
+     "first": 17974,
+     "second": 17515,
+     "summary": "Chunk 17974 says KEP-3331 was stable at 1.28, while chunk 17515 says it was alpha at 1.28."
+    },
+    {
+     "first": 17499,
+     "second": 17981,
+     "summary": "Chunk 17499 names the Issuer field clientIDs (a non-pointer-free array with a pointer discoveryURL), while chunk 17981 names it audiences and makes discoveryURL a plain string with a different audienceMatchPolicy field."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17974,
+      17549
+     ],
+     "documents": [
+      "kep:3331"
+     ],
+     "summary": "Chunk 17974 says KEP-3331 was implemented/stable at 1.28, while chunk 17549 says it was implementable/alpha at 1.28.",
+     "resolution": "valid_at_target",
+     "prevails": 17549
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17974,
+      17515
+     ],
+     "documents": [
+      "kep:3331"
+     ],
+     "summary": "Chunk 17974 says KEP-3331 was stable at 1.28, while chunk 17515 says it was alpha at 1.28.",
+     "resolution": "valid_at_target",
+     "prevails": 17515
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17499,
+      17981
+     ],
+     "documents": [
+      "kep:3331"
+     ],
+     "summary": "Chunk 17499 names the Issuer field clientIDs (a non-pointer-free array with a pointer discoveryURL), while chunk 17981 names it audiences and makes discoveryURL a plain string with a different audienceMatchPolicy field.",
+     "resolution": "valid_at_target",
+     "prevails": 17499
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q34",
+   "s": 6.95,
+   "stop_reason": "end_turn",
+   "in": 6099,
+   "out": 1597,
+   "pairs": [
+    {
+     "first": 9930,
+     "second": 9931,
+     "summary": "Chunk 9930 shows KMSv2 as stable from 1.29 with no removal, while chunk 9931 shows the stable stage ending at 1.31 and the gate marked removed from 1.32 onward."
+    },
+    {
+     "first": 9931,
+     "second": 43083,
+     "summary": "Chunk 9931 says the KMSv2 gate was removed, while blog chunk 43083 (valid through now) says KMS v2 is stable and recommended."
+    },
+    {
+     "first": 17132,
+     "second": 9930,
+     "summary": "KEP-3299 chunk 17132 claims beta with latest milestone v1.28, but the feature gate reference shows KMSv2 reached stable in 1.29."
+    },
+    {
+     "first": 17054,
+     "second": 9930,
+     "summary": "KEP-3299 chunk 17054 claims beta with latest milestone v1.27, but the feature gate reference shows KMSv2 reached stable in 1.29."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      9930,
+      9931
+     ],
+     "documents": [
+      "gate:KMSv2"
+     ],
+     "summary": "Chunk 9930 shows KMSv2 as stable from 1.29 with no removal, while chunk 9931 shows the stable stage ending at 1.31 and the gate marked removed from 1.32 onward.",
+     "resolution": "valid_at_target",
+     "prevails": 9931
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      9931,
+      43083
+     ],
+     "documents": [
+      "gate:KMSv2",
+      "web:/blog/2023/12/13/kubernetes-v1-29-release/"
+     ],
+     "summary": "Chunk 9931 says the KMSv2 gate was removed, while blog chunk 43083 (valid through now) says KMS v2 is stable and recommended.",
+     "resolution": "lower_tier",
+     "prevails": 9931
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17132,
+      9930
+     ],
+     "documents": [
+      "kep:3299",
+      "gate:KMSv2"
+     ],
+     "summary": "KEP-3299 chunk 17132 claims beta with latest milestone v1.28, but the feature gate reference shows KMSv2 reached stable in 1.29.",
+     "resolution": "lower_tier",
+     "prevails": 9930
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17054,
+      9930
+     ],
+     "documents": [
+      "kep:3299",
+      "gate:KMSv2"
+     ],
+     "summary": "KEP-3299 chunk 17054 claims beta with latest milestone v1.27, but the feature gate reference shows KMSv2 reached stable in 1.29.",
+     "resolution": "lower_tier",
+     "prevails": 9930
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q35",
+   "s": 7.36,
+   "stop_reason": "end_turn",
+   "in": 4860,
+   "out": 1529,
+   "pairs": [
+    {
+     "first": 41925,
+     "second": 42160,
+     "summary": "Both chunks cover the 1.28 beta, but chunk 41925 says only the admissionregistration.k8s.io/v1beta1 API group must be enabled, while chunk 42160 says both that API group and the ValidatingAdmissionPolicy feature gate must be enabled."
+    },
+    {
+     "first": 10191,
+     "second": 10192,
+     "summary": "Chunk 10191 lists the stable stage from 1.30 with no end version and valid through 1.32, while chunk 10192 gives the stable stage an end version of 1.31 and marks the gate removed."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      41925,
+      42160
+     ],
+     "documents": [
+      "web:/blog/2023/08/15/kubernetes-v1-28-release/"
+     ],
+     "summary": "Both chunks cover the 1.28 beta, but chunk 41925 says only the admissionregistration.k8s.io/v1beta1 API group must be enabled, while chunk 42160 says both that API group and the ValidatingAdmissionPolicy feature gate must be enabled.",
+     "resolution": "valid_at_target",
+     "prevails": 42160
+    },
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      10191,
+      10192
+     ],
+     "documents": [
+      "gate:ValidatingAdmissionPolicy"
+     ],
+     "summary": "Chunk 10191 lists the stable stage from 1.30 with no end version and valid through 1.32, while chunk 10192 gives the stable stage an end version of 1.31 and marks the gate removed.",
+     "resolution": "valid_at_target",
+     "prevails": 10192
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q36",
+   "s": 5.63,
+   "stop_reason": "end_turn",
+   "in": 4860,
+   "out": 1407,
+   "pairs": [
+    {
+     "first": 17600,
+     "second": 45854,
+     "summary": "KEP chunk 17600 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says structured authentication configuration graduated to stable in v1.34."
+    },
+    {
+     "first": 17515,
+     "second": 45854,
+     "summary": "KEP chunk 17515 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34."
+    },
+    {
+     "first": 17552,
+     "second": 45854,
+     "summary": "KEP chunk 17552 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34."
+    },
+    {
+     "first": 17549,
+     "second": 45854,
+     "summary": "KEP chunk 17549 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34."
+    },
+    {
+     "first": 43794,
+     "second": 45854,
+     "summary": "The v1.30 beta blog says the file-based configuration was added as alpha in v1.30, while the v1.34 blog says the configuration file format was introduced in v1.29."
+    },
+    {
+     "first": 18030,
+     "second": 45854,
+     "summary": "KEP chunk 18030 gives latest milestone v1.35 for reaching stable, while the v1.34 blog says the feature graduated to stable in v1.34."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17600,
+      45854
+     ],
+     "documents": [
+      "kep:3331",
+      "web:/blog/2025/08/27/kubernetes-v1-34-release/"
+     ],
+     "summary": "KEP chunk 17600 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says structured authentication configuration graduated to stable in v1.34.",
+     "resolution": "valid_at_target",
+     "prevails": 45854
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17515,
+      45854
+     ],
+     "documents": [
+      "kep:3331",
+      "web:/blog/2025/08/27/kubernetes-v1-34-release/"
+     ],
+     "summary": "KEP chunk 17515 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34.",
+     "resolution": "valid_at_target",
+     "prevails": 45854
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17552,
+      45854
+     ],
+     "documents": [
+      "kep:3331",
+      "web:/blog/2025/08/27/kubernetes-v1-34-release/"
+     ],
+     "summary": "KEP chunk 17552 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34.",
+     "resolution": "valid_at_target",
+     "prevails": 45854
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      17549,
+      45854
+     ],
+     "documents": [
+      "kep:3331",
+      "web:/blog/2025/08/27/kubernetes-v1-34-release/"
+     ],
+     "summary": "KEP chunk 17549 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34.",
+     "resolution": "valid_at_target",
+     "prevails": 45854
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      43794,
+      45854
+     ],
+     "documents": [
+      "web:/blog/2024/04/25/structured-authentication-moves-to-beta/",
+      "web:/blog/2025/08/27/kubernetes-v1-34-release/"
+     ],
+     "summary": "The v1.30 beta blog says the file-based configuration was added as alpha in v1.30, while the v1.34 blog says the configuration file format was introduced in v1.29.",
+     "resolution": "unresolved",
+     "prevails": null
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      18030,
+      45854
+     ],
+     "documents": [
+      "kep:3331",
+      "web:/blog/2025/08/27/kubernetes-v1-34-release/"
+     ],
+     "summary": "KEP chunk 18030 gives latest milestone v1.35 for reaching stable, while the v1.34 blog says the feature graduated to stable in v1.34.",
+     "resolution": "lower_tier",
+     "prevails": 18030
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q40",
+   "s": 5.76,
+   "stop_reason": "end_turn",
+   "in": 6124,
+   "out": 1153,
+   "pairs": [
+    {
+     "first": 8951,
+     "second": 31538,
+     "summary": "The KEP-5495 chunk claims its status is still implementable/deprecated, but the docs page shows ipvs mode as already deprecated since v1.35, so the KEP's claimed status is out of date."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      8951,
+      31538
+     ],
+     "documents": [
+      "web:/docs/reference/networking/virtual-ips/",
+      "kep:5495"
+     ],
+     "summary": "The KEP-5495 chunk claims its status is still implementable/deprecated, but the docs page shows ipvs mode as already deprecated since v1.35, so the KEP's claimed status is out of date.",
+     "resolution": "lower_tier",
+     "prevails": 8951
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q41",
+   "s": 5.85,
+   "stop_reason": "end_turn",
+   "in": 8047,
+   "out": 1282,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q42",
+   "s": 2.86,
+   "stop_reason": "end_turn",
+   "in": 4743,
+   "out": 499,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q43",
+   "s": 3.47,
+   "stop_reason": "end_turn",
+   "in": 4980,
+   "out": 723,
+   "pairs": [
+    {
+     "first": 24597,
+     "second": 1551,
+     "summary": "KEP 24597 claims status implementable with stage unknown at 1.20, but the docs page (1551) shows Service Topology as an alpha feature since v1.17 and valid in 1.20."
+    },
+    {
+     "first": 24598,
+     "second": 1551,
+     "summary": "KEP 24598 claims status implementable with stage unknown at 1.20, but the docs page (1551) shows Service Topology as an alpha feature since v1.17 and valid in 1.20."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24597,
+      1551
+     ],
+     "documents": [
+      "kep:sig-network/20181024-service-topology",
+      "web:/docs/concepts/services-networking/service-topology/"
+     ],
+     "summary": "KEP 24597 claims status implementable with stage unknown at 1.20, but the docs page (1551) shows Service Topology as an alpha feature since v1.17 and valid in 1.20.",
+     "resolution": "lower_tier",
+     "prevails": 1551
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24598,
+      1551
+     ],
+     "documents": [
+      "kep:sig-network/20181024-service-topology",
+      "web:/docs/concepts/services-networking/service-topology/"
+     ],
+     "summary": "KEP 24598 claims status implementable with stage unknown at 1.20, but the docs page (1551) shows Service Topology as an alpha feature since v1.17 and valid in 1.20.",
+     "resolution": "lower_tier",
+     "prevails": 1551
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q44",
+   "s": 5.93,
+   "stop_reason": "end_turn",
+   "in": 5738,
+   "out": 1167,
+   "pairs": [
+    {
+     "first": 29668,
+     "second": 13783,
+     "summary": "KEP-3866 chunk 29668 claims status implementable/alpha with latest milestone v1.29, while the 1.33 changelog shows the nftables mode became GA in 1.33, so the claimed status and milestone are out of date."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      29668,
+      13783
+     ],
+     "documents": [
+      "kep:3866",
+      "changelog:1.33"
+     ],
+     "summary": "KEP-3866 chunk 29668 claims status implementable/alpha with latest milestone v1.29, while the 1.33 changelog shows the nftables mode became GA in 1.33, so the claimed status and milestone are out of date.",
+     "resolution": "lower_tier",
+     "prevails": 13783
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q45",
+   "s": 7.15,
+   "stop_reason": "end_turn",
+   "in": 7701,
+   "out": 1713,
+   "pairs": [
+    {
+     "first": 24214,
+     "second": 24402,
+     "summary": "KEP chunk 24214 claims implementable/alpha with latest milestone v1.29, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33."
+    },
+    {
+     "first": 24104,
+     "second": 24402,
+     "summary": "KEP chunk 24104 claims implementable/alpha with latest milestone v1.25, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33."
+    },
+    {
+     "first": 24071,
+     "second": 24402,
+     "summary": "KEP chunk 24071 claims implementable/alpha with latest milestone v1.25, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33."
+    },
+    {
+     "first": 24304,
+     "second": 24402,
+     "summary": "KEP chunk 24304 claims implementable/stable, while chunk 24402 claims implemented/stable for the same latest milestone v1.33."
+    },
+    {
+     "first": 24214,
+     "second": 10002,
+     "summary": "KEP chunk 24214 claims alpha with latest milestone v1.29, while the MultiCIDRServiceAllocator gate page (chunk 10002) shows the feature went beta in 1.31 and stable in 1.33."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24214,
+      24402
+     ],
+     "documents": [
+      "kep:1880"
+     ],
+     "summary": "KEP chunk 24214 claims implementable/alpha with latest milestone v1.29, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33.",
+     "resolution": "valid_at_target",
+     "prevails": 24402
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24104,
+      24402
+     ],
+     "documents": [
+      "kep:1880"
+     ],
+     "summary": "KEP chunk 24104 claims implementable/alpha with latest milestone v1.25, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33.",
+     "resolution": "valid_at_target",
+     "prevails": 24402
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24071,
+      24402
+     ],
+     "documents": [
+      "kep:1880"
+     ],
+     "summary": "KEP chunk 24071 claims implementable/alpha with latest milestone v1.25, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33.",
+     "resolution": "valid_at_target",
+     "prevails": 24402
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24304,
+      24402
+     ],
+     "documents": [
+      "kep:1880"
+     ],
+     "summary": "KEP chunk 24304 claims implementable/stable, while chunk 24402 claims implemented/stable for the same latest milestone v1.33.",
+     "resolution": "valid_at_target",
+     "prevails": 24402
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      24214,
+      10002
+     ],
+     "documents": [
+      "kep:1880",
+      "gate:MultiCIDRServiceAllocator"
+     ],
+     "summary": "KEP chunk 24214 claims alpha with latest milestone v1.29, while the MultiCIDRServiceAllocator gate page (chunk 10002) shows the feature went beta in 1.31 and stable in 1.33.",
+     "resolution": "valid_at_target",
+     "prevails": 10002
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q46",
+   "s": 3.25,
+   "stop_reason": "end_turn",
+   "in": 6620,
+   "out": 572,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q47",
+   "s": 4.23,
+   "stop_reason": "end_turn",
+   "in": 5775,
+   "out": 925,
+   "pairs": [
+    {
+     "first": 31504,
+     "second": 31536,
+     "summary": "Chunk 31504 gives the KEP's latest milestone as v1.35 with stage 'deprecated (claimed, not observed)' at 1.37, while chunk 31536 shows the KEP observed as deprecated at 1.37 with later graduation stages (1.37, 1.40, 1.43, cleanup 1.46), so the older milestone is out of date."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      31504,
+      31536
+     ],
+     "documents": [
+      "kep:5495"
+     ],
+     "summary": "Chunk 31504 gives the KEP's latest milestone as v1.35 with stage 'deprecated (claimed, not observed)' at 1.37, while chunk 31536 shows the KEP observed as deprecated at 1.37 with later graduation stages (1.37, 1.40, 1.43, cleanup 1.46), so the older milestone is out of date.",
+     "resolution": "valid_at_target",
+     "prevails": 31536
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q48",
+   "s": 5.09,
+   "stop_reason": "end_turn",
+   "in": 7836,
+   "out": 919,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "c01",
+   "s": 2.5,
+   "stop_reason": "end_turn",
+   "in": 7386,
+   "out": 387,
+   "pairs": [],
+   "kept": [],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "c02",
+   "s": 3.9,
+   "stop_reason": "end_turn",
+   "in": 4874,
+   "out": 657,
+   "pairs": [
+    {
+     "first": 38717,
+     "second": 38777,
+     "summary": "The two versions of the Wrap up text give different tutorial links: one points to /docs/tutorials/pod-security and the other to /docs/tutorials/security/."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "supersession",
+     "found_by": "model",
+     "chunk_ids": [
+      38717,
+      38777
+     ],
+     "documents": [
+      "web:/blog/2021/12/09/pod-security-admission-beta/"
+     ],
+     "summary": "The two versions of the Wrap up text give different tutorial links: one points to /docs/tutorials/pod-security and the other to /docs/tutorials/security/.",
+     "resolution": "valid_at_target",
+     "prevails": 38777
+    }
+   ],
+   "dropped": 0
+  },
+  {
+   "variant": "B",
+   "id": "q01",
+   "s": 5.18,
+   "stop_reason": "end_turn",
+   "in": 4968,
+   "out": 1034,
+   "pairs": [
+    {
+     "first": 33440,
+     "second": 11155,
+     "summary": "The KEP summary says the cadence is proposed to change from 4 to 3 releases per year and is still a proposal, while the 1.22 changelog says the change to 3 releases per year was made official in April 2021."
+    },
+    {
+     "first": 33441,
+     "second": 11155,
+     "summary": "The KEP describes the release cadence as currently 4 releases per year and still claims alpha status, while the 1.22 changelog shows the reduction to 3 releases per year was already official."
+    },
+    {
+     "first": 33456,
+     "second": 11155,
+     "summary": "The KEP user story says most organizations find 4 releases per year hard to match and proposes 3, while the 1.22 changelog reports that the cadence was already reduced to 3 releases per year."
+    },
+    {
+     "first": 33459,
+     "second": 11155,
+     "summary": "The KEP user story treats the move to 3 releases per year as a future proposal, while the 1.22 changelog states the change was already official."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33440,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP summary says the cadence is proposed to change from 4 to 3 releases per year and is still a proposal, while the 1.22 changelog says the change to 3 releases per year was made official in April 2021.",
+     "resolution": "valid_at_target",
+     "prevails": 33440
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33441,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP describes the release cadence as currently 4 releases per year and still claims alpha status, while the 1.22 changelog shows the reduction to 3 releases per year was already official.",
+     "resolution": "valid_at_target",
+     "prevails": 33441
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33456,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP user story says most organizations find 4 releases per year hard to match and proposes 3, while the 1.22 changelog reports that the cadence was already reduced to 3 releases per year.",
+     "resolution": "valid_at_target",
+     "prevails": 33456
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      33459,
+      11155
+     ],
+     "documents": [
+      "kep:2572",
+      "changelog:1.22"
+     ],
+     "summary": "The KEP user story treats the move to 3 releases per year as a future proposal, while the 1.22 changelog states the change was already official.",
+     "resolution": "valid_at_target",
+     "prevails": 33459
+    }
+   ],
+   "dropped": 0,
+   "k02": true
+  },
+  {
+   "variant": "B",
+   "id": "q01",
+   "s": 5.7,
+   "stop_reason": "end_turn",
+   "in": 4968,
+   "out": 1198,
+   "pairs": [
+    {
+     "first": 7600,
+     "second": 33441,
+     "summary": "Chunk 7600 says Kubernetes releases about three times per year, while KEP-2572 (claimed alpha, not shipped) says the project currently releases 4 times per year."
+    },
+    {
+     "first": 11155,
+     "second": 33441,
+     "summary": "The 1.22 release notes say the cadence officially dropped from 4 to 3 releases per year, but KEP-2572 still claims implementable/alpha status and describes 4 releases per year as current."
+    },
+    {
+     "first": 6946,
+     "second": 33023,
+     "summary": "Chunk 6946 says Kubernetes 1.19 and newer get approximately one year of patch support, while KEP-1498 (claimed implemented/stable) describes the current support period as about 9 months."
+    }
+   ],
+   "kept": [
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      7600,
+      33441
+     ],
+     "documents": [
+      "web:/releases/release/",
+      "kep:2572"
+     ],
+     "summary": "Chunk 7600 says Kubernetes releases about three times per year, while KEP-2572 (claimed alpha, not shipped) says the project currently releases 4 times per year.",
+     "resolution": "lower_tier",
+     "prevails": 7600
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      11155,
+      33441
+     ],
+     "documents": [
+      "changelog:1.22",
+      "kep:2572"
+     ],
+     "summary": "The 1.22 release notes say the cadence officially dropped from 4 to 3 releases per year, but KEP-2572 still claims implementable/alpha status and describes 4 releases per year as current.",
+     "resolution": "valid_at_target",
+     "prevails": 33441
+    },
+    {
+     "kind": "contradiction",
+     "found_by": "model",
+     "chunk_ids": [
+      6946,
+      33023
+     ],
+     "documents": [
+      "web:/docs/setup/release/",
+      "kep:1498"
+     ],
+     "summary": "Chunk 6946 says Kubernetes 1.19 and newer get approximately one year of patch support, while KEP-1498 (claimed implemented/stable) describes the current support period as about 9 months.",
+     "resolution": "lower_tier",
+     "prevails": 6946
+    }
+   ],
+   "dropped": 0,
+   "k02": true
+  }
+ ],
+ "counts_A": {
+  "precision": [
+   49,
+   66
+  ],
+  "precision_rule": [
+   8,
+   8
+  ],
+  "precision_model": [
+   41,
+   58
+  ],
+  "recall": [
+   33,
+   60
+  ],
+  "recall_rule": [
+   8,
+   8
+  ],
+  "recall_texts": [
+   25,
+   52
+  ],
+  "unreachable": [
+   {
+    "id": "k03",
+    "question": "q08",
+    "kind": "history_date",
+    "seed": true,
+    "first": [
+     {
+      "canonical_id": "kep:2579",
+      "section": [
+       "KEP-2579: Pod Security Admission Control",
+       "Implementation History"
+      ]
+     }
+    ],
+    "second": null
+   },
+   {
+    "id": "k04",
+    "question": "c01",
+    "kind": "texts",
+    "seed": true,
+    "first": [
+     {
+      "canonical_id": "sig-release:release-engineering/versioning.md",
+      "section": [
+       "Kubernetes Release Versioning",
+       "Release versioning",
+       "Supported releases and component skew"
+      ]
+     }
+    ],
+    "second": [
+     {
+      "canonical_id": "web:/docs/setup/release/",
+      "section": []
+     },
+     {
+      "canonical_id": "web:/docs/setup/release/version-skew-policy/",
+      "section": [
+       "Supported versions"
+      ]
+     },
+     {
+      "canonical_id": "web:/releases/patch-releases/",
+      "section": [
+       "Support Period"
+      ]
+     },
+     {
+      "canonical_id": "kep:1498",
+      "section": null
+     },
+     {
+      "canonical_id": "sig-release:release-engineering/versioning.md",
+      "section": [
+       "Kubernetes Release Versioning",
+       "Release versioning",
+       "Supported releases and component skew"
+      ]
+     },
+     {
+      "canonical_id": "sig-release:release-engineering/role-handbooks/patch-release-team.md",
+      "section": [
+       "Patch Release Team Playbook"
+      ]
+     },
+     {
+      "canonical_id": "sig-release:release-engineering/handbooks/release-manager.md",
+      "section": [
+       "Release Manager Handbook",
+       "Patch release management"
+      ]
+     },
+     {
+      "canonical_id": "kep:2572",
+      "section": [
+       "KEP-2572: Defining the Kubernetes Release Cadence",
+       "Motivation",
+       "Non-Goals",
+       "Long-term support (LTS) releases"
+      ]
+     },
+     {
+      "canonical_id": "web:/blog/2023/04/06/keeping-kubernetes-secure-with-updated-go-versions/",
+      "section": [
+       "The problem"
+      ]
+     },
+     {
+      "canonical_id": "web:/blog/2023/08/15/kubernetes-v1-28-release/",
+      "section": [
+       "What's New (Major Themes)",
+       "Changes to supported skew between control plane and node versions"
+      ]
+     },
+     {
+      "canonical_id": "web:/blog/2024/06/06/10-years-of-kubernetes/",
+      "section": [
+       "A decade of Kubernetes"
+      ]
+     }
+    ]
+   }
+  ],
+  "seeds": [
+   {
+    "conflict_id": "k01",
+    "question_id": "q18",
+    "retrieved": true,
+    "surfaced": true
+   },
+   {
+    "conflict_id": "k02",
+    "question_id": "q01",
+    "retrieved": true,
+    "surfaced": true
+   },
+   {
+    "conflict_id": "k03",
+    "question_id": "q08",
+    "retrieved": false,
+    "surfaced": false
+   },
+   {
+    "conflict_id": "k04",
+    "question_id": "c01",
+    "retrieved": false,
+    "surfaced": false
+   }
+  ]
+ },
+ "counts_B": {
+  "precision": [
+   57,
+   87
+  ],
+  "precision_rule": [
+   8,
+   8
+  ],
+  "precision_model": [
+   49,
+   79
+  ],
+  "recall": [
+   35,
+   60
+  ],
+  "recall_rule": [
+   8,
+   8
+  ],
+  "recall_texts": [
+   27,
+   52
+  ],
+  "unreachable": [
+   {
+    "id": "k03",
+    "question": "q08",
+    "kind": "history_date",
+    "seed": true,
+    "first": [
+     {
+      "canonical_id": "kep:2579",
+      "section": [
+       "KEP-2579: Pod Security Admission Control",
+       "Implementation History"
+      ]
+     }
+    ],
+    "second": null
+   },
+   {
+    "id": "k04",
+    "question": "c01",
+    "kind": "texts",
+    "seed": true,
+    "first": [
+     {
+      "canonical_id": "sig-release:release-engineering/versioning.md",
+      "section": [
+       "Kubernetes Release Versioning",
+       "Release versioning",
+       "Supported releases and component skew"
+      ]
+     }
+    ],
+    "second": [
+     {
+      "canonical_id": "web:/docs/setup/release/",
+      "section": []
+     },
+     {
+      "canonical_id": "web:/docs/setup/release/version-skew-policy/",
+      "section": [
+       "Supported versions"
+      ]
+     },
+     {
+      "canonical_id": "web:/releases/patch-releases/",
+      "section": [
+       "Support Period"
+      ]
+     },
+     {
+      "canonical_id": "kep:1498",
+      "section": null
+     },
+     {
+      "canonical_id": "sig-release:release-engineering/versioning.md",
+      "section": [
+       "Kubernetes Release Versioning",
+       "Release versioning",
+       "Supported releases and component skew"
+      ]
+     },
+     {
+      "canonical_id": "sig-release:release-engineering/role-handbooks/patch-release-team.md",
+      "section": [
+       "Patch Release Team Playbook"
+      ]
+     },
+     {
+      "canonical_id": "sig-release:release-engineering/handbooks/release-manager.md",
+      "section": [
+       "Release Manager Handbook",
+       "Patch release management"
+      ]
+     },
+     {
+      "canonical_id": "kep:2572",
+      "section": [
+       "KEP-2572: Defining the Kubernetes Release Cadence",
+       "Motivation",
+       "Non-Goals",
+       "Long-term support (LTS) releases"
+      ]
+     },
+     {
+      "canonical_id": "web:/blog/2023/04/06/keeping-kubernetes-secure-with-updated-go-versions/",
+      "section": [
+       "The problem"
+      ]
+     },
+     {
+      "canonical_id": "web:/blog/2023/08/15/kubernetes-v1-28-release/",
+      "section": [
+       "What's New (Major Themes)",
+       "Changes to supported skew between control plane and node versions"
+      ]
+     },
+     {
+      "canonical_id": "web:/blog/2024/06/06/10-years-of-kubernetes/",
+      "section": [
+       "A decade of Kubernetes"
+      ]
+     }
+    ]
+   }
+  ],
+  "seeds": [
+   {
+    "conflict_id": "k01",
+    "question_id": "q18",
+    "retrieved": true,
+    "surfaced": true
+   },
+   {
+    "conflict_id": "k02",
+    "question_id": "q01",
+    "retrieved": true,
+    "surfaced": true
+   },
+   {
+    "conflict_id": "k03",
+    "question_id": "q08",
+    "retrieved": false,
+    "surfaced": false
+   },
+   {
+    "conflict_id": "k04",
+    "question_id": "c01",
+    "retrieved": false,
+    "surfaced": false
+   }
+  ]
+ }
+}

@@ -31,5 +31,30 @@
   "latency_s_mean": 9.717976744186046,
   "latency_s_p95": 14.986,
   "retrieve_s_p95": 6.719,
-  "cost_usd_mean": 0.030689767441860468
+  "cost_usd_mean": 0.030689767441860468,
+  "stale": null,
+  "temporal": null,
+  "router": null,
+  "authority": null,
+  "conflicts_rule": null,
+  "conflicts_model": null,
+  "loser_only_answers": null,
+  "conflict_precision": null,
+  "conflict_precision_rule": null,
+  "conflict_precision_model": null,
+  "conflict_recall": null,
+  "conflict_recall_rule": null,
+  "conflict_recall_texts": null,
+  "conflict_unreachable": null,
+  "ac4": null,
+  "ac4_seeds": null,
+  "ac5": {
+    "pass": 3,
+    "total": 10
+  },
+  "ac6": {
+    "pass": 6,
+    "total": 9
+  },
+  "latest_release": "1.37"
 }

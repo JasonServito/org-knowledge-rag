@@ -50,5 +50,23 @@
   },
   "conflicts_rule": 2,
   "conflicts_model": 4,
-  "loser_only_answers": 0
+  "loser_only_answers": 0,
+  "conflict_precision": null,
+  "conflict_precision_rule": null,
+  "conflict_precision_model": null,
+  "conflict_recall": null,
+  "conflict_recall_rule": null,
+  "conflict_recall_texts": null,
+  "conflict_unreachable": null,
+  "ac4": null,
+  "ac4_seeds": null,
+  "ac5": {
+    "pass": 1,
+    "total": 3
+  },
+  "ac6": {
+    "pass": 2,
+    "total": 2
+  },
+  "latest_release": "1.37"
 }

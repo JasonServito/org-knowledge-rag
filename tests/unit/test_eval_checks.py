@@ -1,5 +1,6 @@
 """Answer checks AC1-AC3 and the false-refusal flag on hand-built answers (S06-T3; AC1's tier,
-S09-T6), and the losing-side flag (S10-T5, ADR-010 D3).
+S09-T6), the losing-side flag (S10-T5, ADR-010 D3), and the AC5 and AC6 rules (S12-T1, S12-R1
+decisions 3 and 4).
 
 Every expected record is a hand-written literal: True (pass), False (fail) or None (n/a).
 The retrieved hits are chunks 11, 12 and 13; chunk 99 was not retrieved.
@@ -10,7 +11,7 @@ from typing import Any
 import pytest
 
 from orgknow.db.models import Hit
-from orgknow.eval.checks import AnswerChecks, check_answer
+from orgknow.eval.checks import AnswerChecks, check_ac5, check_ac6, check_answer
 from orgknow.eval.golden import Label, Question
 from orgknow.generation.conflicts import Conflict
 from orgknow.generation.schema import Answer, Evidence
@@ -268,3 +269,110 @@ def test_loser_only_ignores_a_rule_found_conflict() -> None:
 
 def test_loser_only_is_na_with_no_answer() -> None:
     assert check_answer(ANSWERABLE, HITS, None).loser_only is None
+
+
+# AC5 and AC6 (S12-T1): one answer each, with the latest release 1.37 (minor 37) and, for AC6, the
+# golden window 1.20 to 1.23 (minors 20 to 23) unless a test says otherwise. Which questions each
+# applies to is the summary's part (test_eval_summary.py). A citation's release windows are
+# ("from", "until") strings, an open until None, as the answer prints them.
+
+LATEST = 37
+WINDOW = (20, 23)
+
+
+def _cited(*windows: list[tuple[str, str | None]]) -> Answer:
+    """An `answered` answer with one citation per list of release windows."""
+    return _answered(*(_citation(11, release_windows=w) for w in windows))
+
+
+def test_ac5_an_open_window_is_valid_at_the_latest_release() -> None:
+    assert check_ac5(_cited([("1.24", None)]), LATEST) is True
+
+
+def test_ac5_a_window_ending_exactly_at_the_latest_release_is_valid() -> None:
+    # A 1.37 CHANGELOG section (changelog:1.37): from 1.37 until 1.37 holds 1.37.
+    assert check_ac5(_cited([("1.37", "1.37")]), LATEST) is True
+
+
+def test_ac5_a_window_ending_one_release_before_the_latest_fails() -> None:
+    assert check_ac5(_cited([("1.30", "1.36")]), LATEST) is False
+
+
+def test_ac5_a_citation_is_valid_when_any_one_of_its_windows_holds_the_latest() -> None:
+    # One citation, two windows (a text valid 1.20-1.22, then again from 1.35): the second holds 37.
+    assert check_ac5(_cited([("1.20", "1.22"), ("1.35", None)]), LATEST) is True
+
+
+def test_ac5_needs_every_citation_valid_one_old_citation_fails_it() -> None:
+    # The mixed-citation case: the first citation is open (valid), the second ended at 1.30.
+    assert check_ac5(_cited([("1.24", None)], [("1.20", "1.30")]), LATEST) is False
+
+
+def test_ac5_two_valid_citations_pass() -> None:
+    assert check_ac5(_cited([("1.24", None)], [("1.37", "1.37")]), LATEST) is True
+
+
+def test_ac5_a_refusal_fails_even_with_valid_citations() -> None:
+    answer = _refused("The sources don't say.", _citation(11, release_windows=[("1.24", None)]))
+
+    assert check_ac5(answer, LATEST) is False
+
+
+def test_ac5_an_error_row_fails() -> None:
+    assert check_ac5(None, LATEST) is False
+
+
+def test_ac5_an_answered_answer_with_no_citations_fails() -> None:
+    # The pipeline rejects it (AC1, `rejection_reason`); a hand-built one fails AC5 too.
+    assert check_ac5(_answered(), LATEST) is False
+
+
+def test_ac6_one_citation_in_the_window_is_enough() -> None:
+    # The first citation is 1.24 on (after 1.23: outside), the second 1.21 alone (inside).
+    assert check_ac6(_cited([("1.24", None)], [("1.21", "1.21")]), WINDOW) is True
+
+
+@pytest.mark.parametrize(
+    ("windows", "expected"),
+    [
+        ([("1.18", "1.20")], True),  # ends at the window's first release: inside
+        ([("1.23", None)], True),  # starts at the window's last release: inside
+        ([("1.17", "1.19")], False),  # ends 1 release before the window: outside, no slack
+        ([("1.24", None)], False),  # starts 1 release after the window: outside, no slack
+    ],
+    ids=["ends-at-from", "starts-at-until", "ends-one-before", "starts-one-after"],
+)
+def test_ac6_the_window_is_exact_at_both_ends(
+    windows: list[tuple[str, str | None]], expected: bool
+) -> None:
+    assert check_ac6(_cited(windows), WINDOW) is expected
+
+
+@pytest.mark.parametrize(
+    ("window", "windows", "expected"),
+    [
+        ((None, 20), [("1.10", "1.21")], True),  # "until 1.20": 1.10-1.21 overlaps it
+        ((None, 20), [("1.21", None)], False),  # "until 1.20": 1.21 on doesn't
+        ((30, None), [("1.24", None)], True),  # "from 1.30": an open 1.24 on overlaps it
+        ((30, None), [("1.24", "1.29")], False),  # "from 1.30": 1.24-1.29 doesn't
+    ],
+    ids=["until-in", "until-out", "from-in", "from-out"],
+)
+def test_ac6_an_open_golden_end_is_open(
+    window: tuple[int | None, int | None], windows: list[tuple[str, str | None]], expected: bool
+) -> None:
+    assert check_ac6(_cited(windows), window) is expected
+
+
+def test_ac6_a_refusal_fails_even_with_a_citation_in_the_window() -> None:
+    answer = _refused("The sources don't say.", _citation(11, release_windows=[("1.21", None)]))
+
+    assert check_ac6(answer, WINDOW) is False
+
+
+def test_ac6_an_error_row_fails() -> None:
+    assert check_ac6(None, WINDOW) is False
+
+
+def test_ac6_an_answered_answer_with_no_citations_fails() -> None:
+    assert check_ac6(_answered(), WINDOW) is False

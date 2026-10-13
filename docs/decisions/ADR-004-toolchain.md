@@ -83,3 +83,9 @@ ADR-008 (decided in the S08-R1 sitting) picks the reranker and its runtime. Adde
 - **`transformers`** (runtime): loads the pinned `BAAI/bge-reranker-base` and its tokenizer, and runs it as a sequence classifier (ADR-008 D2). Rejected: `sentence-transformers` (one more package on top of the same two) and ONNX Runtime (scores differ from the measured ones by up to 0.29).
 - **`torch`** (runtime), **from the PyTorch CPU package index**, pinned in `pyproject.toml` (`[[tool.uv.index]]`, `explicit = true`, plus a `[tool.uv.sources]` entry). The default PyPI wheel on Linux pulls ~2–3 GB of CUDA libraries; the CPU wheel is ~740 MB installed. There's no GPU on the laptop or in S15's plan.
 - **macOS now needs Apple Silicon** (arm64, macOS 14 or later), narrowing the Dev environment row above. PyTorch publishes no Intel Mac wheel, so `uv sync` fails on Intel Macs. Linux and WSL2, the platforms used (and CI), are unaffected.
+
+## Amendment 2026-10-12
+
+S12-T2 serves `POST /query` over HTTP (product spec must-have 10). Decided in the S12-R1 sitting; added with the developer's approval:
+
+- **`uvicorn`** (runtime, 0.54.0, pinned in `uv.lock`): the ASGI server that runs the FastAPI app (`make serve`: `uv run uvicorn --factory orgknow.api.app:create_app --host 127.0.0.1 --port 8000`). FastAPI's own docs use it. It adds 1 package; its dependencies, `click` and `h11`, were already in the lock. Rejected: no server, `TestClient` only, which can't serve a request.

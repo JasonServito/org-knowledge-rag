@@ -701,6 +701,12 @@ def test_a_run_writes_the_pinned_results_format(
         "conflict_unreachable": None,
         "ac4": None,
         "ac4_seeds": None,
+        # S12-T1: q01 and q02 are the CURRENT questions. q01's one citation, valid from 1.24 with
+        # no end, holds 1.37: pass; q02 is an error row: fail. No HISTORY question, so no AC6.
+        # The seeded releases end at 1.37.
+        "ac5": {"pass": 1, "total": 2},
+        "ac6": None,
+        "latest_release": "1.37",
     }
     assert len(generator.calls) == 3
     assert not (folder / "conflict_questions.jsonl").exists()
@@ -711,10 +717,11 @@ def test_a_run_writes_the_pinned_results_format(
     table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
     # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4;
     # stale 0 / 6 and temporal 0 / 3, both 0.000; router and authority selection n/a; no
-    # conflict set, so the 3 conflict cells n/a.
+    # conflict set, so the 3 conflict cells n/a. AC5 1 of 2 (one run, so no range); AC6 n/a.
     assert table.splitlines()[4:] == [
         f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
-        f"| 1.000 | 1.000 | 1.000 | 1.000 | {max(latencies):.1f} | {max(retrieve_times):.1f} "
+        f"| 1.000 | 1.000 | 1.000 | 1 of 2 | n/a | 1.000 | {max(latencies):.1f} "
+        f"| {max(retrieve_times):.1f} "
         "| 0.1140 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a |"
     ]
 

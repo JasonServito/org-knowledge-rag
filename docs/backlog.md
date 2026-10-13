@@ -390,6 +390,12 @@ Tasks:
   - README ablation table and results narrative
   - `docs/architecture.md` update
   - slice-brief consolidation
+- **Slice doc:** `docs/slices/S12-phase1-closeout.md`
+
+- [x] **S12-T1 `[core]` AC5 and AC6 answer-side checks.** Scored from saved eval rows, in the summary and the ablation table. Deps: none.
+- [x] **S12-T2 `[commodity]` `POST /query` with Langfuse.** The `ask` pipeline over HTTP; the reranker loaded once per process; one trace per request. Deps: none.
+- [ ] **S12-T3 `[commodity]` Closeout docs and the M1 report.** Deps: T1, T2.
+- [ ] **S12-T4 `[commodity]` The S12 retro.** Deps: T3.
 
 ---
 
