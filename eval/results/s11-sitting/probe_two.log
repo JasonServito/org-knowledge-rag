@@ -1,0 +1,22 @@
+== c01: In Kubernetes 1.30, how long was a minor release supported? | query: Kubernetes 1.30 patch release support end of life date
+  1     33023 kep:1498 | Kubernetes Yearly Support Period > Motivation | p*f=0.948
+  2     43774 web:/blog/2024/04/17/kubernetes-v1-30-release/ | Project velocity | p*f=0.720
+  3     13086 changelog:1.30 | v1.30.0 > Changes by Kind > API Change | p*f=0.381
+  4 NEW 13092 changelog:1.30 | v1.30.0 > Changes by Kind > Feature | p*f=0.065
+  5     13014 changelog:1.30 | v1.30.11 > Changes by Kind > Other (Cleanup or Flake) | p*f=0.043
+  6     13102 changelog:1.30 | v1.30.0 > Changes by Kind > Documentation | p*f=0.041
+  7 NEW 13188 changelog:1.30 | v1.30.0-alpha.1 > Changes by Kind > Documentation | p*f=0.027
+  8 NEW 13104 changelog:1.30 | v1.30.0 > Changes by Kind > Bug or Regression | p*f=0.027
+  9     13116 changelog:1.30 | v1.30.0 > Changes by Kind > Other (Cleanup or Flake) | p*f=0.027
+ 10     13166 changelog:1.30 | v1.30.0-alpha.3 > Changes by Kind > Other (Cleanup or Flake) | p*f=0.026
+== q48: In which Kubernetes release will StrictIPCIDRValidation graduate to GA? | query: KEP-4858 GA graduation criteria stable milestone
+  1     47405 web:/blog/2026/04/22/kubernetes-v1-36-release/ | New features in Beta > IP/CIDR validation improvements | p*f=0.990
+  2 NEW 22660 kep:1453 | KEP-1453: Graduate Ingress API to GA > Release Signoff Checklist | p*f=0.668
+  3     13818 changelog:1.33 | v1.33.0-rc.0 > Changes by Kind > API Change | p*f=0.622
+  4     14310 changelog:1.36 | v1.36.0 > Changes by Kind > API Change | p*f=0.576
+  5     10420 gate:StrictIPCIDRValidation |  | p*f=0.251
+  6     30990 kep:4858 | KEP-4858: IP/CIDR Validation Improvements | p*f=0.237
+  7     30934 kep:4858 | KEP-4858: IP/CIDR Validation Improvements | p*f=0.229
+  8     10419 gate:StrictIPCIDRValidation |  | p*f=0.206
+  9 NEW 32688 kep:784 | e Proxy component configuration graduation > Release Signoff Checklist | p*f=0.156
+ 10 NEW 20182 kep:5018 | and ResourceClaimTemplates > Design Details > Graduation Criteria > GA | p*f=0.143

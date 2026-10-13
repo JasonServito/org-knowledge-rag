@@ -1,0 +1,1298 @@
+[
+ {
+  "id": "q01",
+  "set": "v0",
+  "query": "Kubernetes minor releases per year current release cadence three releases per year",
+  "recall": [
+   0.571,
+   0.571
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.5
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q01",
+  "set": "reworded",
+  "query": "Kubernetes release cycle three minor releases per year current cadence",
+  "recall": [
+   0.429,
+   0.429
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q02",
+  "set": "v0",
+  "query": "Kubernetes four releases per calendar year quarterly cadence before the change to three releases per year",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.111,
+   0.111
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q02",
+  "set": "reworded",
+  "query": "Kubernetes release cadence before 2021 minor releases every three months four times per year",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.125,
+   0.1
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q03",
+  "set": "v0",
+  "query": "Kubernetes Enhancement Proposal KEP-2572 merged April 2021 release cadence change from four to three releases per year, first release 1.22 schedule",
+  "recall": [
+   0.667,
+   0.833
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q03",
+  "set": "reworded",
+  "query": "Kubernetes release cadence change from four releases per year to three releases per year decision date and first release on the new cadence 1.22",
+  "recall": [
+   0.833,
+   0.833
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q04",
+  "set": "v0",
+  "query": "Kubernetes release cadence change reasons Release Engineering team contributors end users support duration KEP-2572 Kubernetes Enhancement Proposal",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q04",
+  "set": "reworded",
+  "query": "Kubernetes release cadence change reasons COVID-19 pandemic contributor burden downstream consumers longer support",
+  "recall": [
+   0.75,
+   0.75
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.333,
+   0.333
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q06",
+  "set": "v0",
+  "query": "Pod Security Admission controller enforces Pod Security Standards at namespace level built-in in-tree admission plugin",
+  "recall": [
+   0.333,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q06",
+  "set": "reworded",
+  "query": "Pod Security Admission controller enforce Pod Security Standards namespace labels modes enforce audit warn",
+  "recall": [
+   0.167,
+   0.167
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.5
+  ],
+  "new_in_top10": 3
+ },
+ {
+  "id": "q07",
+  "set": "v0",
+  "query": "PodSecurityPolicy removal in Kubernetes v1.25 replaced by Pod Security Admission",
+  "recall": [
+   0.375,
+   0.375
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q07",
+  "set": "reworded",
+  "query": "PodSecurityPolicy removal replaced by Pod Security Admission Kubernetes 1.25 release notes",
+  "recall": [
+   0.25,
+   0.375
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.2,
+   1.0
+  ],
+  "new_in_top10": 4
+ },
+ {
+  "id": "q08",
+  "set": "v0",
+  "query": "Pod Security Admission graduation stages alpha beta stable Kubernetes release history",
+  "recall": [
+   0.375,
+   0.375
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 3
+ },
+ {
+  "id": "q08",
+  "set": "reworded",
+  "query": "Pod Security Admission graduation criteria alpha beta GA release timeline",
+  "recall": [
+   0.0,
+   0.0
+  ],
+  "hit": [
+   0,
+   0
+  ],
+  "mrr": [
+   0.0,
+   0.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q09",
+  "set": "v0",
+  "query": "PodSecurityPolicy removal reason breaking changes usability Pod Security Admission replacement rationale",
+  "recall": [
+   0.333,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.333,
+   0.333
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q09",
+  "set": "reworded",
+  "query": "Pod Security Policy deprecated rather than promoted to GA reasons policy authorization model rollout challenges inconsistent API",
+  "recall": [
+   0.167,
+   0.167
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   0.111
+  ],
+  "new_in_top10": 9
+ },
+ {
+  "id": "q11",
+  "set": "v0",
+  "query": "Kubernetes LegacyServiceAccountTokenCleanUp unused auto-generated ServiceAccount token Secret marked invalid then deleted legacy-token-invalid-since label",
+  "recall": [
+   0.6,
+   0.8
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q11",
+  "set": "reworded",
+  "query": "Kubernetes LegacyServiceAccountTokenCleanUp unused auto-generated legacy ServiceAccount token Secret invalid-since label deletion after one year",
+  "recall": [
+   1.0,
+   1.0
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q12",
+  "set": "v0",
+  "query": "LegacyServiceAccountTokenNoAutoGeneration feature gate Secret token auto-generation for ServiceAccounts before version 1.24",
+  "recall": [
+   0.4,
+   0.4
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.333
+  ],
+  "new_in_top10": 3
+ },
+ {
+  "id": "q12",
+  "set": "reworded",
+  "query": "Kubernetes LegacyServiceAccountTokenNoAutoGeneration feature gate Secret API objects no longer auto-generated for every ServiceAccount release",
+  "recall": [
+   0.2,
+   0.4
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 3
+ },
+ {
+  "id": "q13",
+  "set": "v0",
+  "query": "LegacyServiceAccountTokenCleanUp feature gate promoted to General Availability stable stage Kubernetes 1.30 changelog",
+  "recall": [
+   1.0,
+   1.0
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   0.5
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q13",
+  "set": "reworded",
+  "query": "LegacyServiceAccountTokenCleanUp feature gate graduated to general availability stable release changelog",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.25,
+   0.111
+  ],
+  "new_in_top10": 5
+ },
+ {
+  "id": "q14",
+  "set": "v0",
+  "query": "Kubernetes LegacyServiceAccountTokenNoAutoGeneration feature gate rationale replacing auto-generated Secret-based service account tokens with bound tokens from TokenRequest API for security",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q14",
+  "set": "reworded",
+  "query": "Kubernetes why Token Controller stopped auto-generating Secret-based ServiceAccount tokens security reasons TokenRequest API bound service account tokens motivation",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q16",
+  "set": "v0",
+  "query": "kube-apiserver warning non-standard IPv4 address leading zeros will be considered invalid in a future Kubernetes release StrictIPCIDRValidation disabled behavior",
+  "recall": [
+   0.6,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q16",
+  "set": "reworded",
+  "query": "StrictIPCIDRValidation feature gate default value kube-apiserver rejects IPv4 octets with leading zeros",
+  "recall": [
+   0.4,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.333,
+   0.5
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q17",
+  "set": "v0",
+  "query": "StrictIPCIDRValidation feature gate beta default true Kubernetes 1.36 leading zeros IPv4 Service warning before default enabled",
+  "recall": [
+   0.5,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.167,
+   0.167
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q17",
+  "set": "reworded",
+  "query": "Kubernetes Service IPv4 leading zeros validation warning before StrictIPCIDRValidation feature gate beta default enabled",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.143,
+   0.125
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q18",
+  "set": "v0",
+  "query": "KEP-4858 IP/CIDR Validation Improvements graduation criteria Beta GA stable release",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q18",
+  "set": "reworded",
+  "query": "KEP-4858 IP/CIDR Validation Improvements graduation criteria alpha beta GA feature gate enabled by default Kubernetes release",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.111,
+   0.111
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q19",
+  "set": "v0",
+  "query": "Kubernetes StrictIPCIDRValidation motivation security ambiguous IP address parsing leading zeros CVE-2021-29923",
+  "recall": [
+   0.5,
+   0.75
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.333,
+   0.333
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q19",
+  "set": "reworded",
+  "query": "StrictIPCIDRValidation feature gate security problems ambiguously parsed IP addresses leading zeros CVE-2021-29923",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.111,
+   0.1
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q21",
+  "set": "v0",
+  "query": "Kubernetes patch release support period for minor release branches approximately one year 1.19 and newer",
+  "recall": [
+   0.667,
+   0.667
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.333,
+   0.333
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q21",
+  "set": "reworded",
+  "query": "Kubernetes patch release support period for minor versions 1.19 and newer approximately 1 year end of life",
+  "recall": [
+   0.333,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.111,
+   0.1
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q22",
+  "set": "v0",
+  "query": "Kubernetes release cycle code freeze start week approximately 12 critical bug fixes only",
+  "recall": [
+   1.0,
+   1.0
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q22",
+  "set": "reworded",
+  "query": "Kubernetes release cycle Code Freeze start week number and duration in weeks",
+  "recall": [
+   1.0,
+   1.0
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q23",
+  "set": "v0",
+  "query": "Kubernetes version skew policy kubelet two minor versions older than kube-apiserver before 1.28",
+  "recall": [
+   0.667,
+   0.667
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q23",
+  "set": "reworded",
+  "query": "Kubernetes version skew policy kubelet two minor versions older than kube-apiserver before v1.28 supported skew",
+  "recall": [
+   0.667,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.2,
+   0.2
+  ],
+  "new_in_top10": 3
+ },
+ {
+  "id": "q24",
+  "set": "v0",
+  "query": "Kubernetes container image registry k8s.gcr.io default before 1.25 Google Container Registry custom domain history",
+  "recall": [
+   0.75,
+   0.625
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q24",
+  "set": "reworded",
+  "query": "Kubernetes 1.24 default container image registry k8s.gcr.io before registry.k8s.io migration",
+  "recall": [
+   0.75,
+   0.75
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q25",
+  "set": "v0",
+  "query": "legacy Google-hosted package repositories apt.kubernetes.io yum.kubernetes.io removal date March 2024 freeze September 13 2023 timeline",
+  "recall": [
+   0.667,
+   0.667
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.5
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q25",
+  "set": "reworded",
+  "query": "Kubernetes legacy Google-hosted package repositories removal date apt.kubernetes.io yum.kubernetes.io removed March 2024",
+  "recall": [
+   0.667,
+   0.667
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q26",
+  "set": "v0",
+  "query": "Kubernetes Yearly Support Period KEP-1498 motivation extend patch support from 9 months to 12-14 months end-user survey",
+  "recall": [
+   1.0,
+   1.0
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q26",
+  "set": "reworded",
+  "query": "Kubernetes Yearly Support Period KEP-1498 motivation end-user business cycles survey patch support 9 months to 1 year",
+  "recall": [
+   1.0,
+   1.0
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q30",
+  "set": "v0",
+  "query": "kube-apiserver AuthorizationConfiguration file multiple Webhook authorizers ordering failurePolicy NoOpinion Deny configuration example",
+  "recall": [
+   0.333,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q30",
+  "set": "reworded",
+  "query": "Structured Authorization Configuration file --authorization-config multiple webhooks setup kube-apiserver authorizers chain example",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q31",
+  "set": "v0",
+  "query": "RBAC deny rules not supported permissions purely additive Kubernetes authorization",
+  "recall": [
+   1.0,
+   1.0
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   0.5
+  ],
+  "new_in_top10": 6
+ },
+ {
+  "id": "q31",
+  "set": "reworded",
+  "query": "Kubernetes RBAC deny rules not supported, authorization verdict deny or no opinion",
+  "recall": [
+   0.0,
+   0.0
+  ],
+  "hit": [
+   0,
+   0
+  ],
+  "mrr": [
+   0.0,
+   0.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q32",
+  "set": "v0",
+  "query": "Kubernetes v1.28 KMSv1 feature gate deprecated default value enabled encryption at rest KMS v1 API",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q32",
+  "set": "reworded",
+  "query": "KMSv1 feature gate deprecated default value disabled Kubernetes 1.28 encryption at rest",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.333
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q33",
+  "set": "v0",
+  "query": "kube-apiserver OpenID Connect issuer trust single issuer before structured authentication configuration",
+  "recall": [
+   0.333,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.5
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q33",
+  "set": "reworded",
+  "query": "Kubernetes API server OpenID Connect issuer configuration before Structured Authentication Configuration, trust a single issuer, --oidc-issuer-url flag",
+  "recall": [
+   0.333,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q34",
+  "set": "v0",
+  "query": "Kubernetes KMS v2 encryption at rest feature gate KMSv2 graduation alpha beta stable Kubernetes version history",
+  "recall": [
+   0.333,
+   0.444
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   0.5
+  ],
+  "new_in_top10": 4
+ },
+ {
+  "id": "q34",
+  "set": "reworded",
+  "query": "KMS v2 encryption at rest graduated to stable general availability changelog",
+  "recall": [
+   0.333,
+   0.444
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.333
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q35",
+  "set": "v0",
+  "query": "ValidatingAdmissionPolicy feature gate alpha beta stable graduation release history",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   0.5
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q35",
+  "set": "reworded",
+  "query": "ValidatingAdmissionPolicy graduation to stable GA Kubernetes release",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.333,
+   0.25
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q36",
+  "set": "v0",
+  "query": "Kubernetes structured authentication configuration file motivation over command line OIDC flags limitations restart flexibility",
+  "recall": [
+   0.6,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q36",
+  "set": "reworded",
+  "query": "Structured Authentication Configuration motivation over command line OIDC flags limitations claim mappings multiple JWT authenticators",
+  "recall": [
+   0.2,
+   0.2
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.25,
+   0.25
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q40",
+  "set": "v0",
+  "query": "kube-proxy ipvs mode removal timeline Kubernetes v1.40 v1.43 nftables replacement",
+  "recall": [
+   0.375,
+   0.375
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.5
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q40",
+  "set": "reworded",
+  "query": "kube-proxy ipvs mode deprecation timeline removal nftables replacement",
+  "recall": [
+   0.5,
+   0.375
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q41",
+  "set": "v0",
+  "query": "EndpointSlice versus Endpoints API recommended for clients watching Service backends, dual-stack and trafficDistribution support",
+  "recall": [
+   0.4,
+   0.4
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.333
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q41",
+  "set": "reworded",
+  "query": "Kubernetes EndpointSlice API recommended over Endpoints API for new controllers discovering Service backends",
+  "recall": [
+   0.2,
+   0.2
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.5,
+   0.333
+  ],
+  "new_in_top10": 4
+ },
+ {
+  "id": "q42",
+  "set": "v0",
+  "query": "Kubernetes 1.20 enable IPv4/IPv6 dual-stack IPv6DualStack feature gate kube-apiserver kube-controller-manager kubelet kube-proxy configuration",
+  "recall": [
+   0.8,
+   0.8
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 3
+ },
+ {
+  "id": "q42",
+  "set": "reworded",
+  "query": "enable IPv4/IPv6 dual-stack feature gate IPv6DualStack kube-apiserver kube-controller-manager kube-proxy kubelet configuration flags in Kubernetes 1.20",
+  "recall": [
+   0.6,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q43",
+  "set": "v0",
+  "query": "Kubernetes 1.20 Service topologyKeys kubernetes.io/hostname prefer same node endpoints Service Topology feature gate ServiceTopology enabled",
+  "recall": [
+   0.6,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q43",
+  "set": "reworded",
+  "query": "Service Topology topologyKeys kubernetes.io/hostname prefer node local endpoints Kubernetes v1.20",
+  "recall": [
+   0.6,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 3
+ },
+ {
+  "id": "q44",
+  "set": "v0",
+  "query": "kube-proxy nftables mode graduated to stable GA Kubernetes 1.33 changelog iptables default",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 1
+ },
+ {
+  "id": "q44",
+  "set": "reworded",
+  "query": "Kubernetes kube-proxy nftables mode graduated to general availability in v1.33 changelog",
+  "recall": [
+   0.25,
+   0.25
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   0.333,
+   0.25
+  ],
+  "new_in_top10": 4
+ },
+ {
+  "id": "q45",
+  "set": "v0",
+  "query": "KEP-1880 Multiple Service CIDRs graduation criteria alpha beta GA stages",
+  "recall": [
+   0.5,
+   0.5
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 0
+ },
+ {
+  "id": "q45",
+  "set": "reworded",
+  "query": "MultiCIDRServiceAllocator feature gate graduation to GA stable Kubernetes release ServiceCIDR",
+  "recall": [
+   0.333,
+   0.333
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   0.5
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q46",
+  "set": "v0",
+  "query": "kube-proxy nftables backend motivation iptables deprecation Linux distributions performance problems ipvs replacement",
+  "recall": [
+   0.6,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 2
+ },
+ {
+  "id": "q46",
+  "set": "reworded",
+  "query": "kube-proxy iptables performance problems unfixable reasons nftables backend motivation Linux distributions deprecate iptables",
+  "recall": [
+   0.4,
+   0.6
+  ],
+  "hit": [
+   1,
+   1
+  ],
+  "mrr": [
+   1.0,
+   1.0
+  ],
+  "new_in_top10": 2
+ }
+]

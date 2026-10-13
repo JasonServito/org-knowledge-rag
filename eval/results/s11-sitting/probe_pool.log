@@ -1,0 +1,8 @@
+q08 rephrased, first search: pool 20 texts; labeled at ranks none (of 8 labels)
+q08 rephrased, retry search: pool 20 texts; labeled at ranks [14, 15, 19, 20] (of 8 labels)
+   retry query: Pod Security Admission graduation criteria alpha beta GA release timeline
+q31 rephrased, first search: pool 20 texts; labeled at ranks none (of 1 labels)
+q31 rephrased, retry search: pool 20 texts; labeled at ranks none (of 1 labels)
+   retry query: Kubernetes RBAC deny rules not supported, authorization verdict deny or no opinion
+c01 as routed: k04 reachable in top 10: False
+c01 no window: k04 reachable in top 10: True

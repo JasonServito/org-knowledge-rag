@@ -1,0 +1,34 @@
+k04 second sides:
+   {'document': 'web:/docs/setup/release/', 'section': ''}
+   {'document': 'web:/docs/setup/release/version-skew-policy/', 'section': 'Supported versions'}
+   {'document': 'web:/releases/patch-releases/', 'section': 'Support Period'}
+   {'document': 'kep:1498'}
+   {'document': 'sig-release:release-engineering/versioning.md', 'section': 'Kubernetes Release Versioning > Release versioning > Supported releases and component skew'}
+   {'document': 'sig-release:release-engineering/role-handbooks/patch-release-team.md', 'section': 'Patch Release Team Playbook'}
+   {'document': 'sig-release:release-engineering/handbooks/release-manager.md', 'section': 'Release Manager Handbook > Patch release management'}
+   {'document': 'kep:2572', 'section': 'KEP-2572: Defining the Kubernetes Release Cadence > Motivation > Non-Goals > Long-term support (LTS) releases'}
+   {'document': 'web:/blog/2023/04/06/keeping-kubernetes-secure-with-updated-go-versions/', 'section': 'The problem'}
+   {'document': 'web:/blog/2023/08/15/kubernetes-v1-28-release/', 'section': "What's New (Major Themes) > Changes to supported skew between control plane and node versions"}
+   {'document': 'web:/blog/2024/06/06/10-years-of-kubernetes/', 'section': 'A decade of Kubernetes'}
+== as routed {'mode': 'HISTORY', 'time_scope': {'kind': 'in', 'start': '1.30', 'end': None}}
+   1 33023 kep:1498 | Kubernetes Yearly Support Period > Motivation | [(20, 20), (20, 22), (22, None)]
+   2 43774 web:/blog/2024/04/17/kubernetes-v1-30-release/ | Project velocity | [(30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 36), (36, 36), (36, None)]
+   3 13086 changelog:1.30 | v1.30.0 > Changes by Kind > API Change | [(30, 30)]
+   4 13014 changelog:1.30 | v1.30.11 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   5 13102 changelog:1.30 | v1.30.0 > Changes by Kind > Documentation | [(30, 30)]
+   6 13116 changelog:1.30 | v1.30.0 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   7 13166 changelog:1.30 | v1.30.0-alpha.3 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   8 13115 changelog:1.30 | v1.30.0 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   9 43749 web:/blog/2024/04/17/kubernetes-v1-30-release/ |  | [(30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 36), (36, 36), (36, None)]
+  10 13117 changelog:1.30 | v1.30.0 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+== HISTORY no window {'mode': 'HISTORY', 'time_scope': {'kind': 'none', 'start': None, 'end': None}}
+   1 36376 sig-release:release-engineering/versioning.md |  Release Versioning > Release versioning > Supported releases and component skew | [(35, 36)]
+   2 36383 sig-release:release-engineering/versioning.md |  Release Versioning > Release versioning > Supported releases and component skew | [(36, None)]
+   3 43774 web:/blog/2024/04/17/kubernetes-v1-30-release/ | Project velocity | [(30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 36), (36, 36), (36, None)]
+   4 13014 changelog:1.30 | v1.30.11 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   5 13102 changelog:1.30 | v1.30.0 > Changes by Kind > Documentation | [(30, 30)]
+   6 13116 changelog:1.30 | v1.30.0 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   7 13166 changelog:1.30 | v1.30.0-alpha.3 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   8 13115 changelog:1.30 | v1.30.0 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
+   9 43749 web:/blog/2024/04/17/kubernetes-v1-30-release/ |  | [(30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 30), (30, 36), (36, 36), (36, None)]
+  10 13117 changelog:1.30 | v1.30.0 > Changes by Kind > Other (Cleanup or Flake) | [(30, 30)]
