@@ -20,7 +20,7 @@ An engineer asks a question about Kubernetes release process, authentication/sec
 5. Temporal filtering and authority adjustment per ADR-003.
 6. Conflict detection. It must, at minimum, surface `claim_mismatch` and cross-version supersession.
 7. Structured output per blueprint §18. Citations resolve to stored chunks.
-8. Bounded LangGraph corrective retrieval (≤ 3 iterations). It is kept only if it measurably helps.
+8. Bounded LangGraph corrective retrieval (≤ 3 iterations). It is kept only if it measurably helps. Tested in S11 and not adopted (ADR-011, 2026-10-12).
 9. A fixed golden set and a one-command eval run, producing an ablation table.
 10. A FastAPI `/query` endpoint and Langfuse traces.
 
@@ -43,7 +43,7 @@ The **hard gates** apply to the finished Phase 1 system, not to the dense baseli
 | AC4 | On the 4 seed conflict cases, the answer surfaces the conflict (claimed vs. observed, or old vs. new) rather than asserting one side | Conflict set v0 (ADR-007 D4), end to end: the seed questions are fixed without looking at their results, and each reports whether search retrieved it (S10-R2 decision 3) |
 | AC5 | CURRENT questions: the primary claim is supported by evidence valid at the latest release on every seed CURRENT question | Golden set |
 | AC6 | HISTORY questions naming a release or date: the cited evidence is valid within the requested window | Golden set |
-| AC7 | The ablation table covers the full sequence: dense → +lexical/RRF → +rerank → +temporal/authority → +conflict → +corrective. Every stage kept either improves its target metric or has its retention justified in writing. | README / eval report |
+| AC7 | The ablation table covers the full sequence: dense → +lexical/RRF → +rerank → +temporal/authority → +conflict → +corrective. Every stage kept either improves its target metric or has its retention justified in writing. +corrective was tested in the S11-R1 sitting and not adopted (ADR-011): its evidence is retrieval-only sitting probes, not an ablation row. | README / eval report |
 | AC8 | Reproducibility: re-ingesting the same manifest yields identical version counts and hashes. `make eval` (or equivalent) runs end to end locally. | CI or manual run |
 
 **Measured, with thresholds set after the baseline.** Setting numbers before a baseline exists would be guesswork. The dense baseline set the first ones (below):

@@ -31,7 +31,8 @@ target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
 # Ruff also formats code blocks inside Markdown by default; docs and ADRs stay hand-written.
-extend-exclude = ["*.md"]
+# eval/results holds tool outputs, including the S11-R1 sitting's scratch probes (ADR-011).
+extend-exclude = ["*.md", "eval/results"]
 
 [tool.ruff.lint]
 # E/W: pycodestyle, F: pyflakes, I: import sorting, B: bugbear,

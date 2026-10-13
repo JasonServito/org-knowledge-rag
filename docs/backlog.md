@@ -358,15 +358,32 @@ Tasks:
 - [x] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
 - [x] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T5c, T7.
 
-### 🟨 S11 Corrective agentic retrieval *(Stage 8)*
+### ✅ S11 Corrective agentic retrieval *(Stage 8)*
 
-- **Outcome:** a bounded LangGraph workflow (router → retrieve → grade → retry ≤ 3 → generate).
-- **Exit:** kept only if the ablation shows benefit on hard queries worth the extra latency and cost; trajectory metrics recorded.
+- **Outcome:** corrective retrieval is tested and not adopted (ADR-011): the S11-R1 sitting's probes found no grader that tells thin evidence from enough, and no second-search design that passes the keep rule fixed before its test.
+- **Slice doc:** `docs/slices/S11-corrective-retrieval.md`
+- **Metrics to move:** none adopted (ADR-011).
 
-### ⬜ S12 Phase 1 closeout
+- [x] **S11-T1 `[core]` ADR-011: corrective retrieval.** Decided in the S11-R1 sitting (2026-10-12): not adopted.
+- [x] **S11-T2 `[commodity]` The S11 write-up.**
+  - `docs/evaluation.md`'s "Corrective retrieval (S11)" section from `summarize.py`'s output; the spec's must-have 8 and AC7 notes; ADR-006 and ADR-010 amendments; the ADR index; the Greptile list; glossary terms.
+  - Done when: every number in the section matches `summarize.py`'s output; `make check` is green.
+  - Deps: T1.
+- [x] **S11-T3 `[commodity]` The backlog after S11.**
+  - S11's tasks; S12's two AC4 items; the ADR queue (011 corrective retrieval, 012 deployment); the proposed additions from the sitting.
+  - Done when: each item in the run contract's list is in the backlog; `make check` is green.
+  - Deps: T1.
+- [x] **S11-T4 `[commodity]` The S11 retro.**
+  - `/slice-retro S11` as the run's last commit: the slice brief, S11 ✅ and S12 🟨, `docs/architecture.md`, the memory review.
+  - Done when: the retro's exit checks pass.
+  - Deps: T2, T3.
+
+### 🟨 S12 Phase 1 closeout
 
 - **Outcome:** the product spec's AC1–AC8 are verified and M1 is declared.
 - **Candidate tasks:**
+  - ADR-010 D4's fallbacks: a separate detector call and the stale-KEP rule, measured as their own row (S11-R1 decision 1). AC4's q01.
+  - AC4 plan for q08 (k03) and c01 (k04), decided in the S12 sitting (S11-R1 decision 6). Lead: c01's k04 is reachable when its 1.30 window is dropped (`eval/results/s11-sitting/probe_pool.log`).
   - FastAPI `POST /query`
   - Langfuse on the API path
   - Streamlit dev UI
@@ -382,7 +399,7 @@ Tasks:
 |---|---|---|
 | ⬜ **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
 | ⬜ **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; a local queue abstraction shaped like SQS; idempotent worker; request IDs; structured logs; timeouts and retries. |
-| ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-011 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
+| ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-012 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
 | ⬜ **S16 CI/CD** | Stage 12 | ECR build/push, deploy to EC2, smoke eval in CI. |
 | ⬜ **S17 Next.js UI** | Stage 13 | Answer with citations, authority/version badges, a conflict panel, a timeline, and provenance views. |
 | ⬜ **S18 Final evaluation + portfolio assets** | Stage 14 | Full benchmark, architecture docs, README, demo video, resume bullets backed by measured results. |
@@ -402,7 +419,8 @@ ADRs are decided when their slice starts, not earlier.
 | 008 | Reranker model and candidate count | S08 (Accepted) |
 | 009 | Query-mode routing | S09 (Accepted) |
 | 010 | Conflict detection method | S10 (Accepted) |
-| 011 | Deployment topology | S15 |
+| 011 | Corrective retrieval | S11 (Accepted) |
+| 012 | Deployment topology | S15 |
 
 ## Proposed additions (triage by the developer)
 
@@ -411,7 +429,7 @@ ADRs are decided when their slice starts, not earlier.
 - **Evaluate Jev (TypeSafe) as a query-mode router (ADR-009) and evidence grader (S11); candidate only.** Reason: a fast typed-decision model might beat rules at mode routing and an LLM at sufficiency grading. Adopt only on ablation evidence. (Researched 2026-09-27; Jev is early access, v1.13.)
   - **S06 prerequisites:** met in the S06-R1 sitting: ADR-007's `mode` is the human-labeled expected mode, and the harness records the false-refusal rate.
   - **S09:** done without Jev. The S09-R1 sitting chose an LLM router (ADR-009): rules scored 12 of 36 on a blind rewording, Opus 35 of 36.
-  - **S11:** compare an LLM grader with a Jev Noul grader on AC3 and false-refusal rate.
+  - **S11:** dropped in the S11-R1 sitting; no grader adopted (ADR-011).
   - **If adopted:** new ADR (dependency); small interface + test fake; pinned version (never `jev-latest`); threshold in config.
   - **Out of bounds:** citation validation (AC2 stays deterministic), date/release resolution, "needs retrieval?" routing.
 - **Community SIG annual reports as WHY-evidence source (deferred).** Reason: `community/sig-{release,auth,network}/annual-report-*.md` (2020–2025) explain SIG priorities and rationale; left out of manifest v0 to keep governance scope to README/charter. (Found in S02-T1.)
@@ -433,6 +451,7 @@ ADRs are decided when their slice starts, not earlier.
 - **S08 parked items (PR #37).** Reason: gaps the reviewers and Greptile parked as beyond the plan. (1) The prices aren't recorded in `run.json` or `summary.json`, so `make eval-resummarize` after a price change would reprice old runs. (2) The real-model test checks only that the weights file is cached; a partial cache would download the rest instead of skipping. (3) No test that the `retrieve` trace records `rerank_score`, that dense and hybrid never import torch, or that they never call the reranker; each was checked by hand. (4) ADR-008 and the cross-encoder docstring give the model-only load (3 s); a process pays about 7.5 s with imports. (5) 3 comments still say "both modes" (`.env.example`, `settings.py`). (6) The integration `settings` fixture reads `.env`, so a local `RETRIEVAL_MODE` would change the mode of tests that don't pin it. (S08-R1, 2026-10-09.) **(5) and (6) moved into S09-T4 in the S09-R1 sitting.**
 - **Dated CHANGE questions: retrieve per window end, then merge (ADR-003 D4, deferred).** Reason: none of v0's 9 CHANGE questions names a release or year, so the plan can't be measured; CHANGE gets no filter until a golden question needs it. (S09-R1 sitting, decision 3.)
 - **Golden set v1: a router check set.** Reason: the S09-R1 sitting's blind rewording of v0's 36 answerable questions (Slack style, same meaning) exposed fitted router rules (36/36 → 12/36); it's in `eval/candidates/router-rewording-v0.yaml`. A reworded set, spot-checked by the developer, would test the router and retrieval on wording the system wasn't tuned on. (S09-R1 sitting, 2026-10-09.)
+  - **S11-R1:** the developer spot-checked 5 of 36 (all match) and Claude read all 36; the set was the sitting's hard set.
 - **S09-R1 cleanup (PR #39 parked 2, 4, 16).** Reason: `Mode` is defined twice (`retrieval/router.py`, `eval/golden.py`); `golden_window` re-implements `golden._minor`; `route_line` uses an `assert` in production code. (Kept in the S09-R2 sitting.)
 - **Test: pin "stale" to dates, not releases (PR #39 parked 6).** Reason: switching `current` to "open end release" breaks no test; only the real baselines catch it. (Kept in the S09-R2 sitting.)
 - **Golden set v1: count an unanswerable row the same way in `summarize` and `score_retrieval_only` (PR #39 parked 10).** Reason: `summarize` would count an unanswerable row with a mode or window; `score_retrieval_only` wouldn't. No effect on v0. (Kept in the S09-R2 sitting.)
@@ -440,3 +459,5 @@ ADRs are decided when their slice starts, not earlier.
 - **Record the router effort in the routes file (PR #39, Greptile).** Reason: after a `ROUTER_EFFORT` change the eval reuses old routes while `run.json` shows the new effort. (Kept in the S09-R2 sitting.)
 - **Atomic saves for the routes and question-vector files (PR #39, Greptile).** Reason: a plain overwrite interrupted midway could lose them (worst case: re-pay ~$0.18). (Kept in the S09-R2 sitting.)
 - **S12 sitting: define AC6.** Reason: AC6 says cited evidence must be valid within the window, but v0 labels later documents as primary sources for HISTORY questions, and a hit cites the newest copy of its text. Out of S09's scope (S09-R2 sitting).
+- **Query rewriting for informal wording (S11-R1 sitting lead).** A second search on every question with a Haiku-written query, RRF with the first 10. Rephrased Recall@10 0.427 → 0.468 and MRR 0.607 → 0.671, v0 neutral; 1 run, the best of 4 designs, v0's routes reused; ~5.5 s more per question; it would run on unanswerable questions too (q48). Test it on golden v1's verified rephrased set with ADR-011 D2's rule.
+- **Conflict set v1 candidates (S10-T8; parked in the S11-R1 sitting).** q18 `gate:StrictIPCIDRValidation` 10419 vs. 10420; q34 `gate:KMSv2` 9930 vs. 9931; q35 the v1.28 blog 41925 vs. 42160 (borderline).

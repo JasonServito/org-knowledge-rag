@@ -1,0 +1,18 @@
+q08 [as routed] route=CHANGE/none:None,None -> no seed side
+q08 [CURRENT, no window] route=CURRENT/none:None,None -> no seed side
+q08 [HISTORY, no window] route=HISTORY/none:None,None -> no seed side
+q08 [CHANGE, no window] route=CHANGE/none:None,None -> no seed side
+q08 [WHY, no window] route=WHY/none:None,None -> no seed side
+c01 [as routed] route=HISTORY/in:1.30,None -> no seed side
+c01 [CURRENT, no window] route=CURRENT/none:None,None -> ['r1:release-engineering/versioning.md']
+c01 [HISTORY, no window] route=HISTORY/none:None,None -> ['r1:release-engineering/versioning.md', 'r2:release-engineering/versioning.md']
+c01 [CHANGE, no window] route=CHANGE/none:None,None -> ['r1:release-engineering/versioning.md', 'r2:release-engineering/versioning.md']
+c01 [WHY, no window] route=WHY/none:None,None -> ['r1:release-engineering/versioning.md', 'r2:release-engineering/versioning.md']
+--- unanswerable routes
+q05 WHY none | Which SIG chairs or tech leads objected to the release cadence change in the leads meeting
+q10 WHY none | What objections were raised in the "3-Tier Pod Security Proposal" doc comments?
+q15 HISTORY after | How many clusters had legacy tokens deleted after v1.30?
+q20 CURRENT none | How many production clusters store non-canonical IP addresses in etcd?
+q27 HISTORY none | What did the SIG Release feedback survey on the three-releases-per-year cadence find?
+q47 HISTORY none | What share of clusters were still running kube-proxy in ipvs mode when it was deprecated?
+q48 CHANGE none | In which Kubernetes release will StrictIPCIDRValidation graduate to GA?

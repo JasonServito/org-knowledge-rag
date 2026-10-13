@@ -59,3 +59,7 @@
 
 - **D1 confirmed for the S06 baseline (S06-R1 sitting, decision 5):** `claude-opus-5-5` at `medium` effort stays the answer model, frozen from the dense baseline on. Evidence: S04-T8's 5 traced asks cost $0.020–0.041 each with 0 reasoning tokens (`eval/results/s04/traces.json`), below this ADR's $0.07–0.11 estimate, so 3 baseline runs of 50 questions cost about $5. Rejected: Sonnet 5.5, which halves a small cost but is weaker at "insufficient evidence".
 - **D2 kept (S06-R1 sitting, decision 6):** `messages.parse` stays. A cut-off or refused answer still loses its stop reason; the eval runner records it as an error row and continues. Rejected: `messages.create` with our own validation, which would change D2 for a path seen 0 times in S04.
+
+## Amendment 2026-10-12
+
+- **D3's revisit trigger "the S11 LangGraph integration" closes (S11-R1 sitting):** S11 added no LangGraph, because corrective retrieval wasn't adopted (ADR-011 D1). D3 is unchanged: Langfuse still traces each `ask`. Rejected: keeping the trigger open, with no LangGraph integration planned (ADR-011 D1).

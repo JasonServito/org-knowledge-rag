@@ -36,11 +36,13 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Chunking (structure-aware)** | Splitting documents into retrievable pieces at their headings, so each chunk is one section with its heading path. Code blocks and HTML tables are never cut; an oversize list or pipe table is cut between items or rows (S05). |
 | **Citation validation** | A plain-code check that every chunk id the model cites was retrieved for this question. One bad id rejects the answer (ADR-006). |
 | **Conflict set** | The answer key for conflict detection: every disagreement among each eval question's fixed top-10 results, written before the runs, with 4 seed cases (ADR-007 D4). Precision = flagged conflicts that are in it; recall = its conflicts that search retrieved and the system flagged. |
+| **Corrective RAG** | Checking the search results before answering: a grader judges them, and when they fall short, the system searches again with a changed query, a bounded number of times. Tested in S11 and not adopted (ADR-011). |
 | **Cosine distance** | 1 − the cosine similarity of two vectors: 0 = same direction, 1 = unrelated, 2 = opposite. pgvector's `<=>` operator. |
 | **Cross-encoder (reranker)** | Scores a query and document *together*. More accurate but slower; used on a small candidate set. |
 | **Dense retrieval** | Finding chunks whose embedding vectors are close to the query's embedding. |
 | **Embedding** | A fixed-length vector representing text meaning, produced by a model (here, Voyage). |
 | **Embedding cache (content-hash)** | Reuses a stored vector when a chunk's embedded text hashes the same as text already embedded, so an unchanged section is paid for once across versions. It only works if the embedded text holds no per-version fields. |
+| **Evidence grader** | A model call that reads a question's retrieved results and judges whether they're enough to answer it. S11's Haiku grader said "enough" even when no correct source was in the 10 (ADR-011). |
 | **Faithfulness / groundedness** | Whether every claim in the answer is supported by the retrieved evidence. |
 | **False refusal** | The system answers "insufficient evidence" to a question that has an answer in the corpus. The cost of being too cautious; AC3 measures the opposite case. |
 | **Golden set** | A fixed, human-verified set of questions with expected answers and sources, used to evaluate changes. |
@@ -53,6 +55,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **MRR** | Mean Reciprocal Rank: the average of 1 / (rank of the first relevant result). |
 | **nDCG** | Normalized Discounted Cumulative Gain: a rank-quality score that rewards relevant results appearing higher. |
 | **Oracle (for grading)** | An independent source of truth used to check a heuristic's output. S02 graded git's rename guesses against the site's redirects, Hugo aliases and gate titles. |
+| **Query rewriting** | Having a model rewrite the user's question into a search query in the corpus's own words (full names, not slang), then searching with it, usually beside the original. A proposed addition after S11, for informally worded questions. |
 | **Query router** | A step before search that sorts a question by what it asks for (here an LLM call returning a query mode and the release or year it names), so retrieval can pick a plan per kind of question. Code, not the model, turns the release or year into a release window (ADR-009). |
 | **RAG** | Retrieval-Augmented Generation: retrieve evidence, then have an LLM answer from that evidence. |
 | **Recall@K** | The fraction of relevant items that appear in the top K results. |

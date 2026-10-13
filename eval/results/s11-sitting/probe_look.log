@@ -1,0 +1,53 @@
+== v0 q34: What were the graduation stages of KMS v2 encryption at rest?
+   query: Kubernetes KMS v2 encryption at rest feature gate KMSv2 graduation alpha beta stable Kubernetes version history
+   -- first
+    1     L gate:KMSv2 | 
+    2       gate:KMSv2 | 
+    3     L web:/blog/2023/12/13/kubernetes-v1-29-release/ | tps://github.com/kubernetes/community/tree/master/sig-auth))
+    4     L changelog:1.25 | v1.25.0 > What's New (Major Themes) > Introduced KMS v2
+    5       gate:KMSv1 | 
+    6       web:/blog/2023/05/16/kms-v2-moves-to-beta/ | What is KMS?
+    7       kep:3299 |  it has been enabled (i.e. can we roll back the enablement)?
+    8       kep:3299 |  it has been enabled (i.e. can we roll back the enablement)?
+    9       kep:3299 | KEP-3299: KMS v2 Improvements
+   10       kep:3299 | KEP-3299: KMS v2 Improvements
+   -- merged
+    1 NEW   changelog:1.28 | v1.28.0-rc.0 > Changes by Kind > API Change
+         - PersistentVolumes have a new LastPhaseTransitionTime field which holds a timestamp of when the volume last transitioned its phase. ([#116469](https://github.com/kubernetes/kubernetes/pull/116469), [@RomanBednar](https://github.com/RomanBednar)) [SIG API Machinery, Apps, Auth, Node, Release, Storag
+    2     L gate:KMSv2 | 
+    3       gate:KMSv2 | 
+    4     L web:/blog/2023/12/13/kubernetes-v1-29-release/ | tps://github.com/kubernetes/community/tree/master/sig-auth))
+    5     L changelog:1.25 | v1.25.0 > What's New (Major Themes) > Introduced KMS v2
+    6       gate:KMSv1 | 
+    7 NEW   changelog:1.27 | v1.27.0-beta.0 > Changes by Kind > API Change
+    8 NEW L web:/blog/2022/08/23/kubernetes-v1-25-release/ | What's New (Major Themes) > Introduced KMS v2 API
+    9 NEW   web:/blog/2022/08/23/kubernetes-v1-25-release/ | What's New (Major Themes) > Introduced KMS v2 API
+   10       web:/blog/2023/05/16/kms-v2-moves-to-beta/ | What is KMS?
+== reworded q31: explicit deny rules in RBAC, possible?
+   query: Kubernetes RBAC deny rules not supported, authorization verdict deny or no opinion
+   -- first
+    1       web:/docs/reference/access-authn-authz/authorization/ | Authorization modes
+    2       web:/docs/concepts/security/rbac-good-practices/ |  denial of service risks > Object creation denial-of-service
+    3       kep:5681 | ternatives > Why not just use `ValidatingAdmissionPolicies`?
+    4       web:/docs/reference/access-authn-authz/authorization/ | zation modes > Command line authorization mode configuration
+    5       web:/docs/reference/access-authn-authz/rbac/ | Upgrading from ABAC > Parallel authorizers
+    6       kep:5681 | horization > Proposal > Composite / Union Authorizer Support
+    7       web:/docs/reference/access-authn-authz/authorization/ | Authorization verdicts
+    8       web:/docs/reference/access-authn-authz/rbac/ | API objects > Referring to resources
+    9       kep:5681 | EP-5681: Conditional Authorization > Authorizer requirements
+   10       kep:5681 | g a concrete decision from a conditional authorization chain
+         web:/docs/reference/access-authn-authz/authorization/ {{< warning >}} Enabling the `AlwaysAllow` mode bypasses authorization; do not use this on a cluster where you do not trust **all** potential API clients, including the workloads that you run.  Authorization mechanisms typically return either a _deny
+         web:/docs/concepts/security/rbac-good-practices/ Users who have rights to create objects in a cluster may be able to create sufficient large  objects to create a denial of service condition either based on the size or number of objects, as discussed in [etcd used by Kubernetes is vulnerable to OOM 
+         kep:5681 ![Over-grant in RBAC, deny in VAP](images/over-grant-rbac-deny-vap.png)  This proposal solves all of these mentioned issues through a two-phase model:  1. the authorizer **partially evaluates** its authorization policies into    `Allow`, `Deny`, `NoO
+         web:/docs/reference/access-authn-authz/authorization/ You can use the following modes:  * `--authorization-mode=ABAC` (Attribute-based access control mode) * `--authorization-mode=RBAC` (Role-based access control mode) * `--authorization-mode=Node` (Node authorizer) * `--authorization-mode=Webhook` (Web
+   -- merged
+    1       web:/docs/reference/access-authn-authz/authorization/ | Authorization modes
+    2       web:/docs/concepts/security/rbac-good-practices/ |  denial of service risks > Object creation denial-of-service
+    3       kep:5681 | ternatives > Why not just use `ValidatingAdmissionPolicies`?
+    4 NEW   kep:5681 | horization > Proposal > Composite / Union Authorizer Support
+    5       web:/docs/reference/access-authn-authz/authorization/ | zation modes > Command line authorization mode configuration
+    6       web:/docs/reference/access-authn-authz/rbac/ | Upgrading from ABAC > Parallel authorizers
+    7       kep:5681 | horization > Proposal > Composite / Union Authorizer Support
+    8 NEW   kep:5681 | horization > Proposal > Composite / Union Authorizer Support
+    9       web:/docs/reference/access-authn-authz/authorization/ | Authorization verdicts
+   10       web:/docs/reference/access-authn-authz/rbac/ | API objects > Referring to resources

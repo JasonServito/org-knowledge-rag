@@ -82,3 +82,7 @@ Decided by the developer after run 1 missed its AC3 gate; the evidence is in `do
 | Where | Was | Now | Evidence |
 |---|---|---|---|
 | D1, out-of-date KEP status | The claim line shows the KEP's latest milestone, plus how many releases older it is when older than the target ("latest milestone v1.38" when it isn't); the `claim_mismatch` summary repeats the milestone | The milestone shows only when it is older than the target release, in both places. A milestone at or after the target is a plan, not evidence of a release, and is left out | Run 1 answered unanswerable q48 ("In which release will StrictIPCIDRValidation graduate to GA?") with "GA being targeted for Kubernetes 1.38", from KEP-4858's "(latest milestone v1.38)": AC3 6/7. Its answer already called that "only a planned target", so marking the milestone as a plan was rejected. The stale-KEP signal D1 added it for (KEP-2572, v1.22) is unchanged |
+
+## Amendment 2026-10-12
+
+- **Consequences' "S11's grader … Revisit with S11's design" closes (S11-R1 sitting):** there is no grader, because corrective retrieval wasn't adopted (ADR-011 D1). The revisit trigger "the S11 graph" closes with it. No decision here changes. Rejected: keeping the note open, with no grader to revisit (ADR-011 D1).
