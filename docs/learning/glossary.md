@@ -12,6 +12,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Claim mismatch** | A conflict where the claimed status disagrees with the observed stage. Surfaced, never silently resolved. |
 | **Conflict detection** | Finding where retrieved evidence disagrees and recording it in the answer's `conflicts[]` instead of leaving it to the model's prose (ADR-010). Code compares stored facts (`claim_mismatch`, `history_date`); the answer model flags texts that disagree; code settles each by fixed rules (ADR-003 D6) or marks it unresolved. |
 | **Content hash** | A hash of normalized document content. The same hash means no new version (ADR-002 D2). |
+| **Decision provenance** | Where a decision came from: the dated chain of texts from the problem to the current docs (problem, discussion, proposal, decision, implementation, current docs). S13 builds it by rules from recorded links and dates (ADR-012), not with an LLM. |
 | **Effective stage** | Observed stage if known, otherwise claimed stage with low confidence, otherwise unknown (ADR-003 D2). |
 | **Feature gate** | A named on/off switch for a Kubernetes feature, with a lifecycle stage per release (alpha, beta, stable, deprecated). The feature-gate reference lists each gate's stage ranges; `observed_lifecycle` keeps the stage each release's own reference gives (S09). |
 | **KEP** | Kubernetes Enhancement Proposal: a design + decision + tracking document per feature or process change. |
@@ -46,6 +47,7 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Faithfulness / groundedness** | Whether every claim in the answer is supported by the retrieved evidence. |
 | **False refusal** | The system answers "insufficient evidence" to a question that has an answer in the corpus. The cost of being too cautious; AC3 measures the opposite case. |
 | **Golden set** | A fixed, human-verified set of questions with expected answers and sources, used to evaluate changes. |
+| **Held-out set** | Data kept aside and looked at only after the method is frozen, so a score on it isn't fitted. S13 drew 1 random KEP after committing the chain rules; the builder got 5 of 6 steps on it. |
 | **Hit@K (hit rate)** | 1 if any relevant item is in the top K results, else 0, averaged over questions. Unlike Recall@K, it asks "was one good source found?", not "how many?". |
 | **HNSW** | Hierarchical Navigable Small World: a graph-based approximate nearest-neighbour index (supported by pgvector). Its search width (`hnsw.ef_search`) is how many candidates a search keeps: wider is slower but closer to an exact scan, and a scan returns at most that many rows. |
 | **Hybrid retrieval** | Running dense and lexical retrieval for the same question and merging their ranked lists (here with RRF), so a text found by meaning or by exact words can rank high. |
