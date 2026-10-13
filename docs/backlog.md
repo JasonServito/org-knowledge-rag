@@ -418,7 +418,7 @@ Tasks:
 - [x] **S13-T2 `[human]` Gold chains v0.** Both chains' steps and the held-out chain's WHY question, before any system output; drafted by Claude at the developer's request, signed off by the developer in the S13-R1 sitting. Deps: the contract.
 - [x] **S13-T3 `[core]` Decision tables and the chain builder.** `decisions`, `decision_evidence`; `make chains`; `orgknow chain`. Deps: T1.
 - [x] **S13-T4 `[core]` Decision-chain completeness.** `make eval-chain`: both numbers per chain, and the control. Deps: T2, T3.
-- [ ] **S13-T5 `[commodity]` `GET /decisions/{canonical_id}`.** Deps: T3.
+- [x] **S13-T5 `[commodity]` `GET /decisions/{canonical_id}`.** Deps: T3.
 - [ ] **S13-T6 `[commodity]` Docs and the S13 retro.** Deps: T4, T5.
 
 ---

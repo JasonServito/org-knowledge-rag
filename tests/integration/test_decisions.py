@@ -1,5 +1,6 @@
 """S13-T3: the decision tables (migration 0008), `make chains`' build and store, the stored chain
-read back (`load_chain`, `orgknow chain`), and `make reset-corpus` emptying the tables.
+read back (`load_chain`, `orgknow chain`, and S13-T5's `GET /decisions/{canonical_id}`), and
+`make reset-corpus` emptying the tables.
 
 Every row is synthetic, built inside `conn`'s rolled-back transaction: a seed KEP, its tracking
 issue, the discussion and the proposal PR the issue's fields name, blog posts, docs pages and
@@ -9,16 +10,20 @@ rules; distances are hand arithmetic (the cosine distance of two unit vectors is
 
 import math
 import re
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import psycopg
 import pytest
+from fastapi.testclient import TestClient
 from psycopg.errors import CheckViolation, UniqueViolation
 from psycopg.rows import TupleRow
 
 from orgknow import cli
+from orgknow.api import app as api_app
+from orgknow.api.app import create_app
 from orgknow.db.chunks import add_chunks, add_embedding
 from orgknow.db.decisions import nearest_current_texts, replace_decision
 from orgknow.db.documents import create_document
@@ -473,16 +478,56 @@ def test_deleting_a_cited_chunk_deletes_its_step(conn: Conn) -> None:
     assert conn.execute("SELECT count(*) FROM decision_evidence").fetchone() == (0,)
 
 
-def test_make_reset_corpus_empties_both_tables(conn: Conn, chain_settings: Settings) -> None:
-    # The statement `make reset-corpus` runs on the dev database, read from the Makefile and run
-    # here inside the rolled-back transaction.
+def _reset_corpus(conn: Conn) -> None:
+    """The statement `make reset-corpus` runs on the dev database, read from the Makefile and run
+    here inside the rolled-back transaction."""
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     match = re.search(r'"(TRUNCATE [^"]+)"', makefile)
     assert match is not None
+    conn.execute(match[1])  # type: ignore[arg-type]
+
+
+def test_make_reset_corpus_empties_both_tables(conn: Conn, chain_settings: Settings) -> None:
     _corpus(conn)
     store_chain(conn, "kep:9001", chain_settings)
 
-    conn.execute(match[1])  # type: ignore[arg-type]
+    _reset_corpus(conn)
 
     assert conn.execute("SELECT count(*) FROM decisions").fetchone() == (0,)
     assert conn.execute("SELECT count(*) FROM decision_evidence").fetchone() == (0,)
+
+
+def test_get_decisions_returns_load_chains_model_then_404_after_the_reset(
+    conn: Conn, chain_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The chain is stored inside this test's rolled-back transaction, which a new connection
+    # can't see: the request gets this test's connection instead of opening its own.
+    _corpus(conn)
+    store_chain(conn, "kep:9001", chain_settings)
+    monkeypatch.setattr(api_app.psycopg, "connect", lambda *args, **kwargs: nullcontext(conn))
+    client = TestClient(create_app(chain_settings))  # no startup: the route needs no paid client
+
+    stored = client.get("/decisions/kep:9001")
+
+    assert stored.status_code == 200
+    # The model `orgknow chain` prints from, for the same rows (its steps are checked by hand in
+    # test_load_chain_gives_each_step_its_source_url_and_tier), dumped to JSON.
+    chain = load_chain(conn, "kep:9001", load_repo_urls(ROOT / "config" / "corpus_manifest.yaml"))
+    assert chain is not None
+    assert stored.json() == chain.model_dump(mode="json")
+    assert [step["step"] for step in stored.json()["steps"]] == [
+        "problem",
+        "discussion",
+        "proposal",
+        "decision",
+        "implementation",
+        "current_docs",
+    ]
+
+    _reset_corpus(conn)
+    after_reset = client.get("/decisions/kep:9001")
+
+    assert after_reset.status_code == 404
+    assert after_reset.json() == {
+        "detail": "no stored decision chain for kep:9001; chains are built by make chains"
+    }
