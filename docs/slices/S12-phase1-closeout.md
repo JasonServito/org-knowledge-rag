@@ -88,7 +88,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S12-R1: Phase 1 closeout
 
-- **Status:** planned
+- **Status:** PR open
 - **Tasks:** T1, T2, T3, T4.
 - **Goal (plain words):** add the two missing answer checks, serve the pipeline over HTTP, and write down how Phase 1 ends (3 stated exceptions, each with its cause), then close the slice.
 
