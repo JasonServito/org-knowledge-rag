@@ -60,9 +60,10 @@ These mirror `docs/backlog.md`; details live here and in the run contract.
 
 ### S13-T2: Gold chains v0 `[human]`
 
-- **Goal:** the developer's labels for both chains' steps, fixed before any system output.
-- **Done when:** `eval/golden_set/chains-v0.yaml` holds both chains (steps, acceptable texts, dates; the held-out chain's WHY question), copied in by the developer, its hash recorded in the contract.
-- **Notes / pointers:** Claude drafts label sheets with excerpts a script copies from the source; the developer reviews every step. Done in the S13-R1 sitting, after the contract commit and the held-out draw, so the run can score.
+- **Goal:** gold labels for both chains' steps, fixed before any system output.
+- **Done when:** `eval/golden_set/chains-v0.yaml` holds both chains (steps, acceptable texts, dates; the held-out chain's WHY question), signed off and copied in by the developer, its hash recorded in the contract.
+- **Notes / pointers:** a label sheet with excerpts a script copies from the source (`label_sheet.py`). Done in the S13-R1 sitting, after the contract commit and the held-out draw: drafted by Claude at the developer's request, reviewed in full and signed off by the developer (see the contract's "Gold chains v0").
+- **Status:** ✅ done in the sitting (2026-10-13).
 - **Deps:** the contract (rules frozen first).
 
 ### S13-T3: Decision tables and the chain builder `[core]`
@@ -173,7 +174,7 @@ The scripts and outputs are in `eval/results/s13-sitting/`; its `README.md` list
 #### Pinned: T1 (the GitHub items)
 
 - **Manifest:** a `decision_chains` section; each chain has `seed` (e.g. `kep:2572`) and `items`, each `{repo, kind, number}` with `repo` a key of `repos` and `kind` one of `issues`, `pull`, `discussions`. Chain 1: `{sig-release, discussions, 1290}`, `{enhancements, issues, 2572}`, `{enhancements, pull, 2567}`. The held-out chain's items are recorded below at the draw.
-- **Which items a chain gets** (the rule used for the held-out chain): the tracking issue (`enhancements/issues/<KEP number>`); the proposal PR (the "Kubernetes Enhancement Proposal:" field when it links an `enhancements` PR, else the first PR on the first "KEP (`k/enhancements`) update PR(s):" line); the "Discussion Link:" target when it's an issue, PR or discussion in a manifest repo. Nothing else.
+- **Which items a chain gets** (the rule used for the held-out chain): the tracking issue (`enhancements/issues/<KEP number>`); the proposal PR (the "Kubernetes Enhancement Proposal:" field when its first URL is an `enhancements` PR, else the first URL on the first "KEP (`k/enhancements`) update PR(s):" line); the first URL of the "Discussion Link:" field when it's an issue, PR or discussion in a manifest repo. Only full URLs count, as in T3's rule 2: a bare `#N` is not a link (S13-R1, after the draw, option A). Nothing else.
 - **`make fetch-github`** (needs `GITHUB_TOKEN`, a `SecretStr` setting, never logged): REST for issues and PRs (the item, its comments, a PR's reviews), GraphQL for discussions (comments, replies). Every list is paged. Writes one JSON snapshot per item to `<corpus cache>/github/<repo>/<kind>/<number>.json` (only the fields the rendering uses) and records each snapshot's sha256 and fetch time in the lock (`github:` section). It refetches only when run.
 - **`make ingest`** reads only the cached snapshots: a missing snapshot or a hash that differs from the lock stops it with a one-line error naming the item. No network.
 - **Rendering (normalize, then hash):**
@@ -334,6 +335,19 @@ curl -s localhost:8000/decisions/kep:2572
 - **Voyage embeddings only,** cap US$0.05 in all: `make embed` for the new texts (~140, plus the held-out chain's) and 1 question vector (the held-out chain's WHY question). Estimate < US$0.01.
 - No Anthropic calls, so no credit check (`CLAUDE.md`, "Anthropic credit").
 
+#### Gold chains v0 (T2, done in the sitting)
+
+- **File:** `eval/golden_set/chains-v0.yaml`, sha256 `50323a244638dd154abf7839ab20b5894e27d4a56e6ce0da6f583d75df9e3068`; copied in by the developer (Ubuntu terminal), confirmed by `sha256sum` and `cmp` against the checked scratch file.
+- **Who labeled it:** drafted by Claude at the developer's request (`eval/candidates/chains-v0-draft.yaml`, identical below the header). Claude knew the builder's rules while drafting; the brief states this. Principle: accept every text a careful person would cite; date each event step by when it happened; never pick by what the rules choose.
+- **Sign-off rule:** the developer reviews all 12 steps (each with its one-line reason; 12 is small enough for a full review) and signs off. Signed off as is, with 3 calls flagged for review: chain 1's implementation date (1.22's release 2021-08-04, not the 2021-07-20 announcement), chain 2's proposal date (the accepted proposal 2025-02-06), chain 2's discussion (PR #3010's comments only).
+- **Checks** (`check_gold_draft.py`, `check_gold.log`): 0 errors; every label matches a stored text or a post as T1 will render it. T1's label check repeats the GitHub half against the stored texts.
+- **Shape:** chain 1 has 6 labeled steps; chain 2 has 5 labeled steps and a `not_stored` decision (PR #5140). The headline's best case is 6 of 6 and 5 of 6.
+- **The held-out WHY question** (the control's query): "Why did Kubernetes add the PreferSameZone and PreferSameNode traffic distribution options for Services?"
+
 #### The held-out chain
 
-Recorded by the draw commit, after this contract's commit.
+- **Drawn:** KEP-3015, "PreferSameZone and PreferSameNode Traffic Distribution" (sig-network, latest milestone v1.35), from 35 KEPs, seeded by this contract's commit SHA (`d6e7d9c`; `draw_heldout.log`, commit `e23e533`).
+- **Its tracking issue's fields** (#3015): "Kubernetes Enhancement Proposal:" links the KEP folder (no PR); "Discussion Link:" lists PR #3010, PR #3016 and a bare `#4931`; the first "KEP (`k/enhancements`) update PR(s):" line holds a bare `#5140` (the PR merged 2025-02-11).
+- **The wording conflict, decided after the draw:** T1 said "the first PR on the line", T3 "the first URL". **Decision (option A): only full URLs count**, the literal frozen rule; rejected: reading a bare `#N` as that repo's item (B), because it was chosen after seeing that it would find the decision. Expected effect: KEP-3015's decision step is missing `no_link`; reported with the score, not tuned.
+- **Its items (T1's rule):** `{enhancements, issues, 3015}` (the tracking issue) and `{enhancements, pull, 3010}` (the first URL of "Discussion Link:"). PRs #3016, #4931 and #5140 are not ingested.
+- **Its gold chain and WHY question:** labeled by the developer in the sitting (T2), in `eval/golden_set/chains-v0.yaml`.

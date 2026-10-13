@@ -415,7 +415,7 @@ Tasks:
 - **Slice doc:** `docs/slices/S13-provenance-mvp.md` (run contract S13-R1)
 
 - [ ] **S13-T1 `[core]` Ingest the chains' GitHub items.** `discussion` documents (tier 7), fetched into the cache and pinned by hash; migration; embeddings; the chain label check. Deps: none.
-- [ ] **S13-T2 `[human]` Gold chains v0.** The developer labels both chains' steps (and the held-out chain's WHY question) before any system output. Deps: the contract.
+- [x] **S13-T2 `[human]` Gold chains v0.** Both chains' steps and the held-out chain's WHY question, before any system output; drafted by Claude at the developer's request, signed off by the developer in the S13-R1 sitting. Deps: the contract.
 - [ ] **S13-T3 `[core]` Decision tables and the chain builder.** `decisions`, `decision_evidence`; `make chains`; `orgknow chain`. Deps: T1.
 - [ ] **S13-T4 `[core]` Decision-chain completeness.** `make eval-chain`: both numbers per chain, and the control. Deps: T2, T3.
 - [ ] **S13-T5 `[commodity]` `GET /decisions/{canonical_id}`.** Deps: T3.
@@ -486,3 +486,5 @@ ADRs are decided when their slice starts, not earlier.
 - **Eval: read the latest release before the paid question loop (PR #45 parked 1; kept in the S13-R1 sitting).** Reason: `run` reads it after the paid loop, so a bad database read at the end fails a run that has already been paid for.
 - **S14 inputs from S12-R1 (PR #45 parked 8, PR #46 parked 2; kept in the S13-R1 sitting).** Reason: no API test covers temporal or authority mode; `/query` opens 1 database connection per request with no pool, though ADR-005 expects one.
 - **S17: attach the stored chain to WHY answers (S13-R1 decision 6).** Reason: when a WHY answer cites a text from a stored chain, the reply could carry that chain's timeline without touching the LLM (~100–150 lines). Not built in S13 to keep the run inside one PR; S17's sitting decides how answers and chains meet.
+- **Chain rules: read bare `#N` references (S13-R1, the held-out draw).** Reason: KEP-3015's tracking issue names its merged KEP PR as a bare `#5140`, which GitHub renders as a link but the frozen rule (full URLs only) ignores, so the held-out chain's decision step is missing. Test the fix on a fresh held-out chain, never on KEP-3015.
+- **`CLAUDE.md`: the golden-set copy step in the desktop app (S13-R1 sitting).** Reason: "type it in the Claude Code prompt with a `!` prefix" doesn't run in the desktop app's Code tab (the message arrives as text); the developer used the Ubuntu terminal. Update "Getting a file in", step 2: an Ubuntu (WSL) terminal, or the app's Run button on a `bash` block.
