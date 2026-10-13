@@ -1,0 +1,24 @@
+== conflict-20261012T170000Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              3 of 9  fail: q02 q12 q17 q23 q24 q32
+  AC6 every_or_label     4 of 9  fail: q02 q12 q17 q24 q32
+  AC6 every_pm1          8 of 9  fail: q12
+== conflict-20261012T171009Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42
+  AC6 every_or_label     3 of 9  fail: q02 q12 q17 q32 q33 q42
+  AC6 every_pm1          8 of 9  fail: q12
+== conflict-20261012T171932Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42
+  AC6 every_or_label     3 of 9  fail: q02 q12 q17 q32 q33 q42
+  AC6 every_pm1          8 of 9  fail: q12

@@ -1,0 +1,130 @@
+
+retrieved 45 questions; hits equal run 1's
+{"variant": "A", "id": "q01", "s": 5.11, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "A", "id": "q02", "s": 5.13, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q03", "s": 4.86, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q04", "s": 2.97, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q05", "s": 0.89, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q06", "s": 2.49, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q07", "s": 1.88, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q08", "s": 5.77, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q09", "s": 1.35, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q10", "s": 3.71, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q11", "s": 4.05, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q12", "s": 4.49, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q13", "s": 6.09, "stop_reason": "end_turn", "dropped": 0, "kept": 8}
+{"variant": "A", "id": "q14", "s": 4.24, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q15", "s": 5.03, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q16", "s": 4.76, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q17", "s": 2.14, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "A", "id": "q18", "s": 4.46, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q19", "s": 3.09, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q20", "s": 5.44, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q21", "s": 5.58, "stop_reason": "end_turn", "dropped": 0, "kept": 6}
+{"variant": "A", "id": "q22", "s": 4.68, "stop_reason": "end_turn", "dropped": 0, "kept": 4}
+{"variant": "A", "id": "q23", "s": 5.29, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q24", "s": 3.5, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q25", "s": 4.63, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "A", "id": "q26", "s": 5.01, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q27", "s": 3.47, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q30", "s": 3.83, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q31", "s": 3.38, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q32", "s": 4.13, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q33", "s": 4.96, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q34", "s": 4.2, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q35", "s": 9.78, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "A", "id": "q36", "s": 3.79, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q40", "s": 3.37, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q41", "s": 5.71, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "A", "id": "q42", "s": 3.24, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q43", "s": 3.04, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q44", "s": 4.54, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q45", "s": 8.15, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "A", "id": "q46", "s": 3.15, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q47", "s": 4.37, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "A", "id": "q48", "s": 5.21, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "c01", "s": 1.84, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "c02", "s": 3.2, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "A", "id": "q01", "s": 4.36, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "A", "id": "q01", "s": 4.02, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q01", "s": 5.42, "stop_reason": "end_turn", "dropped": 0, "kept": 5}
+{"variant": "B", "id": "q02", "s": 4.2, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q03", "s": 5.33, "stop_reason": "end_turn", "dropped": 0, "kept": 6}
+{"variant": "B", "id": "q04", "s": 3.78, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "B", "id": "q05", "s": 5.25, "stop_reason": "end_turn", "dropped": 0, "kept": 7}
+{"variant": "B", "id": "q06", "s": 2.68, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q07", "s": 3.08, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q08", "s": 5.48, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "B", "id": "q09", "s": 2.71, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q10", "s": 4.19, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q11", "s": 4.52, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q12", "s": 5.77, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q13", "s": 3.87, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q14", "s": 6.43, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "B", "id": "q15", "s": 3.72, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q16", "s": 5.14, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q17", "s": 5.74, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q18", "s": 5.17, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q19", "s": 5.35, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q20", "s": 4.02, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q21", "s": 5.83, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "B", "id": "q22", "s": 5.44, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q23", "s": 3.13, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q24", "s": 3.08, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q25", "s": 4.94, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q26", "s": 5.36, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q27", "s": 5.83, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "B", "id": "q30", "s": 5.01, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "B", "id": "q31", "s": 2.69, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q32", "s": 3.78, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q33", "s": 6.42, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+{"variant": "B", "id": "q34", "s": 6.95, "stop_reason": "end_turn", "dropped": 0, "kept": 4}
+{"variant": "B", "id": "q35", "s": 7.36, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q36", "s": 5.63, "stop_reason": "end_turn", "dropped": 0, "kept": 6}
+{"variant": "B", "id": "q40", "s": 5.76, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q41", "s": 5.85, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q42", "s": 2.86, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q43", "s": 3.47, "stop_reason": "end_turn", "dropped": 0, "kept": 2}
+{"variant": "B", "id": "q44", "s": 5.93, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q45", "s": 7.15, "stop_reason": "end_turn", "dropped": 0, "kept": 5}
+{"variant": "B", "id": "q46", "s": 3.25, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "q47", "s": 4.23, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q48", "s": 5.09, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "c01", "s": 2.5, "stop_reason": "end_turn", "dropped": 0, "kept": 0}
+{"variant": "B", "id": "c02", "s": 3.9, "stop_reason": "end_turn", "dropped": 0, "kept": 1}
+{"variant": "B", "id": "q01", "s": 5.18, "stop_reason": "end_turn", "dropped": 0, "kept": 4}
+{"variant": "B", "id": "q01", "s": 5.7, "stop_reason": "end_turn", "dropped": 0, "kept": 3}
+
+== Variant A: 47 calls; latency p50 4.24 s, p95 5.77 s
+precision all [49, 66], rule [8, 8], model [41, 58]
+recall all [33, 60], rule [8, 8], texts [25, 52]
+seeds: k01 q18 retrieved=True surfaced=True; k02 q01 retrieved=True surfaced=True; k03 q08 retrieved=False surfaced=False; k04 c01 retrieved=False surfaced=False
+q01's kept pairs, verbatim (3 calls):
+  call 1 (k02 matched: True): [7600, 33441] lower_tier: Chunk 7600 says Kubernetes releases happen about three times per year, while chunk 33441 says the project currently releases 4 times per year.
+  call 1 (k02 matched: True): [7600, 33440] lower_tier: Chunk 7600 says releases happen about three times per year, while chunk 33440 describes the current cadence as 4 releases per year being proposed down to 3.
+  call 1 (k02 matched: True): [7600, 33023] lower_tier: Chunk 7600 says about three releases per year, while chunk 33023 says minor releases come every 3 months, which implies four per year.
+  call 2 (k02 matched: True): [7600, 33023] lower_tier: Chunk 7600 says Kubernetes releases about three times per year, while chunk 33023 (KEP-1498) describes minor releases every 3 months, which implies four per year.
+  call 2 (k02 matched: True): [7600, 33441] lower_tier: Chunk 7600 says releases currently happen about three times per year, while chunk 33441 (KEP-2572) states the project currently releases 4 times per year.
+  call 2 (k02 matched: True): [11155, 33023] valid_at_target: Chunk 11155 (CHANGELOG-1.22) says the cadence was reduced from 4 to 3 releases per year in 2021, while chunk 33023 says minor releases come every 3 months, implying four per year.
+  call 3 (k02 matched: True): [7600, 33023] lower_tier: Chunk 7600 says Kubernetes currently releases about three times per year, while chunk 33023 (KEP-1498) says minor releases come every 3 months, which implies four per year.
+  call 3 (k02 matched: True): [11155, 33441] valid_at_target: Chunk 11155 says the cadence was reduced from 4 to 3 releases per year in April 2021, while chunk 33441 (KEP-2572) states the project currently releases 4 times per year.
+
+== Variant B: 47 calls; latency p50 5.14 s, p95 6.43 s
+precision all [57, 87], rule [8, 8], model [49, 79]
+recall all [35, 60], rule [8, 8], texts [27, 52]
+seeds: k01 q18 retrieved=True surfaced=True; k02 q01 retrieved=True surfaced=True; k03 q08 retrieved=False surfaced=False; k04 c01 retrieved=False surfaced=False
+q01's kept pairs, verbatim (3 calls):
+  call 1 (k02 matched: True): [33441, 7600] lower_tier: KEP-2572 says the project currently releases 4 times per year, while the current release-cycle docs say releases happen approximately three times per year.
+  call 1 (k02 matched: True): [33441, 11155] valid_at_target: KEP-2572 describes the cadence as currently 4 releases per year, while the 1.22 changelog says it was made official in April 2021 as reduced to 3 releases per year.
+  call 1 (k02 matched: True): [33440, 11155] valid_at_target: KEP-2572 frames the move from 4 to 3 releases per year as a proposal still at alpha, while the 1.22 changelog records it as already official.
+  call 1 (k02 matched: True): [33023, 7600] lower_tier: KEP-1498 says minor releases happen every 3 months (about 4 per year), while the current release-cycle docs say about three per year.
+  call 1 (k02 matched: True): [33023, 11155] valid_at_target: KEP-1498 describes releases every 3 months, while the 1.22 changelog says the cadence was reduced from 4 to 3 releases per year.
+  call 2 (k02 matched: True): [33440, 11155] valid_at_target: The KEP summary says the cadence is proposed to change from 4 to 3 releases per year and is still a proposal, while the 1.22 changelog says the change to 3 releases per year was made official in April 2021.
+  call 2 (k02 matched: True): [33441, 11155] valid_at_target: The KEP describes the release cadence as currently 4 releases per year and still claims alpha status, while the 1.22 changelog shows the reduction to 3 releases per year was already official.
+  call 2 (k02 matched: True): [33456, 11155] valid_at_target: The KEP user story says most organizations find 4 releases per year hard to match and proposes 3, while the 1.22 changelog reports that the cadence was already reduced to 3 releases per year.
+  call 2 (k02 matched: True): [33459, 11155] valid_at_target: The KEP user story treats the move to 3 releases per year as a future proposal, while the 1.22 changelog states the change was already official.
+  call 3 (k02 matched: True): [7600, 33441] lower_tier: Chunk 7600 says Kubernetes releases about three times per year, while KEP-2572 (claimed alpha, not shipped) says the project currently releases 4 times per year.
+  call 3 (k02 matched: True): [11155, 33441] valid_at_target: The 1.22 release notes say the cadence officially dropped from 4 to 3 releases per year, but KEP-2572 still claims implementable/alpha status and describes 4 releases per year as current.
+  call 3 (k02 matched: True): [6946, 33023] lower_tier: Chunk 6946 says Kubernetes 1.19 and newer get approximately one year of patch support, while KEP-1498 (claimed implemented/stable) describes the current support period as about 9 months.
+
+TOTAL tokens in 576293, out 82675, cost $0.0990

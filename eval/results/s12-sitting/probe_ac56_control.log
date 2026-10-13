@@ -1,0 +1,128 @@
+== dense-20261008T230746Z
+  AC5 anchor             9 of 10  fail: q31
+  AC5 every              2 of 10  fail: q01 q06 q11 q16 q21 q22 q30 q31
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              0 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42 q43
+  AC6 every_or_label     1 of 9  fail: q02 q12 q17 q24 q32 q33 q42 q43
+  AC6 every_pm1          4 of 9  fail: q02 q12 q24 q42 q43
+== dense-20261008T231253Z
+  AC5 anchor             8 of 10  fail: q31 q41
+  AC5 every              2 of 10  fail: q01 q06 q11 q16 q22 q30 q31 q41
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q42 q43
+  AC6 every_or_label     2 of 9  fail: q02 q12 q17 q24 q32 q42 q43
+  AC6 every_pm1          5 of 9  fail: q02 q12 q24 q43
+== dense-20261008T231659Z
+  AC5 anchor             9 of 10  fail: q31
+  AC5 every              2 of 10  fail: q01 q06 q11 q16 q21 q22 q30 q31
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q42 q43
+  AC6 every_or_label     2 of 9  fail: q02 q12 q17 q24 q32 q42 q43
+  AC6 every_pm1          5 of 9  fail: q02 q12 q24 q43
+== hybrid-20261009T021400Z
+  AC5 anchor             8 of 10  fail: q31 q41
+  AC5 every              1 of 10  fail: q01 q06 q11 q16 q21 q22 q30 q31 q41
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q42 q43
+  AC6 every_or_label     2 of 9  fail: q02 q12 q17 q24 q32 q42 q43
+  AC6 every_pm1          5 of 9  fail: q02 q12 q24 q43
+== hybrid-20261009T021907Z
+  AC5 anchor             9 of 10  fail: q31
+  AC5 every              3 of 10  fail: q01 q06 q11 q16 q22 q30 q31
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              0 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42 q43
+  AC6 every_or_label     1 of 9  fail: q02 q12 q17 q24 q32 q33 q42 q43
+  AC6 every_pm1          5 of 9  fail: q02 q12 q24 q43
+== hybrid-20261009T022231Z
+  AC5 anchor             9 of 10  fail: q31
+  AC5 every              2 of 10  fail: q01 q06 q11 q16 q21 q22 q30 q31
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              0 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42 q43
+  AC6 every_or_label     1 of 9  fail: q02 q12 q17 q24 q32 q33 q42 q43
+  AC6 every_pm1          5 of 9  fail: q02 q12 q24 q43
+== rerank-20261009T083721Z
+  AC5 anchor             10 of 10
+  AC5 every              3 of 10  fail: q01 q06 q11 q16 q22 q30 q31
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q42 q43
+  AC6 every_or_label     2 of 9  fail: q02 q12 q17 q24 q32 q42 q43
+  AC6 every_pm1          4 of 9  fail: q02 q12 q24 q42 q43
+== rerank-20261009T084531Z
+  AC5 anchor             10 of 10
+  AC5 every              3 of 10  fail: q01 q06 q11 q16 q22 q30 q31
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              0 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42 q43
+  AC6 every_or_label     1 of 9  fail: q02 q12 q17 q24 q32 q33 q42 q43
+  AC6 every_pm1          4 of 9  fail: q02 q12 q24 q42 q43
+== rerank-20261009T085359Z
+  AC5 anchor             10 of 10
+  AC5 every              3 of 10  fail: q01 q06 q11 q16 q22 q30 q31
+  AC6 anchor             6 of 9  fail: q02 q24 q43
+  AC6 anchor_or_label    8 of 9  fail: q43
+  AC6 every              2 of 9  fail: q02 q12 q17 q23 q24 q32 q43
+  AC6 every_or_label     3 of 9  fail: q02 q12 q17 q24 q32 q43
+  AC6 every_pm1          5 of 9  fail: q02 q12 q24 q43
+== authority-20261010T112851Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42
+  AC6 every_or_label     2 of 9  fail: q02 q12 q17 q24 q32 q33 q42
+  AC6 every_pm1          8 of 9  fail: q12
+== authority-20261011T051049Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42
+  AC6 every_or_label     2 of 9  fail: q02 q12 q17 q24 q32 q33 q42
+  AC6 every_pm1          8 of 9  fail: q12
+== authority-20261011T051924Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42
+  AC6 every_or_label     2 of 9  fail: q02 q12 q17 q24 q32 q33 q42
+  AC6 every_pm1          8 of 9  fail: q12
+== conflict-smoke-20261011T083501Z
+  AC5 anchor             3 of 3
+  AC5 every              1 of 3  fail: q01 q16
+  AC6 anchor             2 of 2
+  AC6 anchor_or_label    2 of 2
+  AC6 every              0 of 2  fail: q23 q42
+  AC6 every_or_label     1 of 2  fail: q42
+  AC6 every_pm1          2 of 2
+== conflict-20261012T170000Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              3 of 9  fail: q02 q12 q17 q23 q24 q32
+  AC6 every_or_label     4 of 9  fail: q02 q12 q17 q24 q32
+  AC6 every_pm1          8 of 9  fail: q12
+== conflict-20261012T171009Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42
+  AC6 every_or_label     3 of 9  fail: q02 q12 q17 q32 q33 q42
+  AC6 every_pm1          8 of 9  fail: q12
+== conflict-20261012T171932Z
+  AC5 anchor             10 of 10
+  AC5 every              8 of 10  fail: q01 q16
+  AC6 anchor             8 of 9  fail: q02
+  AC6 anchor_or_label    9 of 9
+  AC6 every              1 of 9  fail: q02 q12 q17 q23 q24 q32 q33 q42
+  AC6 every_or_label     3 of 9  fail: q02 q12 q17 q32 q33 q42
+  AC6 every_pm1          8 of 9  fail: q12

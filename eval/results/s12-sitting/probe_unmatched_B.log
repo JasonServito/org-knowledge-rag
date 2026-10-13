@@ -1,0 +1,1040 @@
+
+######## U1 q08 [15239, 10059] contradiction valid_at_target
+SUMMARY: KEP 15239 claims the PodSecurity gate reached beta at 1.37 with latest milestone v1.23, but the feature gate reference shows it reached stable in 1.25 and was later removed.
+--- 15239 kep:2579 | KEP-2579: Pod Security Admission Control
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+    - [Requirements](#requirements)
+  - [Non-Goals](#non-goals)
+- [Proposal](#proposal)
+  - [API](#api)
+  - [Validation](#validation)
+  - [Versioning](#versioning)
+  - [PodTemplate Resources](#podtemplate-resources)
+  - [Namespace policy update warnings](#namespace-policy-update-warnings)
+  - [Admission Configuration](#admission-configuration)
+    - [Defaulting](#defaulting)
+    - [Exemptions](#exemptions)
+  - [Risks and Mitigations](#risks-and-mitigations)
+- [Design Details](#design-details)
+  - [Updates](#updates)
+    - [Ephemeral Containers](#ephemeral-containers)
+    - [Other Pod Subresources](#other-pod-subresources)
+  - [Pod Security Standards](#pod-security-standards)
+  - [Windows Support](#windows-support)
+  - [Flexible Extension Support](#flexible-extension-support)
+  - [Test Plan](#test-plan)
+  - [Monitoring](#monitoring)
+  - [Audit Annotations](#audit-annotations)
+  - [PodSecurityPolicy Migration](#podsecuritypolicy-migration)
+  - [Graduation Criteria](#graduation-criteria)
+    - [Alpha](#alpha)
+    - [Beta](#beta)
+    - [GA](#ga)
+  - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
+  - [Version Skew Strategy](#version-skew-strategy)
+- [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
+  - [Feature Enablement and Rollback](#feature-enablement-and-rol
+--- 10059 gate:PodSecurity | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.22'
+  toVersion: '1.22'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.23'
+  toVersion: '1.24'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.25'
+  toVersion: '1.27'
+removed: true
+
+Enables the `PodSecurity` admission plugin.
+
+######## U2 q08 [15216, 10059] contradiction valid_at_target
+SUMMARY: KEP 15216 claims alpha status with latest milestone v1.22, but the feature gate reference shows the gate reached beta in 1.23, stable in 1.25, and was later removed.
+--- 15216 kep:2579 | KEP-2579: Pod Security Admission Control > Design Details > Graduation Criteria > Beta
+We are targeting Beta in v1.23.
+
+1. Resolve the following sections:
+    - [ ] [Restricted policy support for Windows pods](#windows-restricted-profile-support)
+    - [ ] [Deprecation / removal policy for old profile versions](#versioning)
+    - [ ] [Ephemeral containers support](#ephemeral-containers)
+    - [ ] [PSP migration workflow & support](#podsecuritypolicy-migration)
+2. Collect feedback from the alpha, analyze usage of the webhook implementation. In particular, re-assess these API decisions:
+    - Distinct `audit` and `warn` modes
+    - Whether `enforce` should warn on templated pod resources
+3. Thorough testing is already expected for alpha, but we will review our test coverage and fill any
+   gaps prior to beta.
+   - Feature tests are moved to the main test jobs (may postpone to GA)
+4. Admission plugin included in the default enabled set (enforcement is still opt-in per-namespace).
+--- 10059 gate:PodSecurity | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.22'
+  toVersion: '1.22'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.23'
+  toVersion: '1.24'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.25'
+  toVersion: '1.27'
+removed: true
+
+Enables the `PodSecurity` admission plugin.
+
+######## U3 q12 [15818, 16058] contradiction valid_at_target
+SUMMARY: KEP-2799 is claimed as implementable/beta with latest milestone v1.26 in chunk 15818, but chunk 16058 shows it as implemented/stable with latest milestone v1.30, so the older status and milestone are out of date.
+--- 15818 kep:2799 | KEP-2799: Reduction of Secret-based Service Account Tokens > Production Readiness Review Questionnaire > Feature Enablement and Rollback > Does enabling the feature change any default behavior?
+- LegacyServiceAccountTokenNoAutoGeneration: no legacy tokens are auto-generated.
+- LegacyServiceAccountTokenTracking: legacy tokens would have new annotation and a configmap would be created in kube-system.
+- LegacyServiceAccountTokenCleanUp: unused auto-generated legacy tokens will be removed.
+--- 16058 kep:2799 | KEP-2799: Reduction of Secret-based Service Account Tokens > Design Details > LegacyServiceAccountTokenNoAutoGeneration:
+Token Controller stops auto-creating secret for service accounts. This feature would
+be enabled when it is implemented since no new code is added and this can make
+sure new clusters are in good state.
+
+######## U4 q15 [16060, 9963] contradiction lower_tier
+SUMMARY: KEP-2799 claims the gate is stable at 1.37 with latest milestone v1.30, but the feature gate reference marks LegacyServiceAccountTokenCleanUp as removed in 1.32 and later.
+--- 16060 kep:2799 | KEP-2799: Reduction of Secret-based Service Account Tokens > Design Details > LegacyServiceAccountTokenCleanUp
+Token Controller starts to remove unused auto-generated secrets (secrets
+bi-directionally referenced by the service account) and not mounted by pods.
+
+When this feature is Beta and enabled by default, mark the secrets as invalid iff it is over
+a sufficient period of time (one year by default) since last used. The period
+can be configured by cluster admins.
+
+Determine the date that a given secret was last used:
+
+1. `kubernetes.io/legacy-token-last-used` if exists and after `since` stored in the configmap `kube-apiserver-legacy-service-account-token-tracking`.
+2. defaults to `since`
+
+If `kube-apiserver-legacy-service-account-token-tracking` is unavailable, no secret would be removed.
+
+Mark the secrets as invalid and recover:
+
+1. The secrets will be added a label `kubernetes.io/legacy-token-invalid-since`, with the date as value.
+2. If the users use the invalid tokens, in the Validate() function of
+   "kubernetes/pkg/serviceaccount/legacy.go", it will detect the usage of
+   invalid tokens and return the error information, telling the users to
+   re-activate the token by updating the label value or use the tokenrequest. At
+   the same time, the tokens will be updated with the new `kubernetes.io/legacy-token-last-used` date.
+3. If the users don't use the invalid tokens, after the duration configured
+   through `--legacy-service-account-token-clean-up-period` (one year by default)
+  
+--- 9963 gate:LegacyServiceAccountTokenCleanUp | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.28'
+  toVersion: '1.28'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.29'
+  toVersion: '1.29'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.30'
+  toVersion: '1.31'
+removed: true
+
+Enable cleaning up Secret-based
+[service account tokens](/docs/concepts/security/service-accounts/#get-a-token)
+when they are not used in a specified time (default to be one year).
+
+######## U5 q18 [30877, 10420] contradiction valid_at_target
+SUMMARY: KEP chunk 30877 claims implementable/alpha with latest milestone v1.33, but the feature-gate reference shows StrictIPCIDRValidation reached beta in 1.36.
+--- 30877 kep:4858 | KEP-4858: IP/CIDR Validation Improvements
+- [Release Signoff Checklist](#release-signoff-checklist)
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+- [Proposal](#proposal)
+  - [Updated IP/CIDR validity criteria](#updated-ipcidr-validity-criteria)
+  - [Affected Fields](#affected-fields)
+  - [Canonicalization of Kubernetes-controlled values](#canonicalization-of-kubernetes-controlled-values)
+  - [API Warnings](#api-warnings)
+  - [Updated Validation](#updated-validation)
+    - [Ratcheting validation for pre-existing objects](#ratcheting-validation-for-pre-existing-objects)
+    - [Ratcheting validation for immutable fields](#ratcheting-validation-for-immutable-fields)
+  - [Dealing with pre-existing invalid values](#dealing-with-pre-existing-invalid-values)
+  - [Risks and Mitigations](#risks-and-mitigations)
+- [Design Details](#design-details)
+  - [Test Plan](#test-plan)
+      - [Prerequisite testing updates](#prerequisite-testing-updates)
+      - [Unit tests](#unit-tests)
+      - [Integration tests](#integration-tests)
+      - [e2e tests](#e2e-tests)
+  - [Graduation Criteria](#graduation-criteria)
+    - [Alpha](#alpha)
+    - [Beta](#beta)
+    - [GA](#ga)
+  - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
+  - [Version Skew Strategy](#version-skew-strategy)
+- [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
+  - [Feature Ena
+--- 10420 gate:StrictIPCIDRValidation | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.33'
+  toVersion: '1.35'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.36'
+
+Use stricter validation for fields containing IP addresses and CIDR values.
+
+In particular, with this feature gate enabled, octets within IPv4 addresses are
+not allowed to have any leading `0`s, and IPv4-mapped IPv6 values (e.g.
+`::ffff:192.168.0.1`) are forbidden. These sorts of values can potentially cause
+security problems when different components interpret the same string as
+referring to different IP addresses (as in CVE-2021-29923).
+
+This tightening applies only to fields in build-in API kinds, and not to
+custom resource kinds, values in Kubernetes configuration files, or
+command-line arguments.
+
+######## U6 q18 [30877, 31042] contradiction valid_at_target
+SUMMARY: KEP chunk 30877 lists its latest milestone as v1.33 and stage as alpha, but the KEP implementation history records Beta in Kubernetes v1.36.
+--- 30877 kep:4858 | KEP-4858: IP/CIDR Validation Improvements
+- [Release Signoff Checklist](#release-signoff-checklist)
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+- [Proposal](#proposal)
+  - [Updated IP/CIDR validity criteria](#updated-ipcidr-validity-criteria)
+  - [Affected Fields](#affected-fields)
+  - [Canonicalization of Kubernetes-controlled values](#canonicalization-of-kubernetes-controlled-values)
+  - [API Warnings](#api-warnings)
+  - [Updated Validation](#updated-validation)
+    - [Ratcheting validation for pre-existing objects](#ratcheting-validation-for-pre-existing-objects)
+    - [Ratcheting validation for immutable fields](#ratcheting-validation-for-immutable-fields)
+  - [Dealing with pre-existing invalid values](#dealing-with-pre-existing-invalid-values)
+  - [Risks and Mitigations](#risks-and-mitigations)
+- [Design Details](#design-details)
+  - [Test Plan](#test-plan)
+      - [Prerequisite testing updates](#prerequisite-testing-updates)
+      - [Unit tests](#unit-tests)
+      - [Integration tests](#integration-tests)
+      - [e2e tests](#e2e-tests)
+  - [Graduation Criteria](#graduation-criteria)
+    - [Alpha](#alpha)
+    - [Beta](#beta)
+    - [GA](#ga)
+  - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
+  - [Version Skew Strategy](#version-skew-strategy)
+- [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
+  - [Feature Ena
+--- 31042 kep:4858 | KEP-4858: IP/CIDR Validation Improvements > Implementation History
+- 2024-01-01: Proposed as a PR ([kubernetes #122550])
+- 2024-10-02: Proposed as a KEP
+- 2025-04-25: Alpha in Kubernetes v1.33
+- 2026-04-22: Beta in Kubernetes v1.36
+
+######## U7 q19 [30886, 10420] contradiction valid_at_target
+SUMMARY: KEP chunk 30886 claims implementable/alpha with latest milestone v1.33, but the feature-gate reference shows StrictIPCIDRValidation reached beta (default true) in 1.36.
+--- 30886 kep:4858 | KEP-4858: IP/CIDR Validation Improvements > Proposal > Affected Fields
+As of 1.32, the IP/CIDR-valued fields in `k8s.io/api` are:
+
+  - in `core`:
+    - `endpoints.subsets[].addresses[].ip`
+    - `endpoints.subsets[].notReadyAddresses[].ip`
+    - `node.spec.podCIDR`
+    - `node.spec.podCIDRs[]`
+    - `pod.spec.dnsConfig.nameservers[]`
+    - `pod.spec.hostAliases[].ip`
+    - `pod.status.hostIP`
+    - `pod.status.hostIPs[].ip`
+    - `pod.status.podIP`
+    - `pod.status.podIPs[].ip`
+    - `service.spec.clusterIP`
+    - `service.spec.clusterIPs[]`
+    - `service.spec.externalIPs[]`
+    - `service.spec.loadBalancerSourceRanges[]`
+    - `service.status.loadBalancer.ingress[].ip`
+
+  - in `networking`:
+    - `ingress.status.loadBalancer.ingress[].ip`
+    - `ipaddr.metadata.name`
+    - `networkpolicy.spec.egress[].to[].ipBlock.cidr`
+    - `networkpolicy.spec.egress[].to[].ipBlock.except[]`
+    - `networkpolicy.spec.ingress[].from[].ipBlock.cidr`
+    - `networkpolicy.spec.ingress[].from[].ipBlock.except[]`
+    - `servicecidr.spec.cidrs[]`
+
+  - in `discovery`:
+    - `endpointslice.endpoints[].addresses[]`
+
+  - in `resource`:
+    - `resourceclaim.status.devices[].networkData.ips[]`
+
+`ipaddr.metadata.name` and `servicecidr.spec.cidrs[]` already have
+stricter semantics than we propose here (they require canonical form
+for IPv6 values), so while their validation functions will be updated
+to make better use of shared code, their semantics will not actually
+change.
+--- 10420 gate:StrictIPCIDRValidation | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.33'
+  toVersion: '1.35'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.36'
+
+Use stricter validation for fields containing IP addresses and CIDR values.
+
+In particular, with this feature gate enabled, octets within IPv4 addresses are
+not allowed to have any leading `0`s, and IPv4-mapped IPv6 values (e.g.
+`::ffff:192.168.0.1`) are forbidden. These sorts of values can potentially cause
+security problems when different components interpret the same string as
+referring to different IP addresses (as in CVE-2021-29923).
+
+This tightening applies only to fields in build-in API kinds, and not to
+custom resource kinds, values in Kubernetes configuration files, or
+command-line arguments.
+
+######## U8 q30 [16403, 16386] contradiction unresolved
+SUMMARY: The KEP's design details say the feature-flag code path applies while the feature is in alpha and beta, which contradicts its claimed stable status.
+--- 16403 kep:3221 | KEP-3221: Structured Authorization Configuration > Design Details
+Validation will allow multiple authorizers of type "Webhook" to be added to the
+config, but at most one authorizer each for other types. The ordering of this chain will
+be decided by the order specified in the file.
+
+The keys `kubeConfigFile`, `authorizedTTL`, `unauthorizedTTL` and
+`subjectAccessReviewVersion` accept values corresponding to flags
+`--authorization-webhook-config-file`, `--authorization-webhook-cache-authorized-ttl`,
+`--authorization-webhook-cache-unauthorized-ttl` and `--authorization-webhook-version`
+respectively.
+
+Today, the `SubjectAccessReview` version defaults to `v1beta1` if the corresponding
+flag is not supplied. While configuring authorization modes using the file config,
+the version supported by a webhook has to be mentioned using a required field
+`subjectAccessReviewVersion`.
+
+The user can define a CEL expression to determine whether a request needs to dispatched
+to the authz webhook for which the expression has been defined. The user would have access
+to a `request` variable containing a `SubjectAccessReview` object in the version specified
+by the `matchConditionSubjectAccessReviewVersion` field. If the version specified by
+`subjectAccessReviewVersion` in the request variable is `v1beta1`, the contents would be
+converted to the version specified in `matchConditionSubjectAccessReviewVersion` before
+evaluating the CEL expression.
+
+When no matchCondition
+--- 16386 kep:3221 | KEP-3221: Structured Authorization Configuration > Summary
+Today, `kube-apiserver` allows one to configure the authorization chain using
+a set of command line flags of the format `--authorization-*`. And cluster
+administrators can only enable one webhook as a part of the authorization
+chain using the `--authorization-modes` flag. This limits admins from creating
+authorization chains with multiple webhooks that validate requests in a certain
+order. This proposal makes the case for a more structured config to define the
+authorization chain for `kube-apiserver` and allowing multiple webhooks with
+well-defined parameters and enabling fine grained control like explicit Deny
+authorizer.
+
+######## U9 q33 [17974, 17549] contradiction valid_at_target
+SUMMARY: Chunk 17974 says KEP-3331 was implemented/stable at 1.28, while chunk 17549 says it was implementable/alpha at 1.28.
+--- 17974 kep:3331 | KEP-3331: Structured Authentication Config > Motivation > Goals
+There are features users want to tune. We need to provide customization of the following:
+
+- *Claims validation rules*: current OIDC provider supports only audience claim validation and only by exact values.
+- *Claim mappings*: it is only possible to pick a single value from a single claim and prefix groups.
+  - This also serves to support the use of nested claims (i.e. not at the top level)
+- *Use more than one OIDC provider*: the only option, for now, is to use an external OIDC provider that handles multiplexing support for multiple providers.
+  - This also serves to support the use of more than one client ID
+- Change authenticator settings without restarting kube-apiserver.
+- Support validation rules on the final user info object to allow infra providers to safely expose this functionality to customers
+- Easy migration from existing OIDC flags
+  - Note: we intend to drop the `--oidc-signing-algs` flag because this configuration provides no benefit (we will always allow all asymmetric algorithms)
+--- 17549 kep:3331 | Motivation > Goals
+There are features users want to tune. We need to provide customization of the following:
+
+- *Claims validation rules*: current OIDC provider supports only audience claim validation and only by exact values.
+- *Claim mappings*: it is only possible to pick a single value from a single claim and prefix groups.
+  - This also serves to support the use of nested claims (i.e. not at the top level)
+- *Use more than one OIDC provider*: the only option, for now, is to use an external OIDC provider that handles multiplexing support for multiple providers.
+  - This also serves to support the use of more than one client ID
+- Change authenticator settings without restarting kube-apiserver.
+- Support validation rules on the final user info object to allow infra providers to safely expose this functionality to customers
+- Easy migration from existing OIDC flags
+  - Note: we intend to drop the `--oidc-signing-algs` flag because this configuration provides no benefit (we will always allow all asymmetric algorithms)
+
+######## U10 q33 [17974, 17515] contradiction valid_at_target
+SUMMARY: Chunk 17974 says KEP-3331 was stable at 1.28, while chunk 17515 says it was alpha at 1.28.
+--- 17974 kep:3331 | KEP-3331: Structured Authentication Config > Motivation > Goals
+There are features users want to tune. We need to provide customization of the following:
+
+- *Claims validation rules*: current OIDC provider supports only audience claim validation and only by exact values.
+- *Claim mappings*: it is only possible to pick a single value from a single claim and prefix groups.
+  - This also serves to support the use of nested claims (i.e. not at the top level)
+- *Use more than one OIDC provider*: the only option, for now, is to use an external OIDC provider that handles multiplexing support for multiple providers.
+  - This also serves to support the use of more than one client ID
+- Change authenticator settings without restarting kube-apiserver.
+- Support validation rules on the final user info object to allow infra providers to safely expose this functionality to customers
+- Easy migration from existing OIDC flags
+  - Note: we intend to drop the `--oidc-signing-algs` flag because this configuration provides no benefit (we will always allow all asymmetric algorithms)
+--- 17515 kep:3331 | Motivation > Design Details > Graduation Criteria > Deprecation
+kube-apiserver `--oidc-*` flags require deprecation warnings on the stable release of the feature.
+It is possible to react only to the `--oidc-issuer-url` flag because other flags cannot be enabled separately from this one.
+
+######## U11 q34 [9930, 9931] supersession valid_at_target
+SUMMARY: Chunk 9930 shows KMSv2 as stable from 1.29 with no removal, while chunk 9931 shows the stable stage ending at 1.31 and the gate marked removed from 1.32 onward.
+--- 9930 gate:KMSv2 | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.25'
+  toVersion: '1.26'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.27'
+  toVersion: '1.28'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.29'
+
+Enables KMS v2 API for encryption at rest. See [Using a KMS Provider for data encryption](/docs/tasks/administer-cluster/kms-provider) for more details.
+--- 9931 gate:KMSv2 | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.25'
+  toVersion: '1.26'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.27'
+  toVersion: '1.28'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.29'
+  toVersion: '1.31'
+removed: true
+
+Enables KMS v2 API for encryption at rest. See
+[Using a KMS Provider for data encryption](/docs/tasks/administer-cluster/kms-provider)
+for more details.
+
+######## U12 q34 [9931, 43083] contradiction lower_tier
+SUMMARY: Chunk 9931 says the KMSv2 gate was removed, while blog chunk 43083 (valid through now) says KMS v2 is stable and recommended.
+--- 9931 gate:KMSv2 | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.25'
+  toVersion: '1.26'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.27'
+  toVersion: '1.28'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.29'
+  toVersion: '1.31'
+removed: true
+
+Enables KMS v2 API for encryption at rest. See
+[Using a KMS Provider for data encryption](/docs/tasks/administer-cluster/kms-provider)
+for more details.
+--- 43083 web:/blog/2023/12/13/kubernetes-v1-29-release/ | Improvements that graduated to stable in Kubernetes v1.29 > KMS v2 encryption at rest generally available ([SIG Auth](https://github.com/kubernetes/community/tree/master/sig-auth))
+One of the first things to consider when securing a Kubernetes cluster is encrypting persisted
+API data at rest. KMS provides an interface for a provider to utilize a key stored in an external
+key service to perform this encryption. With the Kubernetes v1.29, KMS v2 has become
+a stable feature bringing numerous improvements in performance, key rotation,
+health check & status, and observability.
+These enhancements provide users with a reliable solution to encrypt all resources in their Kubernetes clusters. You can read more about this in [KEP-3299](https://kep.k8s.io/3299). 
+
+It is recommended to use KMS v2. KMS v1 feature gate is disabled by default. You will have to opt in to continue to use it.
+
+######## U13 q34 [17132, 9930] contradiction lower_tier
+SUMMARY: KEP-3299 chunk 17132 claims beta with latest milestone v1.28, but the feature gate reference shows KMSv2 reached stable in 1.29.
+--- 17132 kep:3299 | KEP-3299: KMS v2 Improvements > Production Readiness Review Questionnaire > Feature Enablement and Rollback > Can the feature be disabled once it has been enabled (i.e. can we roll back the enablement)?
+Yes, To disable encryption at rest using the v2 API:
+1. Add new `identity` provider at the top of encryption config
+1. Restart kube-apiserver
+1. Run storage migration to migrate all the existing encrypted data to use the `identity` provider
+   1. If running `kubectl get <resource> --all-namespaces -o json | kubectl replace -f -` to migrate data, the user can confirm that the migration is complete by observing the kube-apiserver metrics `apiserver_envelope_encryption_key_id_hash_last_timestamp_seconds` and `apiserver_envelope_encryption_key_id_hash_total`. These metrics will no longer contain the keyID hash of the old KEK after storage migration and kube-apiserver restart.
+   2. If running storage version migrator to migrate data, the user can confirm that the migration is complete by observing the conditions in `storageversionmigrations`. Refer to [doc](https://github.com/kubernetes-sigs/kube-storage-version-migrator/blob/master/USER_GUIDE.md#check-if-migration-has-completed) for more details. Using the storage version migrator is recommended.
+1. Remove the KMS provider from the encryption config and restart kube-apiserver
+2. At the end of these steps, all the data in etcd will be unencrypted.
+
+More details are available [here](https://kubernetes.io/docs/tasks/administer-cluster/kms-provider/#disabling-encryption-at-rest)
+
+Disabling this gate without first doing a storage migra
+--- 9930 gate:KMSv2 | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.25'
+  toVersion: '1.26'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.27'
+  toVersion: '1.28'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.29'
+
+Enables KMS v2 API for encryption at rest. See [Using a KMS Provider for data encryption](/docs/tasks/administer-cluster/kms-provider) for more details.
+
+######## U14 q34 [17054, 9930] contradiction lower_tier
+SUMMARY: KEP-3299 chunk 17054 claims beta with latest milestone v1.27, but the feature gate reference shows KMSv2 reached stable in 1.29.
+--- 17054 kep:3299 | KEP-3299: KMS v2 Improvements
+- [Release Signoff Checklist](#release-signoff-checklist)
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+- [Proposal](#proposal)
+- [Design Details](#design-details)
+  - [v2 API](#v2-api)
+  - [Key Hierarchy](#key-hierarchy)
+  - [Metadata](#metadata)
+  - [Status API](#status-api)
+  - [Observability](#observability)
+  - [Sequence Diagram](#sequence-diagram)
+    - [Encrypt Request](#encrypt-request)
+    - [Decrypt Request](#decrypt-request)
+  - [Test Plan](#test-plan)
+      - [Prerequisite testing updates](#prerequisite-testing-updates)
+      - [Unit tests](#unit-tests)
+      - [Integration tests](#integration-tests)
+      - [e2e tests](#e2e-tests)
+  - [Graduation Criteria](#graduation-criteria)
+    - [Alpha](#alpha)
+    - [Beta](#beta)
+    - [GA](#ga)
+- [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
+  - [Feature Enablement and Rollback](#feature-enablement-and-rollback)
+  - [Rollout, Upgrade and Rollback Planning](#rollout-upgrade-and-rollback-planning)
+  - [Monitoring Requirements](#monitoring-requirements)
+  - [Dependencies](#dependencies)
+  - [Scalability](#scalability)
+  - [Troubleshooting](#troubleshooting)
+- [Implementation History](#implementation-history)
+- [Alternatives](#alternatives)
+- [Infrastructure Needed](#infrastructure-needed)
+--- 9930 gate:KMSv2 | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.25'
+  toVersion: '1.26'
+- stage: beta
+  defaultValue: true
+  fromVersion: '1.27'
+  toVersion: '1.28'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.29'
+
+Enables KMS v2 API for encryption at rest. See [Using a KMS Provider for data encryption](/docs/tasks/administer-cluster/kms-provider) for more details.
+
+######## U15 q35 [41925, 42160] supersession valid_at_target
+SUMMARY: Both chunks cover the 1.28 beta, but chunk 41925 says only the admissionregistration.k8s.io/v1beta1 API group must be enabled, while chunk 42160 says both that API group and the ValidatingAdmissionPolicy feature gate must be enabled.
+--- 41925 web:/blog/2023/08/15/kubernetes-v1-28-release/ | What's New (Major Themes) > ValidatingAdmissionPolicies graduate to beta
+Common Expression language for admission control is customizable, in-process validation of requests to the Kubernetes API server as an alternative to validating admission webhooks.
+
+This builds on the capabilities of the CRD Validation Rules feature that graduated to beta in 1.25 but with a focus on the policy enforcement capabilities of validating admission control.
+    
+This will lower the infrastructure barrier to enforcing customizable policies as well as providing primitives that help the community establish and adhere to the best practices of both K8s and its extensions.
+
+To use [ValidatingAdmissionPolicies](/docs/reference/access-authn-authz/validating-admission-policy/), you need to enable the `admissionregistration.k8s.io/v1beta1` API group in your cluster's control plane.
+--- 42160 web:/blog/2023/08/15/kubernetes-v1-28-release/ | What's New (Major Themes) > ValidatingAdmissionPolicies graduate to beta
+Common Expression language for admission control is customizable, in-process validation of requests to the Kubernetes API server as an alternative to validating admission webhooks.
+
+This builds on the capabilities of the CRD Validation Rules feature that graduated to beta in 1.25 but with a focus on the policy enforcement capabilities of validating admission control.
+    
+This will lower the infrastructure barrier to enforcing customizable policies as well as providing primitives that help the community establish and adhere to the best practices of both K8s and its extensions.
+
+To use [ValidatingAdmissionPolicies](/docs/reference/access-authn-authz/validating-admission-policy/), you need to enable both the `admissionregistration.k8s.io/v1beta1` API group and the `ValidatingAdmissionPolicy` feature gate in your cluster's control plane.
+
+######## U16 q35 [10191, 10192] supersession valid_at_target
+SUMMARY: Chunk 10191 lists the stable stage from 1.30 with no end version and valid through 1.32, while chunk 10192 gives the stable stage an end version of 1.31 and marks the gate removed.
+--- 10191 gate:ValidatingAdmissionPolicy | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.26'
+  toVersion: '1.27'
+- stage: beta
+  defaultValue: false
+  fromVersion: '1.28'
+  toVersion: '1.29'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.30'
+
+Enable [ValidatingAdmissionPolicy](/docs/reference/access-authn-authz/validating-admission-policy/) support for CEL validations be used in Admission Control.
+--- 10192 gate:ValidatingAdmissionPolicy | 
+stages:
+- stage: alpha
+  defaultValue: false
+  fromVersion: '1.26'
+  toVersion: '1.27'
+- stage: beta
+  defaultValue: false
+  fromVersion: '1.28'
+  toVersion: '1.29'
+- stage: stable
+  defaultValue: true
+  fromVersion: '1.30'
+  toVersion: '1.31'
+removed: true
+
+Enable [ValidatingAdmissionPolicy](/docs/reference/access-authn-authz/validating-admission-policy/) support for CEL validations be used in Admission Control.
+
+######## U17 q36 [17600, 45854] contradiction valid_at_target
+SUMMARY: KEP chunk 17600 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says structured authentication configuration graduated to stable in v1.34.
+--- 17600 kep:3331 | Motivation > Alternatives
+- Invest more into external software like Dex and officially make it the OIDC provider socket.
+- Do not add any more OIDC provider customization to Kubernetes.
+  Instead, add more guides and docs about customizing Kubernetes authentication with external software.
+
+TODO: describe why we removed the skip validations around audience and issuer, as well as why we never
+wanted to support skipping exp/iat/nbf.
+--- 45854 web:/blog/2025/08/27/kubernetes-v1-34-release/ | Features graduating to Stable > Structured authentication configuration
+Kubernetes v1.29 introduced a configuration file format to manage API server client authentication, moving away from the previous reliance on a large set of command-line options.
+The [AuthenticationConfiguration](/docs/reference/access-authn-authz/authentication/#using-authentication-configuration) kind allows administrators to support multiple JWT authenticators, CEL expression validation, and dynamic reloading.
+This change significantly improves the manageability and auditability of the cluster's authentication settings - and has graduated to stable in v1.34.
+
+This work was done as part of [KEP \#3331](https://kep.k8s.io/3331) led by SIG Auth.
+
+######## U18 q36 [17515, 45854] contradiction valid_at_target
+SUMMARY: KEP chunk 17515 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34.
+--- 17515 kep:3331 | Motivation > Design Details > Graduation Criteria > Deprecation
+kube-apiserver `--oidc-*` flags require deprecation warnings on the stable release of the feature.
+It is possible to react only to the `--oidc-issuer-url` flag because other flags cannot be enabled separately from this one.
+--- 45854 web:/blog/2025/08/27/kubernetes-v1-34-release/ | Features graduating to Stable > Structured authentication configuration
+Kubernetes v1.29 introduced a configuration file format to manage API server client authentication, moving away from the previous reliance on a large set of command-line options.
+The [AuthenticationConfiguration](/docs/reference/access-authn-authz/authentication/#using-authentication-configuration) kind allows administrators to support multiple JWT authenticators, CEL expression validation, and dynamic reloading.
+This change significantly improves the manageability and auditability of the cluster's authentication settings - and has graduated to stable in v1.34.
+
+This work was done as part of [KEP \#3331](https://kep.k8s.io/3331) led by SIG Auth.
+
+######## U19 q36 [17552, 45854] contradiction valid_at_target
+SUMMARY: KEP chunk 17552 claims implementable/alpha with latest milestone v1.29, but the v1.34 blog says the feature graduated to stable in v1.34.
+--- 17552 kep:3331 | Motivation > Proposal > Risks and Mitigations
+Since this is a new optional feature, no migration is required unless the user wants to replace their
+existing OIDC flags usage with the config file.  The use of `--authentication-config` is mutually exclusive
+with the existing OIDC flags, so we will provide documentation for migrating from a flag-based config to the new config.
+--- 45854 web:/blog/2025/08/27/kubernetes-v1-34-release/ | Features graduating to Stable > Structured authentication configuration
+Kubernetes v1.29 introduced a configuration file format to manage API server client authentication, moving away from the previous reliance on a large set of command-line options.
+The [AuthenticationConfiguration](/docs/reference/access-authn-authz/authentication/#using-authentication-configuration) kind allows administrators to support multiple JWT authenticators, CEL expression validation, and dynamic reloading.
+This change significantly improves the manageability and auditability of the cluster's authentication settings - and has graduated to stable in v1.34.
+
+This work was done as part of [KEP \#3331](https://kep.k8s.io/3331) led by SIG Auth.
+
+######## U20 q36 [18030, 45854] contradiction lower_tier
+SUMMARY: KEP chunk 18030 gives latest milestone v1.35 for reaching stable, while the v1.34 blog says the feature graduated to stable in v1.34.
+--- 18030 kep:3331 | KEP-3331: Structured Authentication Config > Alternatives
+- Invest more into external software like Dex and officially make it the OIDC provider socket.
+- Do not add any more OIDC provider customization to Kubernetes.
+  Instead, add more guides and docs about customizing Kubernetes authentication with external software.
+
+TODO: describe why we removed the skip validations around audience and issuer, as well as why we never
+wanted to support skipping exp/iat/nbf.
+--- 45854 web:/blog/2025/08/27/kubernetes-v1-34-release/ | Features graduating to Stable > Structured authentication configuration
+Kubernetes v1.29 introduced a configuration file format to manage API server client authentication, moving away from the previous reliance on a large set of command-line options.
+The [AuthenticationConfiguration](/docs/reference/access-authn-authz/authentication/#using-authentication-configuration) kind allows administrators to support multiple JWT authenticators, CEL expression validation, and dynamic reloading.
+This change significantly improves the manageability and auditability of the cluster's authentication settings - and has graduated to stable in v1.34.
+
+This work was done as part of [KEP \#3331](https://kep.k8s.io/3331) led by SIG Auth.
+
+######## U21 q40 [8951, 31538] contradiction lower_tier
+SUMMARY: The KEP-5495 chunk claims its status is still implementable/deprecated, but the docs page shows ipvs mode as already deprecated since v1.35, so the KEP's claimed status is out of date.
+--- 8951 web:/docs/reference/networking/virtual-ips/ | Proxy modes > IPVS proxy mode
+{{< feature-state for_k8s_version="v1.35" state="deprecated" >}}
+
+_This proxy mode is only available on Linux nodes._
+
+**The `ipvs` proxy mode is deprecated**. Support for `ipvs` mode will be disabled by default from Kubernetes v1.40 (you can re-enable it with the `KubeProxyIPVS`
+[feature gate](/docs/reference/command-line-tools-reference/feature-gates/));
+`ipvs` mode will be fully removed in Kubernetes v1.43.
+
+In `ipvs` mode, kube-proxy uses the kernel IPVS and iptables APIs to
+create rules to redirect traffic from Service IPs to endpoint IPs.
+
+The IPVS proxy mode is based on netfilter hook function that is similar to
+iptables mode, but uses a hash table as the underlying data structure and works
+in the kernel space.
+
+{{< note >}}
+The `ipvs` proxy mode was an experiment in providing a Linux
+kube-proxy backend with better rule-synchronizing performance and
+higher network-traffic throughput than the `iptables` mode. While it
+succeeded in those goals, the kernel IPVS API turned out to be a bad
+match for the Kubernetes Services API, and the `ipvs` backend was
+never able to implement all of the edge cases of Kubernetes Service
+functionality correctly.
+
+The `nftables` proxy mode (described below) is essentially a
+replacement for both the `iptables` and `ipvs` modes, with better
+performance than either of them, and is recommended as a replacement
+for `ipvs`. If you are deploying onto
+--- 31538 kep:5495 | KEP-5495: Deprecate IPVS mode in kube-proxy > Motivation
+At time of writing, kube-proxy has four supported backends (`iptables`, `ipvs`, `nftables`, and `winkernel`).
+
+sig-network currently lacks maintainers who are familar with the `ipvs` backend code, and as such, has been encouraging
+users who report `ipvs` bugs to move to using the `nftables` backend mode, where they can. (ie: [first example], [second example])
+
+`ipvs` was introduced in [KEP-265] to solve performance problems in large clusters.
+[KEP-3866] was created to introduce a new `nftables` mode to kube-proxy. The goal of this new backend mode
+has always been to eventually replace `ipvs` and `iptables`[^1], as it solve the performance issues of iptables
+and already solves many of the bugs present in the `ipvs` mode.
+
+[First example]: https://github.com/kubernetes/kubernetes/issues/132689#issuecomment-3031585314
+[second example]: https://github.com/kubernetes/kubernetes/issues/132068#issuecomment-2945169346
+[^1]: See https://github.com/kubernetes/enhancements/blob/master/keps/sig-network/3866-nftables-proxy/README.md#we-will-hopefully-be-able-to-trade-2-supported-backends-for-1
+
+[KEP-265]: https://github.com/kubernetes/enhancements/blob/master/keps/sig-network/265-ipvs-based-load-balancing/README.md
+[KEP-3866]: https://github.com/kubernetes/enhancements/blob/master/keps/sig-network/3866-nftables-proxy/README.md
+
+######## U22 q43 [24597, 1551] contradiction lower_tier
+SUMMARY: KEP 24597 claims status implementable with stage unknown at 1.20, but the docs page (1551) shows Service Topology as an alpha feature since v1.17 and valid in 1.20.
+--- 24597 kep:sig-network/20181024-service-topology | Topology-aware service routing > Motivation > Background
+It's a pain point for multi-zone clusters deployment since cross-zone network traffic being charged, while in-zone is not. In addition, cross-node traffic may carry sensitive metadata from other nodes. Therefore, users always prefer the service backends that close to them, e.g. same zone, rack and host etc. for security, performance and cost concerns.
+
+Kubernetes scheduler can constraining a pod to only be able to run on particular nodes/zones. However, Kubernetes service proxy just randomly picks an available backend for service routing and this one can be very far from the user, so we need a topology-aware service routing solution in Kubernetes. Basically, to find the nearest service backend. In other words, allowing people to configure if ALWAY reach a to local service backend. In this way, they can reduce network latency, improve security, save money and so on. However, because topology is arbitrary, zone, region, rack, generator, whatever, who knows? We should allow arbitrary locality.
+
+`ExternalTrafficPolicy` was added in v1.4, but only for NodePort and external LB traffic. NodeName was added to `EndpointAddress` to allow kube-proxy to filter local endpoints for various future purposes.
+
+Based on our experience of advanced routing setup and recent demo of enabling this feature in Kubernetes, this document would like to introduce a more generic way to support arbitrary ser
+--- 1551 web:/docs/concepts/services-networking/service-topology/ | 
+{{< feature-state for_k8s_version="v1.17" state="alpha" >}}
+
+_Service Topology_ enables a service to route traffic based upon the Node
+topology of the cluster. For example, a service can specify that traffic be
+preferentially routed to endpoints that are on the same Node as the client, or
+in the same availability zone.
+
+######## U23 q43 [24598, 1551] contradiction lower_tier
+SUMMARY: KEP 24598 claims status implementable with stage unknown at 1.20, but the docs page (1551) shows Service Topology as an alpha feature since v1.17 and valid in 1.20.
+--- 24598 kep:sig-network/20181024-service-topology | Topology-aware service routing > Proposal
+This proposal builds off of earlier requests to [use local pods only for kube-proxy loadbalancing](https://github.com/kubernetes/kubernetes/issues/7433) and [node-local service proposal](https://github.com/kubernetes/kubernetes/pull/28637). But, this document proposes that not only the particular "node-local" user case should be taken care, but also a more generic way should be figured out.
+
+Locality is an "user-defined" thing. When we set topology key "hostname" for service, we expect node carries different node labels on the key "hostname".
+
+Users can control the level of topology. For example, if someone run logging agent as a daemonset, they can set the "hard" topology requirement for same-host. If "hard" is not met, then just return "service not available".
+
+And if someone set a "soft" topology requirement for same-host, say they "preferred" same-host endpoints and can accept other hosts when for some reasons local service's backend is not available on some host.
+
+If multiple endpoints satisfy the "hard" or "soft" topology requirement, we will randomly pick one by default.
+
+Routing decision is expected to be implemented by kube-proxy and kube-dns/coredns for headless service.
+--- 1551 web:/docs/concepts/services-networking/service-topology/ | 
+{{< feature-state for_k8s_version="v1.17" state="alpha" >}}
+
+_Service Topology_ enables a service to route traffic based upon the Node
+topology of the cluster. For example, a service can specify that traffic be
+preferentially routed to endpoints that are on the same Node as the client, or
+in the same availability zone.
+
+######## U24 q44 [29668, 13783] contradiction lower_tier
+SUMMARY: KEP-3866 chunk 29668 claims status implementable/alpha with latest milestone v1.29, while the 1.33 changelog shows the nftables mode became GA in 1.33, so the claimed status and milestone are out of date.
+--- 29668 kep:3866 | KEP-3866: Add an nftables-based kube-proxy backend > Design Details > Graduation Criteria > GA
+- At least two releases since Beta.
+
+- The nftables mode has seen non-trivial real-world usage.
+
+- The nftables mode has no bugs / regressions that would make us
+  hesitate to recommend it.
+
+- We have at least the start of a plan for the next steps (changing
+  the default mode, deprecating the old backends, etc).
+--- 13783 changelog:1.33 | v1.33.0 > Changes by Kind > Feature
+- The nftables mode of kube-proxy is now GA. (The iptables mode remains the
+  default; you can select the nftables mode by passing `--proxy-mode nftables`
+  or using a config file with `mode: nftables`. See the kube-proxy documentation
+  for more details.) ([#129653](https://github.com/kubernetes/kubernetes/pull/129653), [@danwinship](https://github.com/danwinship)) [SIG Network]
+- Updated `/version` response to report binary version information separate from compatibility version ([#130019](https://github.com/kubernetes/kubernetes/pull/130019), [@yongruilin](https://github.com/yongruilin)) [SIG API Machinery, Architecture, Release and Testing]
+- Upgraded the `kubectl autoscale` subcommand to use `autoscaling/v2` rather than `autoscaling/v1` APIs. 
+The command now attempts to use the `autoscaling/v2` API first. If the `autoscaling/v2` API is 
+unavailable or an error occurs, it falls back to the `autoscaling/v1` API. ([#128950](https://github.com/kubernetes/kubernetes/pull/128950), [@googs1025](https://github.com/googs1025)) [SIG Autoscaling and CLI]
+- User namespaces support (feature gate UserNamespacesSupport) is now enabled by ([#130138](https://github.com/kubernetes/kubernetes/pull/130138), [@rata](https://github.com/rata)) [SIG Node and Testing]
+- Various controllers that write out IP address or CIDR values to API objects now
+  ensure that they always write out the values i
+
+######## U25 q45 [24214, 24402] contradiction valid_at_target
+SUMMARY: KEP chunk 24214 claims implementable/alpha with latest milestone v1.29, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33.
+--- 24214 kep:1880 | KEP-1880: Multiple Service CIDRs > Design Details > Upgrade / Downgrade / Version Skew Strategy
+The source of truth are the IPs assigned to the Services, both the old and new methods have
+reconcile loops that rebuild the state of the allocators based on the assigned IPs to the Services,
+this allows to support upgrades and skewed clusters.
+
+Clusters running with the new allocation model will not keep running the reconcile loops that
+keep the bitmap used by the allocators.
+
+Since the new allocation model will remove some of the limitations of the current model, skewed
+versions and downgrades can only work if the configurations are fully compatible, per example,
+current CIDRs are limited to a /112 max for IPv6, if an user configures a /64 to their IPv6 subnets
+in the new model, and IPs are assigned out of the first /112 block, the old allocator based in
+bitmap will not be able to use those IPs creating an inconsistency in the cluster.
+
+It will be required that those Services are recreated to get IP addresses inside the configured
+ranges, for consistency, but there should not be any functional problem in the cluster if the
+Service implementation (kube-proxy, ...) is able to handle those IPs.
+
+Example:
+
+- flags set to 10.0.0.0/20
+- upgrade to N+1 with alpha gate
+- apiserver create a default ServiceCIDR object for 10.0.0.0/20
+- user creates a new ServiceCIDR for 192.168.1.0/24
+- create a Service which gets 192.168.1.1
+- rollback or disable the gate
+- the apiserver repair loops 
+--- 24402 kep:1880 | KEP-1880: Multiple Service CIDRs > Design Details > Test Plan > e2e tests
+e2e tests validate that components that depend on Services are able
+to use the new ServiceCIDR ranges allocated.
+
+https://testgrid.k8s.io/sig-network-kind#sig-network-kind,%20alpha,%20beta&include-filter-by-regex=ServiceCIDRs
+
+https://testgrid.k8s.io/kops-misc#kops-aws-sig-network-beta
+
+In addition to the specific e2e test that validate the new functionality of allowing
+to add new ServiceCIDRs and create new Services using the IPs of the new range, all
+the existing e2e tests that exercises Services in one way or another are also exercising
+the new APIs.
+
+If we take a job of an execution of any job with the feature enabled, per example, https://storage.googleapis.com/kubernetes-ci-logs/logs/ci-kubernetes-network-kind-alpha-beta-features/1866163383959556096/artifacts/kind-control-plane/pods/kube-system_kube-apiserver-kind-control-plane_89ea5ffb5eb9e46fc7a038252629d04c/kube-apiserver/0.log , we can see the ServiceCIDR and IPAddress objects are constantly exercised:
+
+```sh
+$ grep -c networking.k8s.io/v1beta1/servicecidrs 0.log 
+553
+
+$ grep -c networking.k8s.io/v1beta1/ipaddresses 0.log 
+400
+```
+
+######## U26 q45 [24104, 24402] contradiction valid_at_target
+SUMMARY: KEP chunk 24104 claims implementable/alpha with latest milestone v1.25, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33.
+--- 24104 kep:1880 | KEP-1880: Multiple Service CIDRs > Design Details > Upgrade / Downgrade / Version Skew Strategy
+The source of truth are the IPs assigned to the Services, both the old and new methods have
+reconcile loops that rebuild the state of the allocators based on the assigned IPs to the Services,
+this allows to support upgrades and skewed clusters.
+
+Clusters running with the new allocation model will not keep running the reconcile loops that
+keep the bitmap used by the allocators.
+
+Since the new allocation model will remove some of the limitations of the current model, skewed
+versions and downgrades can only work if the configurations are fully compatible, per example,
+current CIDRs are limited to a /112 max for IPv6, if an user configures a /64 to their IPv6 subnets
+in the new model, and IPs are assigned out of the first /112 block, the old allocator based in
+bitmap will not be able to use those IPs creating an inconsistency in the cluster.
+
+It will be required that those Services are recreated to get IP addresses inside the configured
+ranges, for consistency, but there should not be any functional problem in the cluster if the
+Service implementation (kube-proxy, ...) is able to handle those IPs.
+
+Example:
+
+- flags set to 10.0.0.0/20
+- upgrade to 1.25 with alpha gate
+- apiserver create a default ServiceCIDRConfig object for 10.0.0.0/20
+- user creates a new ServiceCIDR for 192.168.1.0/24
+- create a Service which gets 192.168.1.1
+- rollback or disable the gate
+- the apiserver repair
+--- 24402 kep:1880 | KEP-1880: Multiple Service CIDRs > Design Details > Test Plan > e2e tests
+e2e tests validate that components that depend on Services are able
+to use the new ServiceCIDR ranges allocated.
+
+https://testgrid.k8s.io/sig-network-kind#sig-network-kind,%20alpha,%20beta&include-filter-by-regex=ServiceCIDRs
+
+https://testgrid.k8s.io/kops-misc#kops-aws-sig-network-beta
+
+In addition to the specific e2e test that validate the new functionality of allowing
+to add new ServiceCIDRs and create new Services using the IPs of the new range, all
+the existing e2e tests that exercises Services in one way or another are also exercising
+the new APIs.
+
+If we take a job of an execution of any job with the feature enabled, per example, https://storage.googleapis.com/kubernetes-ci-logs/logs/ci-kubernetes-network-kind-alpha-beta-features/1866163383959556096/artifacts/kind-control-plane/pods/kube-system_kube-apiserver-kind-control-plane_89ea5ffb5eb9e46fc7a038252629d04c/kube-apiserver/0.log , we can see the ServiceCIDR and IPAddress objects are constantly exercised:
+
+```sh
+$ grep -c networking.k8s.io/v1beta1/servicecidrs 0.log 
+553
+
+$ grep -c networking.k8s.io/v1beta1/ipaddresses 0.log 
+400
+```
+
+######## U27 q45 [24071, 24402] contradiction valid_at_target
+SUMMARY: KEP chunk 24071 claims implementable/alpha with latest milestone v1.25, while chunk 24402 shows the KEP implemented/stable with latest milestone v1.33.
+--- 24071 kep:1880 | KEP-1880: Multiple Service CIDRs
+- [Release Signoff Checklist](#release-signoff-checklist)
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+- [Proposal](#proposal)
+  - [User Stories](#user-stories)
+    - [Story 1](#story-1)
+    - [Story 2](#story-2)
+    - [Story 3](#story-3)
+    - [Story 4](#story-4)
+  - [Notes/Constraints/Caveats (Optional)](#notesconstraintscaveats-optional)
+  - [Risks and Mitigations](#risks-and-mitigations)
+- [Design Details](#design-details)
+  - [Current implementation details](#current-implementation-details)
+  - [New allocation model](#new-allocation-model)
+    - [The kube-apiserver bootstrap process and the service-cidr flags](#the-kube-apiserver-bootstrap-process-and-the-service-cidr-flags)
+    - [The special &quot;default&quot; ServiceCIDRConfig](#the-special-default-servicecidrconfig)
+    - [Service IP Allocation](#service-ip-allocation)
+    - [Service IP Reservation](#service-ip-reservation)
+    - [Edge cases](#edge-cases)
+    - [Resizing Service IP Ranges](#resizing-service-ip-ranges)
+    - [API](#api)
+    - [Allocator](#allocator)
+  - [Test Plan](#test-plan)
+      - [Prerequisite testing updates](#prerequisite-testing-updates)
+      - [Unit tests](#unit-tests)
+      - [Integration tests](#integration-tests)
+      - [e2e tests](#e2e-tests)
+  - [Graduation Criteria](#graduation-criteria)
+    - [Alpha](#alpha)
+    - [Beta](#beta)
+    
+--- 24402 kep:1880 | KEP-1880: Multiple Service CIDRs > Design Details > Test Plan > e2e tests
+e2e tests validate that components that depend on Services are able
+to use the new ServiceCIDR ranges allocated.
+
+https://testgrid.k8s.io/sig-network-kind#sig-network-kind,%20alpha,%20beta&include-filter-by-regex=ServiceCIDRs
+
+https://testgrid.k8s.io/kops-misc#kops-aws-sig-network-beta
+
+In addition to the specific e2e test that validate the new functionality of allowing
+to add new ServiceCIDRs and create new Services using the IPs of the new range, all
+the existing e2e tests that exercises Services in one way or another are also exercising
+the new APIs.
+
+If we take a job of an execution of any job with the feature enabled, per example, https://storage.googleapis.com/kubernetes-ci-logs/logs/ci-kubernetes-network-kind-alpha-beta-features/1866163383959556096/artifacts/kind-control-plane/pods/kube-system_kube-apiserver-kind-control-plane_89ea5ffb5eb9e46fc7a038252629d04c/kube-apiserver/0.log , we can see the ServiceCIDR and IPAddress objects are constantly exercised:
+
+```sh
+$ grep -c networking.k8s.io/v1beta1/servicecidrs 0.log 
+553
+
+$ grep -c networking.k8s.io/v1beta1/ipaddresses 0.log 
+400
+```
+
+######## U28 q45 [24304, 24402] contradiction valid_at_target
+SUMMARY: KEP chunk 24304 claims implementable/stable, while chunk 24402 claims implemented/stable for the same latest milestone v1.33.
+--- 24304 kep:1880 | KEP-1880: Multiple Service CIDRs
+- [Release Signoff Checklist](#release-signoff-checklist)
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+- [Proposal](#proposal)
+  - [User Stories](#user-stories)
+    - [Story 1](#story-1)
+    - [Story 2](#story-2)
+    - [Story 3](#story-3)
+    - [Story 4](#story-4)
+  - [Notes/Constraints/Caveats (Optional)](#notesconstraintscaveats-optional)
+  - [Risks and Mitigations](#risks-and-mitigations)
+- [Design Details](#design-details)
+  - [Current implementation details](#current-implementation-details)
+  - [New allocation model](#new-allocation-model)
+    - [The kube-apiserver bootstrap process and the service-cidr flags](#the-kube-apiserver-bootstrap-process-and-the-service-cidr-flags)
+    - [The special &quot;default&quot; ServiceCIDR](#the-special-default-servicecidr)
+    - [Service IP Allocation](#service-ip-allocation)
+    - [Service IP Reservation](#service-ip-reservation)
+    - [Edge cases](#edge-cases)
+    - [Resizing Service IP Ranges](#resizing-service-ip-ranges)
+    - [API](#api)
+    - [Allocator](#allocator)
+  - [Test Plan](#test-plan)
+      - [Prerequisite testing updates](#prerequisite-testing-updates)
+      - [Unit tests](#unit-tests)
+      - [Integration tests](#integration-tests)
+      - [e2e tests](#e2e-tests)
+  - [Graduation Criteria](#graduation-criteria)
+    - [Alpha](#alpha)
+    - [Beta](#beta)
+    - [GA](#ga)
+
+--- 24402 kep:1880 | KEP-1880: Multiple Service CIDRs > Design Details > Test Plan > e2e tests
+e2e tests validate that components that depend on Services are able
+to use the new ServiceCIDR ranges allocated.
+
+https://testgrid.k8s.io/sig-network-kind#sig-network-kind,%20alpha,%20beta&include-filter-by-regex=ServiceCIDRs
+
+https://testgrid.k8s.io/kops-misc#kops-aws-sig-network-beta
+
+In addition to the specific e2e test that validate the new functionality of allowing
+to add new ServiceCIDRs and create new Services using the IPs of the new range, all
+the existing e2e tests that exercises Services in one way or another are also exercising
+the new APIs.
+
+If we take a job of an execution of any job with the feature enabled, per example, https://storage.googleapis.com/kubernetes-ci-logs/logs/ci-kubernetes-network-kind-alpha-beta-features/1866163383959556096/artifacts/kind-control-plane/pods/kube-system_kube-apiserver-kind-control-plane_89ea5ffb5eb9e46fc7a038252629d04c/kube-apiserver/0.log , we can see the ServiceCIDR and IPAddress objects are constantly exercised:
+
+```sh
+$ grep -c networking.k8s.io/v1beta1/servicecidrs 0.log 
+553
+
+$ grep -c networking.k8s.io/v1beta1/ipaddresses 0.log 
+400
+```
+
+######## U29 q47 [31504, 31536] contradiction valid_at_target
+SUMMARY: Chunk 31504 gives the KEP's latest milestone as v1.35 with stage 'deprecated (claimed, not observed)' at 1.37, while chunk 31536 shows the KEP observed as deprecated at 1.37 with later graduation stages (1.37, 1.40, 1.43, cleanup 1.46), so the older milestone is out of date.
+--- 31504 kep:5495 | KEP-5495: Deprecate IPVS mode in kube-proxy > Design Details > Graduation Criteria > Deprecation
+- The Kubernetes web site has been updated with deprecation notices for the `ipvs` mode of kube-proxy
+- Kube-proxy prints a warning when a user starts kube-proxy in `ipvs` mode
+- All nftables-mode bugfixes have been backported to 1.34 and 1.33, to ensure that `ipvs` users on older releases can still migrate to `nftables`.
+--- 31536 kep:5495 | KEP-5495: Deprecate IPVS mode in kube-proxy
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+- [Proposal](#proposal)
+  - [Risks and Mitigations](#risks-and-mitigations)
+- [Design Details](#design-details)
+  - [Test Plan](#test-plan)
+      - [Prerequisite testing updates](#prerequisite-testing-updates)
+      - [Unit tests](#unit-tests)
+      - [Integration tests](#integration-tests)
+      - [e2e tests](#e2e-tests)
+  - [Graduation Criteria](#graduation-criteria)
+    - [Stage 1 (1.35)](#stage-1-135)
+    - [Stage 2 (1.37)](#stage-2-137)
+    - [Stage 3 (1.40)](#stage-3-140)
+    - [Stage 4 (1.43)](#stage-4-143)
+    - [Cleanup (1.46)](#cleanup-146)
+  - [Upgrade / Downgrade Strategy](#upgrade--downgrade-strategy)
+  - [Version Skew Strategy](#version-skew-strategy)
+- [Production Readiness Review Questionnaire](#production-readiness-review-questionnaire)
+  - [Feature Enablement and Rollback](#feature-enablement-and-rollback)
+  - [Rollout, Upgrade and Rollback Planning](#rollout-upgrade-and-rollback-planning)
+  - [Monitoring Requirements](#monitoring-requirements)
+  - [Dependencies](#dependencies)
+  - [Scalability](#scalability)
+  - [Troubleshooting](#troubleshooting)
+- [Implementation History](#implementation-history)
+- [Drawbacks](#drawbacks)
+- [Alternatives](#alternatives)
+- [Infrastructure Needed (Optional)](#infrastructure-needed-optional)
+
+######## U30 c02 [38717, 38777] supersession valid_at_target
+SUMMARY: The two versions of the Wrap up text give different tutorial links: one points to /docs/tutorials/pod-security and the other to /docs/tutorials/security/.
+--- 38717 web:/blog/2021/12/09/pod-security-admission-beta/ | Wrap up
+Pod Security is a promising new feature that provides an out-of-the-box way to allow users to improve the security posture of their workloads. Like any new enhancement that has matured to beta, we ask that you try it out, provide feedback, or share your experience via either raising a Github issue or joining SIG Auth community meetings. It's our hope that Pod Security will be deployed on every cluster in our ongoing pursuit as a community to make Kubernetes security a priority.
+
+For a step by step guide on how to enable "baseline" Pod Security Standards with Pod Security Admission feature please refer to these dedicated [tutorials](/docs/tutorials/pod-security) that cover the configuration needed at cluster level and namespace level.
+--- 38777 web:/blog/2021/12/09/pod-security-admission-beta/ | Wrap up
+Pod Security is a promising new feature that provides an out-of-the-box way to allow users to improve the security posture of their workloads. Like any new enhancement that has matured to beta, we ask that you try it out, provide feedback, or share your experience via either raising a Github issue or joining SIG Auth community meetings. It's our hope that Pod Security will be deployed on every cluster in our ongoing pursuit as a community to make Kubernetes security a priority.
+
+For a step by step guide on how to enable "baseline" Pod Security Standards with Pod Security Admission feature please refer to these dedicated [tutorials](/docs/tutorials/security/) that cover the configuration needed at cluster level and namespace level.
+
+UNMATCHED: 30
