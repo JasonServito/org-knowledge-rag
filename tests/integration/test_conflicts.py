@@ -149,16 +149,14 @@ def test_rule_conflicts_reads_the_version_at_the_target_and_orders_by_first_hit(
             prevails=None,
         ),
         # Both first at rank 2: the claim_mismatch comes first. Its claim is the stable version's
-        # (valid at 1.24), not the cited beta version's.
+        # (valid at 1.24), not the cited beta version's. Its v1.25 milestone is after 1.24, so it
+        # is left out (S10-T5c).
         Conflict(
             kind="claim_mismatch",
             found_by="rule",
             chunk_ids=[2, 4],
             documents=["kep:2579"],
-            summary=(
-                "kep:2579 claims stable (latest milestone v1.25); the feature-gate reference at "
-                "1.24 says beta."
-            ),
+            summary="kep:2579 claims stable; the feature-gate reference at 1.24 says beta.",
             resolution="observed_beats_claimed",
             prevails=None,
         ),

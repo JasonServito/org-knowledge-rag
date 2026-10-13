@@ -318,11 +318,11 @@ Tasks:
   - Deps: T4, T6.
 - [x] **S09-T8 `[commodity]` S09 eval run.** A free gate first, then 3 paid runs, the row, the write-up, the S09 metric thresholds (by the R2 sitting's rule). Deps: T7.
 
-### 🟨 S10 Conflict detection *(Stage 7)*
+### ✅ S10 Conflict detection *(Stage 7)*
 
 - **Outcome:** every answer carries `conflicts[]`: claimed vs. observed, old vs. new text, and contradictions, each resolved by an ADR-003 D6 rule or marked unresolved.
 - **Slice doc:** `docs/slices/S10-conflict-detection.md`
-- **Metrics to move:** conflict precision and recall on conflict set v0 (thresholds set in T8); AC4 passes (4 of 4 seeds). Retrieval metrics unchanged. Plus an ablation row.
+- **Metrics to move:** conflict precision and recall on conflict set v0 (thresholds set in T8); AC4 reported per seed, end to end (S10-R2 decision 3: a seed that search misses is "not retrieved", for S11). Retrieval metrics unchanged. Plus an ablation row.
 
 - [x] **S10-T1 `[core]` ADR-010: conflict detection method.** Decided in the S10-R1 sitting (2026-10-11).
 - [x] **S10-T2 `[core]` KEP metadata conflicts.**
@@ -339,11 +339,26 @@ Tasks:
   - The answer model lists chunk pairs that disagree; ids checked on their own; kind and resolution by T3; D6 and the KEP milestone line in the prompt; the losing-side flag in the eval.
   - Done when: hand-worked unit tests pass; the smoke run keeps AC1–AC3 at 100%.
   - Deps: T3, T4.
-- [ ] **S10-T6 `[core]` Conflict set format, loader and metrics.** Precision, recall and the AC4 check (R2 sitting). Deps: T4.
-- [ ] **S10-T7 `[human]` Write and verify conflict set v0.** The 4 seeds plus the S06-T5 candidates. Deps: T6.
-- [ ] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5, T7.
+- [x] **S10-T5b `[core]` The release to settle conflicts at.**
+  - "Settle conflicts at release 1.N." in the prompt, so the answer text and the code's list settle at the same release (S10-R2 decision 4).
+  - Done when: hand-worked unit tests pass; T8's run 1 keeps AC1–AC3 at 100%.
+  - Deps: T5.
+- [x] **S10-T5c `[core]` A KEP's future milestone stays out of the prompt.**
+  - The claim line and the rule-found summary show a KEP's latest milestone only when it is older than the target release (decided after T8's run 1 answered unanswerable q48 from "latest milestone v1.38"; ADR-010 D1 amended).
+  - Done when: hand-worked unit tests pass; q48 asked 3 times after the change gives `insufficient_evidence` 3 of 3.
+  - Deps: T5.
+- [x] **S10-T6 `[core]` Conflict set format, loader and metrics.**
+  - ADR-007 D4's format and label check; precision, recall and AC4 per seed in the eval, the summary and the table; `make eval-conflicts` (free).
+  - Done when: hand-worked unit tests pass; `make eval-conflicts` on the demo sample prints the R2 contract's lines.
+  - Deps: T4.
+- [x] **S10-T7a `[core]` Draft conflict set v0.**
+  - Every disagreement among the 10 results of each golden question and the 2 new questions, plus the 4 seeds; 3 independent passes; the spot-check sheet.
+  - Done when: the loader's check passes on the draft; the split rate is reported.
+  - Deps: T6.
+- [x] **S10-T7 `[human]` Verify conflict set v0.** The sheet (seeds, 1 per kind, 1 random, every disputed one, 1 whole question), then the file in `eval/golden_set/`. Deps: T7a.
+- [x] **S10-T8 `[commodity]` S10 eval run.** A free gate, 3 paid runs, the row, the write-up, the conflict thresholds. Deps: T5b, T5c, T7.
 
-### ⬜ S11 Corrective agentic retrieval *(Stage 8)*
+### 🟨 S11 Corrective agentic retrieval *(Stage 8)*
 
 - **Outcome:** a bounded LangGraph workflow (router → retrieve → grade → retry ≤ 3 → generate).
 - **Exit:** kept only if the ablation shows benefit on hard queries worth the extra latency and cost; trajectory metrics recorded.
@@ -406,7 +421,8 @@ ADRs are decided when their slice starts, not earlier.
 - **Make R3 race-free before a second writer exists (S14 at the latest).** Reason: R3's cross-table part (no alias equals a `canonical_id`) is a check-then-insert in `create_document` and `add_alias`. Two concurrent writers can each miss the other's uncommitted row and both commit the same identifier. Options: a transaction-level advisory lock in both functions, or one shared identifiers table with a single UNIQUE. Safe today: one writer. Same class: two `make embed` runs at once both pay for the same texts, and the second aborts on the primary key. Also: `make ingest-report` reads in several queries, so a report taken during an ingest could mix moments; a REPEATABLE READ read-only snapshot in its two entry points fixes it (Greptile on PR #30). (Found by Greptile on PRs #19, #20 and #22.)
 - **S14: keep past `head` SHAs in the lock.** (Moved from S05 in the S05 sitting, 2026-10-07: it matters only when the lock is refreshed; S05 keeps the 2026-09-30 lock.) Reason: earlier `head` snapshots aren't kept, so a doc edited on `main` after the first ingest gives a history mismatch. (S04-R1, PR #21 parked 2.) The 18 CHANGELOG versions too: a lock refresh re-dates them and gives a history mismatch (S05-R2, PR #29 parked 17).
 - **Golden set v1: "any of" label groups (ADR-007 amendment).** Reason: v0's A-primary rule leaves equally good copies (CHANGELOG pre-release sections, passing mentions) unlabeled, so a hit on one scores 0, while labeling them all would fill Recall's denominator with duplicates. A group credited once when any member is hit fixes both. Needs an ADR-007 amendment, loader and metric changes, and a relabel into v1 (re-baselined). (S06-T5 decision 2, 2026-10-08.)
-- **S10 conflict-set candidates found while labeling v0 (input to S10-T7; kept in the S10-R1 sitting).** `versioning.md` (1.36+) says 4 minor releases are supported vs. 3 in the version-skew page; legacy apt/yum repos deprecated Aug 31 (deprecation blog) vs. Sep 13, 2023 (1.29 upcoming-changes blog); `gate:ServiceTopology` "Deprecated 1.20" vs. alpha in the v1.20 docs; release page "currently four times per year" stale in v1.21–v1.23. (S06-T5, 2026-10-08.)
+- **S10 conflict-set candidates found while labeling v0 (input to S10-T7a; kept in the S10-R1 sitting; S10-R2 labels them where a question's results hold both sides: q21, q25).** `versioning.md` (1.36+) says 4 minor releases are supported vs. 3 in the version-skew page; legacy apt/yum repos deprecated Aug 31 (deprecation blog) vs. Sep 13, 2023 (1.29 upcoming-changes blog); `gate:ServiceTopology` "Deprecated 1.20" vs. alpha in the v1.20 docs; release page "currently four times per year" stale in v1.21–v1.23. (S06-T5, 2026-10-08.)
+- **Trace: log the rule-found conflicts when the answer call fails.** Reason: on a generation error, the `generate` span doesn't log them (the eval row keeps them). Fits S12's "Langfuse on the API path". (S10-R1, PR #42 parked; kept in the S10-R2 sitting.)
 - **Chunker: a test for the HTML-table half of the "never cut" guard.** Reason: removing it fails no test today. (S05-R3, PR #30 parked 4; kept in the S06-R1 sitting.)
 - **Report: remove `counts_by_release`'s unprinted per-type values and 1 duplicate fingerprint test case.** Reason: dead code. (S05-R3, PR #30 parked 9; kept in the S06-R1 sitting.)
 - **`make embed`: print the estimate before the requests.** Reason: the R3 contract said "before"; the refusal above the cap already runs first. (S05-R3, PR #30 parked 10; kept in the S06-R1 sitting.)

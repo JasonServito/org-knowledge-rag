@@ -77,6 +77,7 @@ def _row(
 
 def test_a_claim_ahead_of_the_observed_stage_is_one_conflict() -> None:
     # KEP-4858 at 1.37: its version valid there claims stable for v1.38; the reference says beta.
+    # v1.38 is after 1.37, a plan, so the summary leaves it out (S10-T5c).
     versions = {"kep:4858": _version("stable", [GATE], "v1.38")}
 
     conflicts = claim_mismatches([_hit(101)], versions, [_row(GATE, 37, "beta")], 37)
@@ -87,23 +88,36 @@ def test_a_claim_ahead_of_the_observed_stage_is_one_conflict() -> None:
             found_by="rule",
             chunk_ids=[101],
             documents=["kep:4858"],
-            summary=(
-                "kep:4858 claims stable (latest milestone v1.38); the feature-gate reference at "
-                "1.37 says beta."
-            ),
+            summary="kep:4858 claims stable; the feature-gate reference at 1.37 says beta.",
             resolution="observed_beats_claimed",
             prevails=None,
         )
     ]
 
 
-def test_with_no_latest_milestone_the_summary_leaves_it_out() -> None:
-    versions = {"kep:4858": _version("stable", [GATE])}
+@pytest.mark.parametrize(
+    ("milestone", "claim"),
+    [
+        # Before 1.37: shown as written (S10-T5c).
+        ("v1.22", "stable (latest milestone v1.22)"),
+        ("v1.36", "stable (latest milestone v1.36)"),
+        ("1.17", "stable (latest milestone 1.17)"),
+        # At or after 1.37 (a plan), not like v1.N, or none: left out.
+        ("v1.37", "stable"),
+        ("v1.38", "stable"),
+        ("0.0", "stable"),
+        (None, "stable"),
+    ],
+)
+def test_the_summary_shows_the_latest_milestone_only_before_the_release(
+    milestone: str | None, claim: str
+) -> None:
+    versions = {"kep:4858": _version("stable", [GATE], milestone)}
 
     [conflict] = claim_mismatches([_hit(101)], versions, [_row(GATE, 37, "beta")], 37)
 
     assert conflict.summary == (
-        "kep:4858 claims stable; the feature-gate reference at 1.37 says beta."
+        f"kep:4858 claims {claim}; the feature-gate reference at 1.37 says beta."
     )
 
 
@@ -116,7 +130,8 @@ def test_a_claim_equal_to_the_observed_stage_is_no_conflict() -> None:
 def test_the_claim_is_the_version_valid_at_the_target_not_the_hits_own() -> None:
     # KEP-2579 at 1.24: two versions are valid there, beta (1.22-1.24) and stable (1.24-1.25).
     # `kep_versions_at` gives the newest, the stable one (proved in the integration test); the hit
-    # cites the beta one. PodSecurity is beta at 1.24, so the stable claim conflicts.
+    # cites the beta one. PodSecurity is beta at 1.24, so the stable claim conflicts. Its v1.25
+    # milestone is after 1.24, so the summary leaves it out (S10-T5c).
     hit = _hit(
         201,
         "kep:2579",
@@ -128,8 +143,7 @@ def test_the_claim_is_the_version_valid_at_the_target_not_the_hits_own() -> None
     [conflict] = claim_mismatches([hit], versions, [_row("PodSecurity", 24, "beta")], 24)
 
     assert conflict.summary == (
-        "kep:2579 claims stable (latest milestone v1.25); the feature-gate reference at 1.24 "
-        "says beta."
+        "kep:2579 claims stable; the feature-gate reference at 1.24 says beta."
     )
 
 

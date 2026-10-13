@@ -129,6 +129,10 @@ class Settings(BaseSettings):
     # The golden set (ADR-007 D1) that `make eval-check` checks and `make eval` runs. Relative to
     # the repo root.
     eval_golden_path: Path = Path("eval/golden_set/v0.yaml")
+    # The conflict set (ADR-007 D4) that `make eval-conflicts` checks and scores, and `make eval`
+    # scores each run's conflicts against; `make eval-routes` routes and embeds its new questions.
+    # A missing file: `make eval` runs without it. Relative to the repo root.
+    eval_conflicts_path: Path = Path("eval/golden_set/conflicts-v0.yaml")
     # `make eval` writes one results folder per run here, and rebuilds the ablation table here.
     eval_results_dir: Path = Path("eval/results")
     # The stored question vectors, one file per embedding model (S06-R1 decision 7): a run embeds

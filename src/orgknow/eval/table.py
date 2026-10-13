@@ -7,7 +7,9 @@ one run has it; an AC cell is the mean of each run's pass rate. The p95 latencie
 question (S08-T3) use 1 and 4 decimals; a run without the value is left out, and a row with none
 says n/a. The S09 time cells (S09-T3) and the authority-selection cell (S09-T7) are each run's
 count / total, like an AC cell; runs before S09-T3 (S09-T7 for authority selection) have none, so
-their rows say n/a. A folder without `summary.json` (such as `s04/`) is skipped.
+their rows say n/a. So are the conflict cells (S10-T6): conflict precision, conflict recall and
+AC4, each run's pass / total against the conflict set; n/a for runs with no conflict set and runs
+before S10-T6. A folder without `summary.json` (such as `s04/`) is skipped.
 """
 
 from collections.abc import Sequence
@@ -24,6 +26,7 @@ COLUMNS = [
     *("AC1", "AC2", "AC3", "Errors"),
     *("p95 latency (s)", "Retrieve p95 (s)", "Cost/question ($)"),
     *("Stale rate", "Temporal acc.", "Router acc.", "Authority sel."),
+    *("Conflict prec.", "Conflict rec.", "AC4"),
 ]
 
 
@@ -69,6 +72,9 @@ def ablation_table(runs: Sequence[tuple[str, Summary]]) -> str:
                     _cell([_pass_rate(s.temporal) for s in summaries]),
                     _cell([_pass_rate(s.router) for s in summaries]),
                     _cell([_pass_rate(s.authority) for s in summaries]),
+                    _cell([_pass_rate(s.conflict_precision) for s in summaries]),
+                    _cell([_pass_rate(s.conflict_recall) for s in summaries]),
+                    _cell([_pass_rate(s.ac4) for s in summaries]),
                 ]
             )
         )

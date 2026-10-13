@@ -415,7 +415,7 @@ What the runs show:
 
 ## Conflicts
 
-S10-R1, 2026-10-11 (UTC). Every answer now carries `conflicts[]` (ADR-010). Retrieval is unchanged, so this section shows what the conflict step finds, not a new retrieval score. Conflict precision and recall need conflict set v0 (S10-T6, T7); the paid 3-run eval is S10-T8.
+S10-R1, 2026-10-11 (UTC). Every answer now carries `conflicts[]` (ADR-010). Retrieval is unchanged, so this section shows what the conflict step finds, not a new retrieval score. Conflict precision and recall need conflict set v0 (S10-T6, T7); the paid 3-run eval (S10-T8) is at the end of this section.
 
 **The rule line, free.** `HF_HUB_OFFLINE=1 make eval-retrieval` in authority mode prints S09's lines exactly, plus:
 
@@ -463,6 +463,152 @@ The conflicts found:
 - **"How many Kubernetes minor releases are supported at the same time?"** Route CURRENT. A model `contradiction`: the version-skew page (7201, tier 2, prevails) says three, `versioning.md` (36383, tier 4) says four. The answer says three.
 - **"What are the release stages of strict IP/CIDR validation (KEP-4858)?"** KEP-4858's `claim_mismatch`, as above.
 - **"Is KEP-2572's three-releases-per-year cadence implemented?"** Missed: all 10 hits were KEP-2572 chunks, so there was no docs page to pair it with. The smoke run's q01 did pair KEP-2572 with the release page.
+
+### The S10 eval (S10-T8)
+
+2026-10-12 (UTC). 3 runs of `HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --name conflict`: the 43 golden questions plus the conflict set's c01 and c02, scored against conflict set v0 (`887201b7`: 62 conflicts, 4 seeds).
+
+- **Precision:** flagged conflicts that match a conflict in the set ÷ flagged conflicts. **Recall:** reachable conflicts that a flag matched ÷ reachable conflicts (both sides among the question's top 10).
+- **Folders:** `conflict-20261012T170000Z`, `conflict-20261012T171009Z` and `conflict-20261012T171932Z`, all on commit `10eb649` with `git_dirty: false`.
+- **Each run took 9 min 31 s, 8 min 55 s and 8 min 48 s.**
+
+**The free gate, first:** `make check` (853 passed), `HF_HUB_OFFLINE=1 make eval-retrieval` (the S09/R1 lines exactly) and `HF_HUB_OFFLINE=1 make eval-conflicts`:
+
+```
+Conflict set eval/golden_set/conflicts-v0.yaml (887201b7): 62 conflicts (4 seeds) on 45 questions (2 new). Unmatched sides: 0.
+Reachable: 60 of 62 (not reachable: k03 q08; k04 c01).
+Seeds retrieved: 2 of 4 (not retrieved: k03 q08; k04 c01).
+Rule-found: 8 flagged (q16 q17 q18 q19 q20 q32 q48 c02); precision 1.000 (8 of 8); recall 1.000 (8 of 8 reachable).
+```
+
+- The file holds 9 rule-kind conflicts (7 `claim_mismatch`, 2 `history_date`). k03 isn't reachable, which leaves 8, as printed.
+
+**The runs' summary lines,** as printed:
+
+```
+# Run 1: conflict-20261012T170000Z
+43 questions (36 answerable), 0 errors. Recall@10 0.552, Hit@10 1.000, MRR 0.813, nDCG@10 0.535. AC1 36/36, AC2 43/43, AC3 7/7, false refusals 0/36. Tokens: 285,061 in, 24,417 out. Mean latency 12.0 s. Conflicts: 22 (8 rule, 14 model), 0 loser-only answers. Conflict precision 0.818 (18 of 22), recall 0.317 (19 of 60 reachable), AC4 2 of 4 (q08: not retrieved; c01: not retrieved).
+Conflict questions: 2 (c01 c02), 0 errors, cost $0.0699.
+# Run 2: conflict-20261012T171009Z
+43 questions (36 answerable), 0 errors. Recall@10 0.552, Hit@10 1.000, MRR 0.813, nDCG@10 0.535. AC1 36/36, AC2 43/43, AC3 7/7, false refusals 0/36. Tokens: 285,061 in, 24,115 out. Mean latency 11.2 s. Conflicts: 22 (8 rule, 14 model), 0 loser-only answers. Conflict precision 0.864 (19 of 22), recall 0.333 (20 of 60 reachable), AC4 2 of 4 (q08: not retrieved; c01: not retrieved).
+Conflict questions: 2 (c01 c02), 0 errors, cost $0.0703.
+# Run 3: conflict-20261012T171932Z
+43 questions (36 answerable), 0 errors. Recall@10 0.552, Hit@10 1.000, MRR 0.813, nDCG@10 0.535. AC1 36/36, AC2 43/43, AC3 7/7, false refusals 0/36. Tokens: 285,061 in, 23,966 out. Mean latency 11.0 s. Conflicts: 21 (8 rule, 13 model), 0 loser-only answers. Conflict precision 0.952 (20 of 21), recall 0.350 (21 of 60 reachable), AC4 2 of 4 (q08: not retrieved; c01: not retrieved).
+Conflict questions: 2 (c01 c02), 0 errors, cost $0.0706.
+```
+
+**The row against `authority`:**
+
+| Measure | Conflict | Spread over 3 runs | Authority |
+|---|---|---|---|
+| Hits | identical to `authority-20261011T051924Z`'s, by rank: 43 of 43 questions | the same in each run | — |
+| Recall@10, Hit@10, MRR, nDCG@10 | 0.552, 1.000, 0.813, 0.535 | none | the same |
+| AC1 | 100% (36 of 36) | none | 100% |
+| AC2 | 100% (43 of 43) | none | 100% |
+| AC3 | 100% (7 of 7) | none | 100% |
+| False refusals | 0 of 36 | none | 0 of 36 |
+| Errors | 0 | none | 0 |
+| p95 latency | 16.3 s | 14.9–18.7 s (runs: 18.7, 15.3, 14.9) | 14.9 s (14.5–15.3 s) |
+| Retrieve p95 | 6.9 s | 6.3–7.8 s | 6.5 s (6.3–6.7 s) |
+| Cost per golden question | $0.0378 | $0.0377–0.0379 | $0.0317 |
+| Cost per question, c01 and c02 included | — | $0.0376–0.0377 | — |
+| Cost per run, c01 and c02 included | $5.08 for the 3 | $1.70, $1.69, $1.69 | $1.36 |
+| Input tokens per run (golden) | 285,061 | identical | 260,127 |
+| Output tokens per run (golden) | — | 23,966–24,417 | 15,984–16,210 |
+
+- **Cost +$0.0061 per golden question (+19%)** and **p95 +1.4 s,** both within the Phase 1 ceilings ($0.06, 23 s). Input +24,934 tokens (+9.6%) per run; output about +50%.
+- **Retrieve p95 varies though the hits don't:** it's machine time.
+- **The costs with c01 and c02** come from each run's rows at the `GENERATION_PRICE_*` prices (the eval's own cost function, in a scratch script); the summary's cost is golden-only.
+
+**Precision and recall per run:**
+
+| Run | Flagged (rule, model) | Precision | Rule; model | Recall | Rule kinds; `texts` | Unreachable |
+|---|---|---|---|---|---|---|
+| 1 | 22 (8, 14) | 0.818 (18 of 22) | 8 of 8; 10 of 14 | 0.317 (19 of 60) | 8 of 8; 11 of 52 | 2 |
+| 2 | 22 (8, 14) | 0.864 (19 of 22) | 8 of 8; 11 of 14 | 0.333 (20 of 60) | 8 of 8; 12 of 52 | 2 |
+| 3 | 21 (8, 13) | 0.952 (20 of 21) | 8 of 8; 12 of 13 | 0.350 (21 of 60) | 8 of 8; 13 of 52 | 2 |
+
+- **The rules are exact:** 8 of 8 in precision and recall, in every run.
+- **Two-text recall is the weak part:** the model lists 13–14 pairs per run, and the set holds 52 reachable `texts` conflicts. 11 were found in all 3 runs, 2 in some (k58, k66), and 39 in none.
+
+**AC4 per seed:**
+
+| Seed | Question | Retrieved | Surfaced (runs 1, 2, 3) |
+|---|---|---|---|
+| k01: KEP-4858 claims stable, 1.37 says beta | q18 | yes | yes, yes, yes (the rule) |
+| k02: KEP-2572's out-of-date status | q01 | yes | yes, yes, yes by matching; the summary check below |
+| k03: KEP-2579's beta date | q08 | no | not retrieved |
+| k04: `versioning.md`'s "every three months" | c01 | no | not retrieved |
+
+- **q01's summaries, verbatim, for the developer to confirm.** The pair is the same in each run: 7600 (the release page, prevails) vs. 33441 (KEP-2572's Motivation).
+  - Run 1: "The release-cycle doc says about three releases per year, while KEP-2572's motivation says Kubernetes currently releases 4 times per year."
+  - Run 2: "The release-cycle doc says about three releases per year, while KEP-2572's motivation says Kubernetes currently releases 4 times per year; the tier-2 doc wins."
+  - Run 3: "The release-cycle doc says about three releases per year, while KEP-2572's motivation says Kubernetes currently releases 4 times per year."
+- **Claude's reading: all 3 fail the pinned summary check.** It asks for KEP-2572's out-of-date status or the cadence not being implemented, "not only its Motivation's '4 times per year'".
+  - The pair matches k02 because k02's first side is the whole KEP. Its fact is k05's (4 a year vs. 3 a year), which the same pair also matches.
+  - This is the R2 devil's advocate's "q01 can match on the wrong disagreement". With this reading, AC4 is 1 of 4 in each run.
+- **c01's summaries:** none. No conflict was flagged on c01 in any run, since k04's sides were never both retrieved.
+  - Its answers: `insufficient_evidence`, answered, `insufficient_evidence`. The answered one says "roughly one year", from KEP-1498's Motivation.
+
+**Every unmatched flagged conflict, with Claude's verdict** (read from the stored chunk text):
+
+| Question | Pair (prevails in bold), kind | Runs | The model's summary (first run) | Verdict |
+|---|---|---|---|---|
+| q18 | `gate:StrictIPCIDRValidation` 10419 (1.33–1.35) vs. **10420** (1.36–now), supersession | 1, 2 | "The older feature-gate page (1.33–1.35) lists only the alpha stage, while the newer page (valid at 1.37) adds beta, enabled by default from 1.36; the newer page is valid at 1.37 and wins." | **Real.** Alpha from 1.33 with no end vs. alpha to 1.35, then beta from 1.36: the stage changed between versions |
+| q34 | `gate:KMSv2` 9930 (1.29–1.31) vs. **9931** (1.32–now), supersession | 1 | "The older feature-gate entry lists the stable stage from 1.29 with no end, while the newer entry (valid at 1.37) ends stable at 1.31 and marks the gate as removed." | **Real.** Stable with no end vs. stable to 1.31 and `removed: true` |
+| q35 | the v1.28 release blog, one section: 41925 (1.28) vs. **42160** (1.36–now), supersession | 1, 2, 3 | "One version of the 1.28 blog says only the v1beta1 API group must be enabled for the beta, while the other says both the API group and the ValidatingAdmissionPolicy feature gate must be enabled; 42160 is valid at 1.37 and wins." | **Real, borderline.** What must be enabled changed: the API group vs. the API group and the gate. A reader could call it detail added, which doesn't count |
+| q45 | `kep:1880`, one section: 24104 (1.24–1.26) vs. **24214** (1.28–1.30), supersession | 1, 2 | "The older KEP draft names the default object ServiceCIDRConfig and targets an alpha upgrade to 1.25, while the later shipped KEP text names it ServiceCIDR and uses a generic N+1 release." | **Not real.** The developer dropped this pair at T7 (d25, "a type renamed during design"). "1.25" → "N+1" removes a value, it doesn't change it |
+
+- **None of the 3 labeling passes listed the 3 real ones.** They're candidates for the set's next version, which is human-owned and unchanged here.
+
+**The agreement check:** the 3 labeling passes split 0.526 of the time (41 of 78 groups not found by all 3), above 0.20. The developer's whole question (q32) was "missing: none". So precision is provisional, and it's reported both ways:
+
+| Run | Raw | Unmatched judged real | Judged |
+|---|---|---|---|
+| 1 | 0.818 (18 of 22) | 3 of 4 | 0.955 (21 of 22) |
+| 2 | 0.864 (19 of 22) | 2 of 3 | 0.955 (21 of 22) |
+| 3 | 0.952 (20 of 21) | 1 of 1 | 1.000 (21 of 21) |
+
+- The precision threshold uses the judged values (product spec).
+- If q35 is judged not real, judged precision is 20 of 22, 20 of 22 and 20 of 21.
+
+**Other checks:**
+
+- **Model pairs inside one version (decision 1):** 0 of 14, 0 of 14 and 0 of 13. The supersession pairs (8, 7, 5) all span two versions.
+- **Loser-only answers:** 0 in each run.
+- **q48:** `insufficient_evidence` in all 3 runs.
+
+**ADR-010 D4:**
+
+- **The switch rule** counts only model-found seeds that search retrieved: k02 (q01). k04 (c01) wasn't retrieved.
+  - By the matching, k02 surfaced in 3 of 3 runs, and 0 answers cite only the losing side: the rule doesn't fire.
+  - If the developer confirms Claude's reading of q01's summaries, k02 was missed in all 3 runs, and the rule fires: a later run adds a separate detector call.
+- **The KEP-2572 fallback** (a rule for a KEP still claiming an in-progress status 2+ releases past its latest milestone) fires on the same condition: seed KEP-2572 missed in any run.
+- Both wait on the developer's confirmation. Neither is built here.
+
+**AC7's improvement rule,** against `authority` (product spec):
+
+| Condition | Authority | Conflict | Result |
+|---|---|---|---|
+| Conflict recall rises by ≥ 0.03 | 0 of 60: it has no conflict step, so its rows flag nothing | 0.333 (0.317–0.350) | Pass |
+| Conflict precision | n/a (no flags) | 0.878 raw (0.818–0.952); judged 0.955–1.000 | New |
+| No retrieval metric drops by more than 0.03 | 0.552, 1.000, 0.813, 0.535 | identical hits, identical values | Pass |
+| AC1, AC2, AC3 at or above authority's range (100%) | 100% | 100% in all 3 runs | Pass |
+| False refusals at or below authority's range (0 of 36) | 0 | 0 in all 3 runs | Pass |
+
+- **Verdict: pass.** The +conflict stage is kept.
+- **A weak test:** the target metric is new, so authority's 0 holds by construction.
+  - The stage's case rests on its own numbers: the rules 8 of 8, judged precision 0.955–1.000, recall 0.317–0.350, for +$0.0061 per question and +1.4 s p95.
+- **AC4,** a hard gate on the finished Phase 1, is 2 of 4 by matching. Both misses are search misses (S11's corrective retrieval), and q01's summary check may make it 1 of 4.
+
+**The void run, q48 and S10-T5c:**
+
+- **The first run, `conflict-20261012T055648Z`, is void** (decision Q5). It's kept in history at `3872104`, and its row left the table.
+  - It ran on commit `759a4db` and cost US$1.74, with AC3 6 of 7 (and AC1 37 of 37).
+- **q48's miss:** unanswerable q48 ("In which Kubernetes release will StrictIPCIDRValidation graduate to GA?") was answered with "GA being targeted for Kubernetes 1.38".
+  - The answer came from the KEP claim line's "(latest milestone v1.38)", a plan, not a release.
+- **The fix (S10-T5c; ADR-010 D1 amended):** a KEP's latest milestone shows only when it's older than the target release, in the claim line and the rule-found summary.
+- **T5c's check, paid (~US$0.29):** q48 asked 3 times before the change gave 0 of 3 `insufficient_evidence`; 3 times after gave 3 of 3. The 3 runs above add 3 of 3.
 
 ## Known limits
 

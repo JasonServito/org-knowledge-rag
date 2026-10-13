@@ -1,6 +1,7 @@
 """The golden-set label check and the section listing (S06-T1), the eval run (S06-T4) and the
 retrieval-only scoring (S07-T3), against the test database; authority mode and authority
-selection (S09-T7).
+selection (S09-T7); the conflict set's side check, its scoring in a run, and `make
+eval-conflicts`' scoring (S10-T6).
 
 Every test builds its own rows inside `conn`'s rolled-back transaction; expected counts and
 values are counted or calculated by hand from those rows and the fakes' outputs.
@@ -23,7 +24,15 @@ from orgknow.db.eval import canonical_ids, document_texts
 from orgknow.db.models import NewChunk, NewVersion
 from orgknow.db.versions import insert_version
 from orgknow.embeddings.embedder import DIMENSIONS
+from orgknow.eval.conflicts import (
+    check_sides,
+    load_conflict_file,
+    reachable_line,
+    rule_line,
+    seeds_line,
+)
 from orgknow.eval.golden import (
+    GoldenSet,
     GoldenSetError,
     Label,
     LabelCount,
@@ -34,15 +43,18 @@ from orgknow.eval.golden import (
 from orgknow.eval.runner import (
     EvalError,
     authority_line,
+    check_conflicts,
     load_vectors,
     retrieval_report,
     router_line,
     run,
     save_routes,
+    score_conflicts_only,
     score_retrieval_only,
     time_line,
 )
 from orgknow.eval.table import write_table
+from orgknow.generation.conflicts import ModelConflict
 from orgknow.generation.generator import GenerationError
 from orgknow.generation.schema import Generation, ModelAnswer, TokenUsage
 from orgknow.retrieval.router import Mode, Route
@@ -341,6 +353,8 @@ def run_settings(settings: Settings, tmp_path: Path) -> Settings:
         eval_results_dir=tmp_path / "results",
         eval_vectors_dir=tmp_path / "vectors",
         eval_routes_dir=tmp_path / "routes",
+        # No conflict set unless a test writes one (S10-T6), whatever the repo holds.
+        eval_conflicts_path=tmp_path / "conflicts.yaml",
     )
 
 
@@ -424,6 +438,9 @@ def test_a_run_writes_the_pinned_results_format(
         "name": "dense",
         "golden_path": str(golden_path),
         "golden_sha256": golden_sha256,
+        # S10-T8 (decision R2): no conflict file in this test's settings, so both are None.
+        "conflicts_path": None,
+        "conflicts_sha256": None,
         "smoke": False,
         "questions": 3,
         "settings": {
@@ -674,19 +691,31 @@ def test_a_run_writes_the_pinned_results_format(
         "conflicts_rule": 0,  # S10-T4: no KEP among the hits
         "conflicts_model": 0,  # S10-T5: the fake model lists no pairs
         "loser_only_answers": 0,
+        # S10-T6: no conflict set, so no conflict metrics.
+        "conflict_precision": None,
+        "conflict_precision_rule": None,
+        "conflict_precision_model": None,
+        "conflict_recall": None,
+        "conflict_recall_rule": None,
+        "conflict_recall_texts": None,
+        "conflict_unreachable": None,
+        "ac4": None,
+        "ac4_seeds": None,
     }
     assert len(generator.calls) == 3
+    assert not (folder / "conflict_questions.jsonl").exists()
 
     # The table reads the folder back; a folder without summary.json (like s04/) is skipped.
     (run_settings.eval_results_dir / "s04").mkdir()
     (run_settings.eval_results_dir / "s04" / "README.md").write_text("notes", encoding="utf-8")
     table = write_table(run_settings.eval_results_dir).read_text(encoding="utf-8")
     # nDCG (0.693426 + 1) / 2 = 0.847; errors 1 in 1 run; the p95s to 1 decimal, cost to 4;
-    # stale 0 / 6 and temporal 0 / 3, both 0.000; router and authority selection n/a.
+    # stale 0 / 6 and temporal 0 / 3, both 0.000; router and authority selection n/a; no
+    # conflict set, so the 3 conflict cells n/a.
     assert table.splitlines()[4:] == [
         f"| dense | golden.yaml {golden_sha256[:8]} | 1 | 3 | 1.000 | 1.000 | 0.750 | 0.847 "
         f"| 1.000 | 1.000 | 1.000 | 1.000 | {max(latencies):.1f} | {max(retrieve_times):.1f} "
-        "| 0.1140 | 0.000 | 0.000 | n/a | n/a |"
+        "| 0.1140 | 0.000 | 0.000 | n/a | n/a | n/a | n/a | n/a |"
     ]
 
 
@@ -1223,7 +1252,7 @@ def test_an_authority_run_records_the_weights_the_label_tiers_and_authority_sele
     assert summary["authority"] == {"pass": 1, "total": 1}
     table = write_table(authority_settings.eval_results_dir).read_text(encoding="utf-8")
     # Stale 0 of 4 (all current), no golden window, router 1 of 1, authority selection 1 of 1.
-    assert table.splitlines()[4].endswith("| 0.000 | n/a | 1.000 | 1.000 |")
+    assert table.splitlines()[4].endswith("| 0.000 | n/a | 1.000 | 1.000 | n/a | n/a | n/a |")
 
 
 @pytest.mark.parametrize(
@@ -1255,3 +1284,256 @@ def test_retrieval_only_counts_authority_selection_in_each_routed_mode(
     mode_line = retrieval_report(settings, scores.metrics).splitlines()[0]
     assert f"{mode_line}\n{authority_line(scores.authority, scores.current_mrr)}" == expected
     assert scores.router is not None  # the router line prints in both modes
+
+
+# --- The conflict set (S10-T6, ADR-007 D4) --------------------------------------------------------
+# Every conflict below is `texts`: the test pages are docs pages, so a rule kind's `kep:` side would
+# match no stored text. Expected counts are by hand from the stored texts and the fakes' outputs.
+
+C1 = "Which page explains A?"
+
+
+def _entry(document: str, section: str | None = None) -> str:
+    """A side entry as flow-style YAML."""
+    return (
+        f"{{document: '{document}'}}"
+        if section is None
+        else (f"{{document: '{document}', section: '{section}'}}")
+    )
+
+
+def _conflict(conflict_id: str, question: str, first: str, second: str) -> str:
+    """One `texts` seed conflict, each side one entry (`_entry`)."""
+    return (
+        f"  - {{id: {conflict_id}, question: {question}, kind: texts, seed: true, "
+        f"note: 'Two values.', first: [{first}], second: [{second}]}}\n"
+    )
+
+
+@pytest.mark.usefixtures("documents")
+def test_the_side_check_counts_texts_resolves_aliases_and_stops_on_0_matches(
+    conn: Conn, tmp_path: Path
+) -> None:
+    path = tmp_path / "conflicts.yaml"
+    path.write_text(
+        f"version: test\nquestions:\n  - {{id: c01, question: '{C1}'}}\nconflicts:\n"
+        + _conflict("k01", "c01", _entry("web:/test/a/", "Install"), _entry("web:/test/old-b/"))
+        + _conflict("k02", "c01", _entry("web:/test/a/", ""), _entry("web:/test/b/", "Usage"))
+        + _conflict("k03", "c01", _entry("web:/test/a/", "Nope"), _entry("web:/test/missing/"))
+        + _conflict(
+            "k04", "c01", _entry("web:/test/b/"), _entry("web:/test/a/", "Install > Linux")
+        ),
+        encoding="utf-8",
+    )
+
+    conflict_set, counts = check_sides(conn, load_conflict_file(path, []))
+
+    # As the golden label check counts them (the `documents` fixture).
+    assert [(c.conflict_id, c.side, c.texts) for c in counts] == [
+        ("k01", "first", 2),  # "a install" (in both versions: 1 text) and "a install linux"
+        ("k01", "second", 2),  # the alias's document: "b intro" and "b usage"
+        ("k02", "first", 2),  # "a intro old" and "a intro"
+        ("k02", "second", 1),  # "b usage"
+        ("k03", "first", 0),  # no such section
+        ("k03", "second", 0),  # no such document
+        ("k04", "first", 2),
+        ("k04", "second", 1),  # "a install linux"
+    ]
+    # The alias resolves to its canonical_id, so matching compares ids only.
+    assert conflict_set.conflicts[0].second == [Label(canonical_id="web:/test/b/", section=None)]
+    with pytest.raises(EvalError) as error:
+        check_conflicts(conn, GoldenSet(version="test", questions=[]), path)
+    assert str(error.value) == (
+        f'{path}: 2 side entries match no stored text: k03  c01  first  web:/test/a/  "Nope"  '
+        "0 texts; k03  c01  second  web:/test/missing/  (whole document)  0 texts"
+    )
+
+
+def _write_conflicts(settings: Settings) -> None:
+    """A conflict set on GOLDEN's 3 questions and one new question, c01, whose 3 hits are every
+    question's (the fake embedder's one vector): a intro, a install, b usage.
+
+    - k01 (q01): a's intro vs. b: reachable (a intro, b usage)
+    - k02 (q02): a's Install section, old vs. new: one hit holds it, so not reachable
+    - k03 (q03): b vs. a: reachable
+    - k04 (c01): a vs. b: reachable
+    """
+    settings.eval_conflicts_path.write_text(
+        f"version: test\nquestions:\n  - {{id: c01, question: '{C1}'}}\nconflicts:\n"
+        + _conflict("k01", "q01", _entry("web:/test/a/", ""), _entry("web:/test/b/"))
+        + _conflict(
+            "k02", "q02", _entry("web:/test/a/", "Install"), _entry("web:/test/a/", "Install")
+        )
+        + _conflict("k03", "q03", _entry("web:/test/b/"), _entry("web:/test/a/"))
+        + _conflict("k04", "c01", _entry("web:/test/a/"), _entry("web:/test/b/")),
+        encoding="utf-8",
+    )
+
+
+def _pair(first: int, second: int) -> ModelConflict:
+    return ModelConflict(first=first, second=second, summary="A and B disagree.")
+
+
+def test_a_run_scores_its_conflicts_and_runs_the_new_questions_apart(
+    conn: Conn,
+    chunk_ids: dict[str, int],
+    run_settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_conflicts(run_settings)
+    a_intro, a_install, b_usage = chunk_ids["a intro"], chunk_ids["a install"], chunk_ids["b usage"]
+
+    def answered(cited: int, pairs: list[ModelConflict]) -> ModelAnswer:
+        return ModelAnswer(
+            answer_status="answered",
+            answer="See the page.",
+            evidence=[cited],
+            insufficient_evidence_reason=None,
+            conflicts=pairs,
+        )
+
+    generator = ScriptedGenerator(
+        [
+            answered(b_usage, [_pair(a_intro, b_usage)]),  # q01: matches k01
+            answered(a_intro, []),  # q02
+            answered(b_usage, []),  # q03: k03 reachable, not flagged: missed
+            answered(a_install, [_pair(a_install, b_usage)]),  # c01: matches k04
+        ]
+    )
+    embedder = FakeEmbedder()
+
+    folder = run(conn, embedder, generator, run_settings, smoke=False, name="conflict")
+
+    # The new question is embedded in the golden questions' one request, and answered last.
+    assert embedder.calls == [("query", [Q1, Q2, Q3, C1])]
+    assert len(generator.calls) == 4
+    # The golden rows are unchanged in number; c01's row is apart, with no metrics and the
+    # answerable checks. Its pair: two docs pages (tier 1), both valid at 1.37: unresolved.
+    assert [row["id"] for row in _rows(folder)] == ["q01", "q02", "q03"]
+    [new] = [
+        json.loads(line)
+        for line in (folder / "conflict_questions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert (new["id"], new["mode"], new["answerable"], new["label_tiers"]) == (
+        "c01",
+        None,
+        True,
+        [],
+    )
+    assert new["metrics"] is None
+    assert new["checks"] == {
+        "ac1": True,
+        "ac2": True,
+        "ac3": None,
+        "false_refusal": False,
+        "loser_only": False,
+    }
+    assert [(c["kind"], c["chunk_ids"], c["resolution"]) for c in new["conflicts"]] == [
+        ("contradiction", [a_install, b_usage], "unresolved")
+    ]
+
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    # Golden-only: 3 questions, 3 answers' tokens. The conflict counts cover c01 too.
+    assert (summary["questions"], summary["input_tokens"]) == (3, 3000)
+    assert (summary["conflicts_rule"], summary["conflicts_model"]) == (0, 2)
+    # Flags: q01's and c01's pairs, both matching: 2 of 2, all model-found. Reachable: k01, k03,
+    # k04; matched: k01, k04. k02 isn't reachable. Seeds: k01 and k04 surfaced, k02 not
+    # retrieved, k03 missed.
+    assert {key: value for key, value in summary.items() if "conflict_" in key} == {
+        "conflict_precision": {"pass": 2, "total": 2},
+        "conflict_precision_rule": {"pass": 0, "total": 0},
+        "conflict_precision_model": {"pass": 2, "total": 2},
+        "conflict_recall": {"pass": 2, "total": 3},
+        "conflict_recall_rule": {"pass": 0, "total": 0},
+        "conflict_recall_texts": {"pass": 2, "total": 3},
+        "conflict_unreachable": 1,
+    }
+    assert summary["ac4"] == {"pass": 2, "total": 4}
+    assert [(s["conflict_id"], s["retrieved"], s["surfaced"]) for s in summary["ac4_seeds"]] == [
+        ("k01", True, True),
+        ("k02", False, False),
+        ("k03", True, False),
+        ("k04", True, True),
+    ]
+    out = capsys.readouterr().out.splitlines()
+    sha256 = hashlib.sha256(run_settings.eval_conflicts_path.read_bytes()).hexdigest()
+    assert out[1] == (
+        f"Conflict set {run_settings.eval_conflicts_path} ({sha256[:8]}): 4 conflicts (4 seeds) "
+        "on 4 questions (1 new). Unmatched sides: 0."
+    )
+    assert out[-2].endswith(
+        " Conflicts: 2 (0 rule, 2 model), 0 loser-only answers. Conflict precision 1.000 (2 of "
+        "2), recall 0.667 (2 of 3 reachable), AC4 2 of 4 (q02: not retrieved; q03: missed)."
+    )
+    # (1,000 x $4 + 300 x $20) / 1e6 = $0.0100.
+    assert out[-1] == "Conflict questions: 1 (c01), 0 errors, cost $0.0100."
+
+
+@pytest.mark.usefixtures("chunk_ids")
+def test_a_smoke_run_runs_no_new_question_and_scores_only_its_questions(
+    conn: Conn, run_settings: Settings
+) -> None:
+    _write_conflicts(run_settings)
+    embedder = FakeEmbedder()
+
+    folder = run(conn, embedder, _refusing(), run_settings, smoke=True, name="conflict-smoke")
+
+    # GOLDEN's smoke questions are q01 and q02; c01 runs in full runs only.
+    assert embedder.calls == [("query", [Q1, Q2])]
+    assert not (folder / "conflict_questions.jsonl").exists()
+    summary = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    # Only k01 (reachable, not flagged) and k02 (not reachable) count.
+    assert summary["conflict_recall"] == {"pass": 0, "total": 1}
+    assert summary["conflict_unreachable"] == 1
+    assert summary["ac4"] == {"pass": 0, "total": 2}
+
+
+def test_with_no_conflict_file_a_run_says_so_and_goes_on(
+    conn: Conn,
+    chunk_ids: dict[str, int],
+    run_settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run(conn, FakeEmbedder(), _refusing(), run_settings, smoke=True, name="dense-smoke")
+
+    assert capsys.readouterr().out.splitlines()[1] == (
+        f"Conflict set: none ({run_settings.eval_conflicts_path} not found)."
+    )
+
+
+@pytest.mark.usefixtures("chunk_ids")
+def test_conflicts_only_scores_the_rule_found_conflicts_and_writes_nothing(
+    conn: Conn, run_settings: Settings
+) -> None:
+    _write_conflicts(run_settings)
+    vectors_path = _store_vectors(run_settings, Q1, Q2, Q3, C1)
+    vectors_before = vectors_path.read_bytes()
+
+    check = score_conflicts_only(conn, run_settings)
+
+    # No KEP among the hits: no rule-found conflict. Reachable as in `_write_conflicts`.
+    assert check.flagged == []
+    assert reachable_line(check.counts) == "Reachable: 3 of 4 (not reachable: k02 q02)."
+    assert seeds_line(check.counts) == "Seeds retrieved: 3 of 4 (not retrieved: k02 q02)."
+    assert rule_line(check.flagged, check.counts) == (
+        "Rule-found: 0 flagged; precision n/a (0 of 0); recall n/a (0 of 0 reachable)."
+    )
+    assert (check.golden_questions, len(check.conflict_set.questions)) == (3, 1)
+    assert not run_settings.eval_results_dir.exists()
+    assert vectors_path.read_bytes() == vectors_before
+
+
+@pytest.mark.usefixtures("chunk_ids")
+def test_conflicts_only_with_a_missing_vector_is_an_error(
+    conn: Conn, run_settings: Settings
+) -> None:
+    _write_conflicts(run_settings)
+    vectors_path = _store_vectors(run_settings, Q1, Q2, Q3)  # none for c01
+
+    with pytest.raises(EvalError) as error:
+        score_conflicts_only(conn, run_settings)
+
+    assert str(error.value) == (
+        f"no stored vector for c01 in {vectors_path}: eval-conflicts never calls Voyage "
+        "(`make eval-routes` embeds the conflict set's new questions)"
+    )
