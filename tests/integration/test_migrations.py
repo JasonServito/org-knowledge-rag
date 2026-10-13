@@ -1,6 +1,21 @@
-import psycopg
+import importlib.util
+from pathlib import Path
 
+import psycopg
+import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from psycopg.errors import CheckViolation
+from psycopg.rows import TupleRow
+from sqlalchemy import Connection, create_engine, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.pool import NullPool
+
+from orgknow.db.documents import add_alias, create_document
+from orgknow.db.url import with_psycopg_driver
 from orgknow.settings import Settings
+
+Conn = psycopg.Connection[TupleRow]
 
 # The six tables of docs/domain-model.md ("Tables"), typed by hand.
 DOMAIN_TABLES = {
@@ -96,3 +111,75 @@ def test_chunks_have_a_generated_search_vector_with_a_gin_index(settings: Settin
     assert index == (
         "CREATE INDEX chunks_search_vector_idx ON public.chunks USING gin (search_vector)",
     )
+
+
+# --- 0007: the `discussion` source type and the `gh:` prefix (S13-T1) ----------------------------
+
+MIGRATIONS = Path(__file__).parents[2] / "src" / "orgknow" / "db" / "migrations" / "versions"
+
+
+def test_0007_allows_a_discussion_with_a_gh_id_and_alias(conn: Conn) -> None:
+    document_id = create_document(conn, "gh:sig-release/discussions/1290", "discussion")
+    add_alias(conn, document_id, "gh:sig-release/discussions/1")
+
+    # Every other prefix and type is still refused (R2, R4).
+    with pytest.raises(CheckViolation, match="documents_source_type_check"), conn.transaction():
+        create_document(conn, "gh:enhancements/issues/1", "mailing_list")
+    with pytest.raises(CheckViolation, match="documents_canonical_id_check"), conn.transaction():
+        create_document(conn, "slack:release/1", "discussion")
+    with pytest.raises(CheckViolation, match="document_aliases_alias_check"), conn.transaction():
+        add_alias(conn, document_id, "slack:release/1")
+
+
+def _refused(connection: Connection, sql: str, constraint: str) -> bool:
+    """Whether `sql` fails on `constraint`, in a savepoint that is then rolled back."""
+    try:
+        with connection.begin_nested():
+            connection.execute(text(sql))
+    except IntegrityError as error:
+        return constraint in str(error)
+    return False
+
+
+def test_0007_downgrade_restores_both_checks_and_upgrade_adds_them_back(
+    settings: Settings,
+) -> None:
+    # Run 0007's own downgrade() and upgrade() inside one transaction that is rolled back, so the
+    # test database stays at head whatever happens.
+    spec = importlib.util.spec_from_file_location(
+        "migration_0007", next(MIGRATIONS.glob("0007_*.py"))
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    discussion = "INSERT INTO documents (canonical_id, source_type) VALUES ('kep:1', 'discussion')"
+    gh_id = "INSERT INTO documents (canonical_id, source_type) VALUES ('gh:x/issues/1', 'kep')"
+    gh_alias = (
+        "INSERT INTO document_aliases (alias, document_id) "
+        "VALUES ('gh:x/issues/2', (SELECT min(id) FROM documents))"
+    )
+    engine = create_engine(with_psycopg_driver(settings.database_url), poolclass=NullPool)
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            connection.execute(
+                text("INSERT INTO documents (canonical_id, source_type) VALUES ('kep:2', 'kep')")
+            )
+            with Operations.context(MigrationContext.configure(connection)):
+                migration.downgrade()
+                after_downgrade = [
+                    _refused(connection, discussion, "documents_source_type_check"),
+                    _refused(connection, gh_id, "documents_canonical_id_check"),
+                    _refused(connection, gh_alias, "document_aliases_alias_check"),
+                ]
+                migration.upgrade()
+                after_upgrade = [
+                    _refused(connection, discussion, "documents_source_type_check"),
+                    _refused(connection, gh_id, "documents_canonical_id_check"),
+                    _refused(connection, gh_alias, "document_aliases_alias_check"),
+                ]
+        finally:
+            transaction.rollback()
+
+    assert after_downgrade == [True, True, True]
+    assert after_upgrade == [False, False, False]

@@ -5,8 +5,8 @@ gates' observations (`observed_lifecycle`) and the weights (settings).
 - `target_release`: the release a question asks about, from its route.
 - `kep_gates`: the feature gates a KEP version names in its `kep.yaml`.
 - `kep_stage`: a KEP's effective stage at the target release: observed, else claimed, else unknown.
-- `tier`: 1 (docs) to 6 (blogs) by source type; a KEP 3 when shipped by the target release or
-  implemented, else 5; None for a superseded proposal.
+- `tier`: 1 (docs) to 7 (GitHub discussions) by source type; a KEP 3 when shipped by the target
+  release or implemented, else 5; None for a superseded proposal.
 - `authority`: a hit's tier and, for a KEP, its effective stage, at the target release.
 
 S09-T7 (ADR-003 D4 as changed in the S09-R2 sitting), authority mode's weights:
@@ -32,6 +32,7 @@ SOURCE_TIERS = {
     "release_record": 2,
     "governance_doc": 4,
     "blog_post": 6,
+    "discussion": 7,  # GitHub issues, PRs and discussions (S13-T1)
 }
 # The claimed statuses of a superseded proposal: kept, but given no tier (ADR-003 D3).
 SUPERSEDED = ("withdrawn", "rejected", "replaced")

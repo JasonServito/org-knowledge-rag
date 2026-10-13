@@ -18,7 +18,7 @@
 - A feature gate's body starts with its `stages` (and `removed`) front matter as YAML, then a
   blank line (S05-R1 decision 1): the gate's stages live only in its front matter.
 - A KEP folder's README, a governance doc and a CHANGELOG have no front matter: the whole file is
-  the body.
+  the body. So is a GitHub item's rendered text (`discussion`, S13-T1; `github.render`).
 - No source keeps a section under a `## Downloads for …` heading (the sha512 download tables,
   S05-R2 decision 8 and S05-R3 decision 4). A CHANGELOG also drops the text before its first
   heading (the generated TOC).
@@ -373,12 +373,13 @@ def version_body(canonical_id: str, source_type: str, text: str) -> str:
     """The Markdown a version is chunked from, given its decoded file.
 
     A docs page, a blog post and an old single-file KEP lose their front matter. A KEP folder's
-    README, a governance doc and a CHANGELOG (`changelog:` id) have none: the whole file. A gate
-    (`gate:` id) with `stages` gets them as YAML before its body, read from the file's front
-    matter: the same values as `metadata`, in the file's order (Postgres jsonb reorders keys).
+    README, a governance doc, a CHANGELOG (`changelog:` id) and a GitHub item's rendered text
+    (`discussion`) have none: the whole text. A gate (`gate:` id) with `stages` gets them as YAML
+    before its body, read from the file's front matter: the same values as `metadata`, in the
+    file's order (Postgres jsonb reorders keys).
     """
     if (
-        source_type == "governance_doc"
+        source_type in ("governance_doc", "discussion")
         or canonical_id.startswith("changelog:")
         or (source_type == "kep" and _is_kep_folder(canonical_id))
     ):

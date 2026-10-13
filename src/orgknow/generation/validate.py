@@ -42,9 +42,15 @@ def rejection_reason(output: ModelAnswer, retrieved_ids: Collection[int]) -> str
 
 def fill_in(hit: Hit, repo_urls: Mapping[str, str]) -> Evidence:
     """A citation's provenance, all from the retrieved hit. `repo_urls` maps a manifest repo
-    name to its GitHub URL (`load_repo_urls`); the link pins the snapshot commit. The tier and
-    stage come from the hit's `authority`: a tier of None there is a superseded proposal."""
+    name to its GitHub URL (`load_repo_urls`); the link pins the snapshot commit. A GitHub item
+    (`discussion`, S13-T1) is no file in a repo: its link is the item's own page (metadata
+    `url`). The tier and stage come from the hit's `authority`: a tier of None there is a
+    superseded proposal."""
     authority = hit.authority
+    if hit.source_type == "discussion":
+        source_url = str(hit.metadata["url"])
+    else:
+        source_url = f"{repo_urls[hit.snapshot_repo]}/blob/{hit.snapshot_sha}/{hit.source_path}"
     return Evidence(
         chunk_id=hit.chunk_id,
         document=hit.canonical_id,
@@ -61,5 +67,5 @@ def fill_in(hit: Hit, repo_urls: Mapping[str, str]) -> Evidence:
         superseded_proposal=authority is not None and authority.tier is None,
         effective_stage=None if authority is None else authority.effective_stage,
         stage_confidence=None if authority is None else authority.stage_confidence,
-        source_url=f"{repo_urls[hit.snapshot_repo]}/blob/{hit.snapshot_sha}/{hit.source_path}",
+        source_url=source_url,
     )

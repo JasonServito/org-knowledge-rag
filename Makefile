@@ -1,7 +1,7 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
-.PHONY: fmt check test-int up down migrate seed ingest lifecycle ingest-report reset-corpus embed \
-	eval-check eval-sections eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table \
-	eval-resummarize serve
+.PHONY: fmt check test-int up down migrate seed fetch-github ingest lifecycle ingest-report \
+	reset-corpus embed eval-check eval-check-chains eval-sections eval-retrieval eval-conflicts \
+	eval-routes eval-smoke eval eval-table eval-resummarize serve
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -45,13 +45,25 @@ migrate:
 seed:
 	uv run python -m orgknow.ingestion.seed
 
+# Fetch every decision chain's GitHub items (the manifest's `decision_chains`; S13-T1): REST for
+# issues and PRs (the item, its comments, a PR's reviews; never diff-line comments), GraphQL for
+# discussions (comments, replies), every list paged. Writes one JSON snapshot per item to
+# CORPUS_CACHE_DIR/github/<repo>/<kind>/<number>.json and pins each one's sha256 and fetch time in
+# the lock's `github:` section (an unchanged snapshot keeps its pin). Nothing is written unless
+# every item was fetched. Free, but needs GITHUB_TOKEN (`gh auth token`) and the network: about
+# 10 requests. `make ingest` then reads only the cached snapshots.
+fetch-github:
+	uv run python -m orgknow.ingestion.github
+
 # Read the scope's files (INGEST_SCOPE, default full) at the locked SHAs and store their versions,
 # then chunk every version that has no chunks yet, then rebuild the observed lifecycle (see
 # lifecycle). Free and local; safe to re-run (a re-run adds 0 versions and 0 chunks). Needs
 # `make up`, `make migrate`, `make seed`: it only reads `releases`, and stops before reading git if
 # a manifest release is missing there or has other dates. It ends with the ingestion report: this
 # run's counts and the lifecycle line, skipped and failed files, then the database part (see
-# ingest-report).
+# ingest-report). The `full` scope also stores each decision chain's GitHub item as a `discussion`
+# document from its cached snapshot (see fetch-github); a missing snapshot, or one the lock doesn't
+# pin, stops it before any write, naming the item.
 ingest:
 	uv run python -m orgknow.ingestion.ingest
 
@@ -88,6 +100,13 @@ embed:
 # then a total. Fails if the file is invalid or a label matches nothing. Read-only; needs `make up`.
 eval-check:
 	uv run python -m orgknow.eval check
+
+# Check the gold decision chains (EVAL_CHAINS_PATH, default eval/golden_set/chains-v0.yaml;
+# ADR-012 D4) against the dev database: one line per `texts` label with the distinct chunk texts
+# it matches (ADR-007 D2's section rule; the document by canonical id or alias), then a total.
+# Fails, naming each one, if a label matches nothing. Read-only; needs `make up` and `make ingest`.
+eval-check-chains:
+	uv run python -m orgknow.eval check-chains
 
 # List a document's sections as golden-set labels write them, each with its distinct text count:
 # one line per heading path in any version, first appearance first; `""` is the intro. Read-only.

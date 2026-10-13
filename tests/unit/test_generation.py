@@ -266,6 +266,26 @@ def test_fill_in_a_kep_hit() -> None:
     }
 
 
+def test_a_discussions_source_url_is_the_items_github_url() -> None:
+    # S13-T1: a GitHub item has no file in a repo; its citation links the item itself.
+    hit = _docs_hit(
+        canonical_id="gh:enhancements/pull/2567",
+        source_type="discussion",
+        heading_path=["Comments", "@dims · 2021-04-19"],
+        snapshot_repo="enhancements",
+        snapshot_sha="ab" * 20,
+        source_path="github/enhancements/pull/2567.json",
+        metadata={
+            "title": "KEP-2572: Defining the Release Cadence",
+            "url": "https://github.com/kubernetes/enhancements/pull/2567",
+        },
+    )
+
+    evidence = fill_in(hit, {"enhancements": "https://github.com/kubernetes/enhancements"})
+
+    assert evidence.source_url == "https://github.com/kubernetes/enhancements/pull/2567"
+
+
 def test_a_superseded_proposals_citation_has_no_tier_and_says_so() -> None:
     superseded = Authority(
         target_release=37, tier=None, effective_stage="beta", stage_confidence="low"

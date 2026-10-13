@@ -102,6 +102,7 @@ def test_a_keps_gates_are_the_names_in_its_feature_gates_list(
         ("release_record", 2),
         ("governance_doc", 4),
         ("blog_post", 6),
+        ("discussion", 7),  # S13-T1: GitHub issues, PRs and discussions
     ],
 )
 def test_each_source_types_tier(source_type: str, expected: int) -> None:

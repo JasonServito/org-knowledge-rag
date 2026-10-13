@@ -136,6 +136,7 @@ def test_loads_the_s04_scope_at_the_locked_shas() -> None:
     assert docs.snapshots[0].label == "1.24"
     assert scope.blog is None  # no blog in S04
     assert scope.changelogs is None  # no CHANGELOG in S04
+    assert scope.github == ()  # no GitHub item in S04
 
 
 def test_loads_the_full_scope_from_1_20() -> None:
@@ -234,6 +235,14 @@ def test_loads_the_full_scope_from_1_20() -> None:
     assert changelogs.files[-1] == (37, "CHANGELOG/CHANGELOG-1.37.md")
     assert [release for release, _ in changelogs.files] == list(range(20, 38))
     assert all(path == f"CHANGELOG/CHANGELOG-1.{r}.md" for r, path in changelogs.files)
+    # S13-T1: `discussion: all` reads every decision chain's GitHub items (decision_chains).
+    assert [item.key for item in scope.github] == [
+        "sig-release/discussions/1290",
+        "enhancements/issues/2572",
+        "enhancements/pull/2567",
+        "enhancements/issues/3015",
+        "enhancements/pull/3010",
+    ]
 
 
 def test_changelogs_are_read_only_from_the_locked_default_branch(tmp_path: Path) -> None:

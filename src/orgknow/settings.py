@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     corpus_cache_dir: Path = Path("~/corpus_cache/org-knowledge-rag")
     # The manifest `scopes:` entry `make ingest` reads (S05-R1: `full`; `s04` is kept).
     ingest_scope: str = "full"
+    # `make fetch-github` (S13-T1): the decision chains' GitHub items, read with this token (`gh
+    # auth token`). No token: the fetch stops with a message; `make ingest` never needs it.
+    github_token: SecretStr | None = None
+    # GitHub's REST API root; GraphQL is at <root>/graphql.
+    github_api_url: str = "https://api.github.com"
     # Status synonyms (ADR-003 D5), applied to KEP claims (claimed_status and claimed_stage) and
     # to the feature-gate stages `make lifecycle` reads. ADR-003 D5 allows only this one; any
     # other unknown value is stored as written.
@@ -134,6 +139,9 @@ class Settings(BaseSettings):
     # scores each run's conflicts against; `make eval-routes` routes and embeds its new questions.
     # A missing file: `make eval` runs without it. Relative to the repo root.
     eval_conflicts_path: Path = Path("eval/golden_set/conflicts-v0.yaml")
+    # The gold decision chains (ADR-012 D4) whose `texts` labels `make eval-check-chains` checks
+    # against the stored texts (S13-T1). Relative to the repo root.
+    eval_chains_path: Path = Path("eval/golden_set/chains-v0.yaml")
     # `make eval` writes one results folder per run here, and rebuilds the ablation table here.
     eval_results_dir: Path = Path("eval/results")
     # The stored question vectors, one file per embedding model (S06-R1 decision 7): a run embeds

@@ -154,6 +154,63 @@ class ChangelogGroup:
     files: tuple[tuple[int, str], ...]  # (release, path): (20, "CHANGELOG/CHANGELOG-1.20.md")
 
 
+# The kinds of GitHub item a decision chain lists: the URL path segment of each (ADR-012 D3).
+GITHUB_KINDS = ("issues", "pull", "discussions")
+
+
+@dataclass(frozen=True)
+class GithubPin:
+    """The lock's record of an item's cached snapshot (`make fetch-github`)."""
+
+    sha256: str  # of the snapshot file's bytes
+    fetched_at: str  # UTC, e.g. 2026-10-13T12:00:00Z: when a snapshot with this hash was fetched
+
+
+@dataclass(frozen=True)
+class GithubItem:
+    """A GitHub issue, PR or discussion a decision chain links to (ADR-012 D3, S13-R1)."""
+
+    repo: str  # a key of the manifest's `repos`
+    kind: str  # one of GITHUB_KINDS
+    number: int
+    pin: GithubPin | None = None  # the lock's; None until `make fetch-github` has run
+
+    @property
+    def key(self) -> str:
+        """`<repo>/<kind>/<number>`: its key in the lock and its path in the cache."""
+        return f"{self.repo}/{self.kind}/{self.number}"
+
+
+def _github_items(manifest: dict[str, Any], lock: dict[str, Any]) -> list[GithubItem]:
+    """Every decision chain's items, each once, in manifest order, with the lock's pin when the
+    lock's `github:` section has one. Raises ValueError for an item whose repo isn't a manifest
+    repo, whose kind isn't one of GITHUB_KINDS, or whose number isn't a positive integer."""
+    pins = lock.get("github") or {}
+    items: dict[str, GithubItem] = {}
+    for chain in manifest.get("decision_chains") or []:
+        for entry in chain["items"]:
+            repo, kind, number = str(entry["repo"]), str(entry["kind"]), entry["number"]
+            if repo not in manifest["repos"]:
+                raise ValueError(f"decision_chains: repo {repo} is not a key of repos")
+            if kind not in GITHUB_KINDS:
+                raise ValueError(f"decision_chains: kind {kind} is not one of {GITHUB_KINDS}")
+            # bool is an int in Python; `number: true` is not an item number.
+            if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+                raise ValueError(f"decision_chains: number {number!r} is not a positive integer")
+            item = GithubItem(repo, kind, number)
+            pin = pins.get(item.key)
+            if pin is not None:
+                pinned = GithubPin(str(pin["sha256"]), str(pin["fetched_at"]))
+                item = GithubItem(repo, kind, number, pinned)
+            items.setdefault(item.key, item)
+    return list(items.values())
+
+
+def load_github_items(manifest_path: Path, lock_path: Path) -> list[GithubItem]:
+    """The decision chains' GitHub items (`_github_items`), from the manifest and the lock."""
+    return _github_items(_read_yaml(manifest_path), _read_yaml(lock_path))
+
+
 def _same_files(a: str, b: str) -> bool:
     """Whether some file is matched by both manifest paths (one ending in "/" is a folder)."""
     return a == b or (a.endswith("/") and b.startswith(a)) or (b.endswith("/") and a.startswith(b))
@@ -168,6 +225,7 @@ class Scope:
     date_groups: tuple[DateGroup, ...]  # the KEPs, then the governance docs
     blog: BlogGroup | None = None
     changelogs: ChangelogGroup | None = None
+    github: tuple[GithubItem, ...] = ()  # the decision chains' items (S13-T1)
 
     def __post_init__(self) -> None:
         """Refuse a scope where one file would be read by two groups, so stored twice."""
@@ -192,6 +250,8 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
     plus `head` (ADR-002 D1). `kep: all` reads every KEP in `sources.kep.sig_dirs`; otherwise
     `kep: {traced: [...]}` reads only those KEPs' directories. `blog_post: all` reads the blog's
     history up to the lock's head, keeping posts published from `sources.blog_post.from_release`.
+    `discussion: all` reads every decision chain's GitHub items from their cached snapshots, each
+    pinned in the lock's `github:` section (S13-T1).
     """
     manifest = _read_yaml(manifest_path)
     lock = _read_yaml(lock_path)
@@ -320,4 +380,9 @@ def load_scope(manifest_path: Path, lock_path: Path, name: str) -> Scope:
             datetime.combine(dates[str(posts["from_release"])], time(), UTC),
             str(posts["permalink"]),
         )
-    return Scope(name, tuple(groups), tuple(date_groups), blog, changelogs)
+    github: tuple[GithubItem, ...] = ()
+    if "discussion" in scope:
+        if scope["discussion"] != "all":
+            raise ValueError(f"scope {name!r}: discussion must be `all`")
+        github = tuple(_github_items(manifest, lock))
+    return Scope(name, tuple(groups), tuple(date_groups), blog, changelogs, github)

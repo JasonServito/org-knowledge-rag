@@ -414,7 +414,7 @@ Tasks:
 - **Metrics to move:** decision-chain completeness (new); Phase 1's retrieval metrics hold within ±0.03.
 - **Slice doc:** `docs/slices/S13-provenance-mvp.md` (run contract S13-R1)
 
-- [ ] **S13-T1 `[core]` Ingest the chains' GitHub items.** `discussion` documents (tier 7), fetched into the cache and pinned by hash; migration; embeddings; the chain label check. Deps: none.
+- [x] **S13-T1 `[core]` Ingest the chains' GitHub items.** `discussion` documents (tier 7), fetched into the cache and pinned by hash; migration; embeddings; the chain label check. Deps: none.
 - [x] **S13-T2 `[human]` Gold chains v0.** Both chains' steps and the held-out chain's WHY question, before any system output; drafted by Claude at the developer's request, signed off by the developer in the S13-R1 sitting. Deps: the contract.
 - [ ] **S13-T3 `[core]` Decision tables and the chain builder.** `decisions`, `decision_evidence`; `make chains`; `orgknow chain`. Deps: T1.
 - [ ] **S13-T4 `[core]` Decision-chain completeness.** `make eval-chain`: both numbers per chain, and the control. Deps: T2, T3.
