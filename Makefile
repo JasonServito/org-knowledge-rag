@@ -1,7 +1,7 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed ingest lifecycle ingest-report reset-corpus embed \
 	eval-check eval-sections eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table \
-	eval-resummarize
+	eval-resummarize serve
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -165,3 +165,12 @@ eval-table:
 # run `make eval-table` after it.
 eval-resummarize:
 	uv run python -m orgknow.eval resummarize
+
+# Serve the API on http://127.0.0.1:8000 (S12-T2): POST /query answers as `orgknow ask` does, with
+# one Langfuse trace per request when both keys are set; FastAPI's /docs page lists the endpoints.
+# Startup builds the clients once and, in rerank, temporal and authority modes, loads the reranker;
+# a missing ANTHROPIC_API_KEY or VOYAGE_API_KEY stops it. PAID per request, as `orgknow ask`: one
+# Voyage call and one Anthropic call, and in temporal and authority modes one router call. Needs
+# `make up`. Stop it with Ctrl-C.
+serve:
+	uv run uvicorn --factory orgknow.api.app:create_app --host 127.0.0.1 --port 8000

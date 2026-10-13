@@ -58,7 +58,6 @@ import psycopg
 from psycopg.rows import TupleRow
 from pydantic import BaseModel, ConfigDict, Field
 
-from orgknow.cli import ASK_ERRORS
 from orgknow.db.lifecycle import newest_versions, observations
 from orgknow.db.models import Authority, Hit, Release, TemporalFilter
 from orgknow.db.releases import list_releases
@@ -100,6 +99,7 @@ from orgknow.eval.metrics import (
 from orgknow.generation.conflicts import Conflict, rule_conflicts
 from orgknow.generation.generator import GenerationError, Generator, answer
 from orgknow.generation.schema import Answer, TokenUsage
+from orgknow.pipeline import ASK_ERRORS
 from orgknow.retrieval.authority import kep_gates, tier
 from orgknow.retrieval.rerank import Reranker
 from orgknow.retrieval.retrieve import retrieve, temporal_plan
@@ -766,7 +766,7 @@ def _run_question(
 ) -> QuestionRow:
     """Retrieve (with `route`, in temporal and authority modes), find the rule-found conflicts,
     answer and score one question; its labels' tiers come from `tiers` (`document_tiers`). An ask
-    error (`cli.ASK_ERRORS`) becomes the row's `error`, and the row keeps the rule-found
+    error (`pipeline.ASK_ERRORS`) becomes the row's `error`, and the row keeps the rule-found
     conflicts. Retrieval reads a stored vector and a stored route, and the rules read only the
     database, so neither makes a network call: their failure is a bug or a database failure, and
     stops the run."""

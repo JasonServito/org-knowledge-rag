@@ -56,7 +56,6 @@ from typing import TYPE_CHECKING
 import anthropic
 import psycopg
 
-from orgknow.cli import load_reranker
 from orgknow.db.eval import canonical_ids, document_texts
 from orgknow.db.models import Release
 from orgknow.db.releases import list_releases
@@ -82,6 +81,7 @@ from orgknow.eval.golden import (
 )
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import AnthropicGenerator
+from orgknow.pipeline import load_reranker
 from orgknow.retrieval.router import ClaudeRouter
 from orgknow.settings import Settings
 
