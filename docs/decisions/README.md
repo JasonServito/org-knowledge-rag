@@ -11,11 +11,12 @@ An ADR records **one decision**, why it was made, and what it costs. ADRs are th
 | [003](ADR-003-authority-and-status.md) | Source types, authority tiers, status taxonomy | Accepted (amended in S02, S05-R2, S09-R1, S09-R2 and S10-R1) |
 | [004](ADR-004-toolchain.md) | Development toolchain | Accepted (amended through S08) |
 | [005](ADR-005-data-access.md) | Data access approach | Accepted |
-| [006](ADR-006-generation-and-tracing.md) | Generation model, structured output, tracing | Accepted (amended in S06-R1) |
+| [006](ADR-006-generation-and-tracing.md) | Generation model, structured output, tracing | Accepted (amended in S06-R1 and S11-R1) |
 | [007](ADR-007-golden-set-and-labeling.md) | Golden-set schema and labeling | Accepted |
 | [008](ADR-008-reranker.md) | Reranker model, runtime and candidate count | Accepted |
 | [009](ADR-009-query-mode-routing.md) | Query-mode routing | Accepted |
 | [010](ADR-010-conflict-detection.md) | Conflict detection method | Accepted |
+| [011](ADR-011-corrective-retrieval.md) | Corrective retrieval: not adopted | Accepted |
 
 The queue of upcoming ADRs is in `docs/backlog.md`.
 

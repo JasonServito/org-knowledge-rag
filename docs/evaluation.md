@@ -610,6 +610,132 @@ Conflict questions: 2 (c01 c02), 0 errors, cost $0.0706.
 - **The fix (S10-T5c; ADR-010 D1 amended):** a KEP's latest milestone shows only when it's older than the target release, in the claim line and the rule-found summary.
 - **T5c's check, paid (~US$0.29):** q48 asked 3 times before the change gave 0 of 3 `insufficient_evidence`; 3 times after gave 3 of 3. The 3 runs above add 3 of 3.
 
+## Corrective retrieval (S11)
+
+S11-R1 sitting, 2026-10-12 (UTC). **Not adopted** (ADR-011). The evidence is 5 sitting probes of retrieval only, not a 3-run eval, so the ablation table gets no +corrective row.
+
+**What was tested.** Corrective retrieval (corrective RAG) checks the search before the answer:
+
+1. **Grade:** a grader model (`claude-haiku-5-5` at effort low) reads the question's 10 hits and judges whether they're enough.
+2. **Second search:** if not, it writes a new query, searched under the same route filter.
+3. **Merge:** the new texts join the first 10, and the best 10 go to the answer.
+
+**The two question sets,** 36 answerable questions each, scored with v0's labels:
+
+- **v0:** the golden set. Little to fix: authority mode already finds a labeled source for every question (Hit@10 1.000).
+- **The rephrased set:** S09's 36 blind Slack-style rewordings of v0's answerable questions (`eval/candidates/router-rewording-v0.yaml`). Claude read all 36; the developer spot-checked 5 (q30, q02, q03, q04, q07), and all keep the meaning.
+- **Routes:** every probe runs in authority mode; v0's questions use their stored routes and vectors. Probes 2–3 search the rephrased questions with the router's mode; probes 4–5 reuse v0's routes.
+- **"Hard" means two things:** probe 1's 12 hard v0 questions are those with Recall@10 < 0.5. ADR-011 D2's "hard set" is the whole rephrased set.
+
+**Every number below re-prints for free** from the probes' saved outputs (the probes themselves are paid):
+
+```bash
+uv run python eval/results/s11-sitting/summarize.py
+```
+
+**Probe 1: the grader on v0's stored hits.** Haiku answers "enough", "retry" (with a query) or "stop" (the corpus can't hold the answer), for v0's 43 questions plus the conflict questions c01 and c02:
+
+| Questions | Verdicts |
+|---|---|
+| Answerable, not hard | enough 24 |
+| Hard (Recall@10 < 0.5): q02 q06 q07 q08 q09 q12 q30 q32 q33 q34 q40 q41 | enough 12 |
+| Unanswerable | stop 6, retry 1 (q48) |
+| c01, c02 | enough 1, retry 1 (c01) |
+
+- **Grade time:** p50 1.34 s, p95 2.35 s.
+- **Both retries helped nothing:** q48's reachable conflicts went 1 → 1 of 1; c01's went 0 → 0 of 1, and its seed k04 still wasn't reachable.
+
+**Probe 2: the rephrased set's first search, and the same grader:**
+
+| Wording | Recall@10 | Hit@10 | MRR |
+|---|---|---|---|
+| v0 | 0.552 | 1.000 | 0.813 |
+| Rephrased | 0.427 | 0.944 | 0.606 |
+
+- **The router** picked v0's mode for 35 of 36 rephrased questions.
+- **Hit@10 lost:** q08 and q31 find no labeled source.
+- **Verdicts:** enough 34, retry 2. "Enough" includes q31, with no labeled source in its 10; the 2 retries changed nothing (ADR-011).
+
+**Probe 3: a second search on every question,** its new texts scored against the original question, merged and re-cut to 10:
+
+| Set | Recall@10 | Hit@10 | MRR | Recall@10 up / down |
+|---|---|---|---|---|
+| v0 | 0.552 → 0.562 | 1.000 → 1.000 | 0.813 → 0.748 | 4 / 2 questions |
+| Rephrased | 0.427 → 0.437 | 0.944 → 0.944 | 0.606 → 0.571 | 5 / 2 questions |
+
+- MRR falls on both sets.
+
+**Probe 4: a second search on every question, ranked on its own query, then RRF with the first 10** (reciprocal rank fusion, as in hybrid search). Probe 3's queries, 1 run:
+
+| Set, list | Recall@10 | Hit@10 | MRR |
+|---|---|---|---|
+| v0, first search | 0.552 | 1.000 | 0.813 |
+| v0, second search alone | 0.512 | 0.972 | 0.728 |
+| v0, RRF of the two | 0.555 | 1.000 | 0.819 |
+| Rephrased, first search | 0.427 | 0.944 | 0.607 |
+| Rephrased, second search alone | 0.458 | 0.917 | 0.680 |
+| Rephrased, RRF of the two | 0.468 | 0.944 | 0.671 |
+
+- **v0 is neutral:** RRF raised Recall@10 on 7 questions and lowered it on 6.
+- **The rephrased set gained** (Recall@10 up on 9 questions, down on 2): the sitting's only gain. It's 1 run, and the best of 4 designs tried on the same set (ADR-011 D1).
+- **The rephrased first search's MRR is 0.607 here and 0.606 in probes 2–3:** probes 4–5 reuse v0's routes.
+
+**Probe 5: the devil's advocate's concession test.** Probe 4's merge behind a grader that answers "stop" or "search" (with a query): 3 runs, 4 checks fixed before the runs (under the verdict below). **Its prompt differs from probe 4's only by the "stop" option.**
+
+- **Haiku said "stop"** on 32, 33 and 33 of v0's 36 answerable questions, and on 25, 24 and 25 of the rephrased 36.
+- **On the rephrased set,** MRR rose in every run (+0.053, +0.049, +0.046), and Hit@10 fell by 0.028 in every run.
+
+**Extra findings, from the logs:**
+
+- **c01** ("In Kubernetes 1.30, how long was a minor release supported?"): as routed (HISTORY, 1.30 ± 1), its top 10 holds kep:1498, 2 sections of the v1.30 release blog and 7 release-note chunks. With no window, `versioning.md`'s support section is at ranks 1–2 and k04 is reachable (`probe_relax.log`, `probe_c01.log`, `probe_pool.log`).
+- **q08:** no mode or window change retrieves KEP-2579's date line (k03) (`probe_relax.log`).
+- **The devil's advocate's candidate-pool test** (`probe_pool.log`): rephrased q08's first search holds 0 of its 8 labels among 20 candidates; the second search holds 4, at ranks 14–20 against the informal question. Rephrased q31's label is in neither.
+- **The LangGraph spike** (`spike/`): the same flow on fakes takes 82 lines with LangGraph and 30 as a plain loop; the LangGraph version needs 1 type cast to pass mypy --strict (`graph.py:76`, the graph's output type). Both skip the grader at 0 retries.
+
+**The verdict (ADR-011 D1): no corrective step in Phase 1.** The pipeline stays route → retrieve → conflicts → answer, with no grader, no second search and no LangGraph.
+
+- **No grader tested could tell thin evidence from enough.** Asked "enough or retry?", Haiku says "enough" on probe 1's 12 hard v0 questions, and on rephrased q31 with no labeled source in its 10. Offered "stop", it stops on most answerable questions (probe 5).
+- **The one design that gained (probe 4) searches every time:** that's query rewriting, not a corrective loop.
+- **Probe 5 failed checks 1 and 2.** Re-testing probe 4 without the "stop" option was rejected: it would be a second try picked after seeing results, and even a pass gives an always-on stage near the 23 s ceiling.
+
+**Probe 5's checks,** fixed before the runs:
+
+| Check | Run 1 | Run 2 | Run 3 | Result |
+|---|---|---|---|---|
+| 1. The rephrased set's Recall@10 rises by ≥ 0.03 | −0.006 | +0.008 | −0.007 | Fail |
+| 2. No v0 metric drops by more than 0.03 (Recall@10 / Hit@10 / MRR / nDCG@10) | +0.005 / +0.000 / −0.011 / −0.000 | +0.000 / +0.000 / +0.000 / +0.003 | +0.006 / +0.000 / −0.031 / −0.006 | Fail (run 3's MRR) |
+| 3. p95 ≤ 23 s over v0's 43 questions: both searches, the grade and S10's answer time | 20.0 s | 18.3 s | 17.0 s | Pass |
+| 4. q48 gains no future-release text | "stop" | "stop" | "stop" | Pass |
+
+- All 7 unanswerable questions got "stop" in all 3 runs, so q48 gained no text.
+
+**The rule a revisit must pass (ADR-011 D2, S11-R1 decision 5).** A later attempt (a stronger grader, or query rewriting as its own stage) is kept only if **every** run of 3 passes:
+
+- the hard set's (the rephrased set's) Recall@10 rises by ≥ 0.03
+- no retrieval metric (Recall@10, Hit@10, MRR, nDCG@10) drops by more than 0.03 on either set
+- AC1–AC3 at 100% and 0 false refusals on the golden set
+- p95 ≤ 23 s, counting both searches and the grader; cost ≤ $0.06 per question
+
+Every run, not the mean: once a model writes the queries, retrieval varies from run to run.
+
+**Limits of the evidence** (ADR-011, Consequences):
+
+- **Sitting probes, not a 3-run eval:** retrieval only, so no answer was generated or graded.
+- **Haiku at effort low only,** one prompt per probe.
+- **The labels list primary sources only** (ADR-007), so a displaced hit may be relevant but unlabeled. The one read, v0 q34's new rank 1 in probe 3, was noise (`probe_look.log`).
+- **Probes 4 and 5 reused v0's routes** for the rephrased questions (the router matched 35 of 36 modes).
+- **The rephrased set is spot-checked, not fully verified,** by the developer.
+
+**What's next:**
+
+- **AC4 stays at 1 of 4 until S12,** whose candidate tasks own its open seeds:
+  - q01: ADR-010 D4's fallbacks (a separate detector call and the stale-KEP rule), measured as their own row (S11-R1 decision 1).
+  - q08 (k03) and c01 (k04): S12's sitting decides, with q01's fallback result in hand (decision 6). The lead: c01's k04 is reachable when its 1.30 window is dropped.
+- **A proposed addition: query rewriting for informal wording.** Probe 4's design as its own stage: a second search on every question with a Haiku-written query, RRF with the first 10.
+  - In probe 4: the rephrased set's Recall@10 0.427 → 0.468 and MRR 0.607 → 0.671, v0 neutral; 1 run, the best of 4 designs. Probe 5, the same merge with a "stop" option added to the prompt, failed.
+  - Its costs: ~5.5 s more per question (ADR-011), and it would run on unanswerable questions too (q48).
+  - Its test: golden set v1's verified rephrased set, with ADR-011 D2's rule.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
