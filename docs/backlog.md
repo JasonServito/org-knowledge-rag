@@ -419,7 +419,7 @@ Tasks:
 - [x] **S13-T3 `[core]` Decision tables and the chain builder.** `decisions`, `decision_evidence`; `make chains`; `orgknow chain`. Deps: T1.
 - [x] **S13-T4 `[core]` Decision-chain completeness.** `make eval-chain`: both numbers per chain, and the control. Deps: T2, T3.
 - [x] **S13-T5 `[commodity]` `GET /decisions/{canonical_id}`.** Deps: T3.
-- [ ] **S13-T6 `[commodity]` Docs and the S13 retro.** Deps: T4, T5.
+- [x] **S13-T6 `[commodity]` Docs and the S13 retro.** Deps: T4, T5.
 
 ---
 
