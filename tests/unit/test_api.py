@@ -185,6 +185,14 @@ def _no_secret(text: str) -> None:
         assert secret not in text
 
 
+def _envelope(response: httpx2.Response, code: str, message: str) -> dict[str, object]:
+    """The one error shape (docs/interfaces.md, "Errors"), with the response's request ID: the
+    body's `request_id` must equal the `X-Request-ID` header."""
+    return {
+        "error": {"code": code, "message": message, "request_id": response.headers["X-Request-ID"]}
+    }
+
+
 def _trace_text(observation: FakeObservation) -> str:
     """Everything a trace recorded, as one string."""
     return repr(observation.fields) + "".join(_trace_text(c) for c in observation.children)
@@ -293,7 +301,7 @@ def test_an_ask_error_is_502_with_the_clis_error_line(
         response = client.post("/query", json={"question": QUESTION})
 
     assert response.status_code == 502
-    assert response.json() == {"detail": detail}
+    assert response.json() == _envelope(response, "upstream_failed", detail)
     _no_secret(response.text)
 
 
@@ -311,7 +319,7 @@ def test_an_unreachable_database_is_503(monkeypatch: pytest.MonkeyPatch) -> None
         response = client.post("/query", json={"question": QUESTION})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "database unreachable"}
+    assert response.json() == _envelope(response, "database_unavailable", "database unavailable")
     assert (embedder.calls, generator.calls) == ([], [])  # no paid call without a database
     _no_secret(response.text)
 
@@ -408,7 +416,8 @@ KEP_PATH = "keps/sig-release/2572-release-cadence/README.md"
 PR_URL = "https://github.com/kubernetes/enhancements/pull/2567"
 ISSUE_FIELDS = ["Opening post · @justaugustus · 2021-03-15", "Enhancement Description"]
 KEP_TITLE = "KEP-2572: Defining the Kubernetes Release Cadence"
-NO_CHAIN = "no stored decision chain for kep:9999; chains are built by make chains"
+# The id isn't repeated (docs/interfaces.md, "Message rules").
+NO_CHAIN = "no stored decision chain for this canonical_id; chains are built by make chains"
 
 
 def _evidence(**fields: Any) -> StoredEvidence:
@@ -575,7 +584,7 @@ def test_a_chain_that_is_not_stored_is_404_with_the_make_chains_hint(
     response = client.get("/decisions/kep:9999")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": NO_CHAIN}
+    assert response.json() == _envelope(response, "not_found", NO_CHAIN)
     assert stored_rows == ["kep:9999"]
 
 
@@ -590,5 +599,5 @@ def test_decisions_is_503_when_the_database_is_unreachable(monkeypatch: pytest.M
     response = client.get("/decisions/kep:2572")
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "database unreachable"}
+    assert response.json() == _envelope(response, "database_unavailable", "database unavailable")
     _no_secret(response.text)

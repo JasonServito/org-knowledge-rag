@@ -415,7 +415,7 @@ Tasks:
 - **Slice doc:** `docs/slices/S14-backend-hardening.md` (run contract S14-R1; R2 has its own sitting)
 
 - [x] **S14-T1 `[commodity]` Interface contracts (`docs/interfaces.md`).** Every endpoint, the error envelope, request IDs, logs, each dependency's timeout and retries; a test keeps routes and doc in step. Deps: none.
-- [ ] **S14-T2 `[commodity]` Request IDs, JSON logs, one error handler.** Deps: T1.
+- [x] **S14-T2 `[commodity]` Request IDs, JSON logs, one error handler.** Deps: T1.
 - [ ] **S14-T3 `[commodity]` Timeouts, retries, autocommit API connections, API mode tests.** Deps: T2.
 - [ ] **S14-T4 `[core]` Job table, local queue, single-writer lock.** Decided in the S14-R2 sitting (ADR-013). Deps: T1–T3.
 - [ ] **S14-T5 `[core]` The worker (`make worker`).** Deps: T4.

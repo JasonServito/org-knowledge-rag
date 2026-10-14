@@ -142,7 +142,7 @@ Example:
 
 - **Other lines** carry at least `ts`, `level`, `logger` and `message`; `request_id` when written inside a request; and `exc_info`, the traceback as text, when the line records an exception.
 - **An unexpected failure** writes one ERROR line with `exc_info`; the request's own line then shows status 500.
-- **Not JSON:** 2 lines the pipeline prints to stderr, shared with the CLI: `tracing off: …` once at startup when the Langfuse keys are unset, and the route line of each ask in temporal and authority modes. Also anything a library writes to stderr itself.
+- **Not JSON:** 2 lines the pipeline prints to stderr, shared with the CLI: `tracing off: …` once at startup when the Langfuse keys are unset, and the route line of each ask in temporal and authority modes. Also anything a library writes to stderr itself: the reranker's library (transformers) sets up its own plain-text log handler when it loads, and prints a progress bar while loading the model at startup. Langfuse's and Anthropic's warnings are JSON.
 
 ## Dependencies
 

@@ -211,6 +211,8 @@ eval-resummarize:
 # Startup builds the clients once and, in rerank, temporal and authority modes, loads the reranker;
 # a missing ANTHROPIC_API_KEY or VOYAGE_API_KEY stops it. PAID per request, as `orgknow ask`: one
 # Voyage call and one Anthropic call, and in temporal and authority modes one router call. Needs
-# `make up`. Stop it with Ctrl-C.
+# `make up`. Stop it with Ctrl-C. Logs JSON lines on stderr, one per request with its request ID
+# (S14-T2, config/logging.json; docs/interfaces.md "Logs"), in place of uvicorn's access log.
 serve:
-	uv run uvicorn --factory orgknow.api.app:create_app --host 127.0.0.1 --port 8000
+	uv run uvicorn --factory orgknow.api.app:create_app --host 127.0.0.1 --port 8000 \
+		--log-config config/logging.json --no-access-log

@@ -529,5 +529,11 @@ def test_get_decisions_returns_load_chains_model_then_404_after_the_reset(
 
     assert after_reset.status_code == 404
     assert after_reset.json() == {
-        "detail": "no stored decision chain for kep:9001; chains are built by make chains"
+        "error": {
+            "code": "not_found",
+            "message": (
+                "no stored decision chain for this canonical_id; chains are built by make chains"
+            ),
+            "request_id": after_reset.headers["X-Request-ID"],
+        }
     }
