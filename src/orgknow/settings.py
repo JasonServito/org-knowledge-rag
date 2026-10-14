@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     # Plain libpq form, e.g. postgresql://user:password@host:port/dbname. No default: a
     # missing value should fail at startup, not silently point at some database.
     database_url: str
-    # How long /ready and POST /query wait for a new DB connection. libpq treats values below 2
-    # as 2.
+    # How long /ready, POST /query, GET /decisions, the /ingestion-jobs routes and the worker wait
+    # for a new DB connection. libpq treats values below 2 as 2.
     db_connect_timeout_s: int = 2
     # The API's per-request connections (POST /query, GET /decisions; `db/connect.py`) cancel any
     # one SQL statement after this many milliseconds, and the request is a 503 (S14-R1 decision

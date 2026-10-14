@@ -132,6 +132,19 @@ curl -s -X POST localhost:8000/query -H 'Content-Type: application/json' \
 - **`http://127.0.0.1:8000/docs`** is FastAPI's built-in page: it lists the endpoints and can send a request. `GET /health` (liveness) and `GET /ready` (readiness, pings the database) are there too.
 - **Known limit:** concurrent requests share one reranker. Fine for a local dev server.
 
+**Ingestion jobs** (ADR-013): the API can also queue a rebuild of the corpus, which `make worker` runs: ingest → lifecycle → embed → chains, through the same functions as the `make` targets above, with each step's progress saved in the job.
+
+```bash
+make worker                 # in a third terminal: runs the queued job, polling every 5 s; needs INGEST_SCOPE=full (the default) and VOYAGE_API_KEY; Ctrl-C stops it
+curl -s -X POST localhost:8000/ingestion-jobs   # 202 with the new job (its id, status queued, 4 pending steps); 200 with the job already queued or running
+curl -s localhost:8000/ingestion-jobs/1         # the job with the id the POST returned: its status, attempts, error, and each step's status, times and counts
+```
+
+- **One job at a time:** a repeated POST returns the active job, so it's safe to send twice. An error fails the job (POST again); a job left running by a killed or stopped worker resumes when the worker starts again, at most 3 attempts.
+- **One corpus writer at a time:** while a job runs, `make ingest`, `make lifecycle`, `make embed`, `make chains` and `make seed` stop with a message, and the worker waits while one of them runs. `make reset-corpus` is outside this lock.
+- **Cost:** the embed step sends only texts with no vector yet (none at the current corpus lock once `make embed` has run), capped by `EMBED_MAX_TOKENS_PER_RUN`: above the cap the step fails before any request, so the first full-corpus embed stays a hand-run `make embed`.
+- **Details:** each field, status and the worker's log lines are in [`docs/interfaces.md`](docs/interfaces.md).
+
 To evaluate the pipeline on the golden set (`EVAL_GOLDEN_PATH`, default `eval/golden_set/v0.yaml`; format in ADR-007):
 
 ```bash

@@ -30,7 +30,7 @@ Every response carries an `X-Request-ID` header (see Request IDs). Any endpoint 
 
 ### GET /ready
 
-- **Purpose:** readiness. Can this process serve real traffic? It opens a new Postgres connection (waiting at most `DB_CONNECT_TIMEOUT_S`, 2 s) and runs `SELECT 1`. It checks only Postgres, not Voyage or Anthropic.
+- **Purpose:** readiness. Can this process serve real traffic? It opens a new Postgres connection (waiting at most `DB_CONNECT_TIMEOUT_S`, 2 s, per address tried; see Dependencies) and runs `SELECT 1`. It checks only Postgres, not Voyage or Anthropic.
 - **Request:** no parameters.
 - **200:** `{"status": "ready"}`.
 - **503:** `{"status": "unavailable"}`, on any database error (can't connect in time, refused, `SELECT 1` failed).
@@ -42,7 +42,7 @@ Every response carries an `X-Request-ID` header (see Request IDs). Any endpoint 
 
 - **Purpose:** answer one question through the same pipeline as `orgknow ask` (`pipeline.answer_question`): route (temporal and authority modes), retrieve, find rule-found conflicts, answer, validate citations.
 - **Request:** a JSON object with one field (the `Query` model in `api/app.py`). Other fields are ignored.
-  - `question`: a string, at least 1 character, at least one of them not a space.
+  - `question`: a string, at least 1 character, at least one of them not whitespace (a space, tab, line break or any other Unicode whitespace).
   - Example: `{"question": "What enforces pod security standards in-tree?"}`
 - **200:** the `Answer` model (`generation/schema.py`), the JSON `orgknow ask` prints:
   - `question`: the question as sent.
@@ -54,7 +54,7 @@ Every response carries an `X-Request-ID` header (see Request IDs). Any endpoint 
   - `model`: the answer model's name.
   - `trace_id`: the Langfuse trace's ID, or `null` when tracing is off.
 - **Other statuses:**
-  - **422 `invalid_request`:** the body isn't JSON or isn't an object, `question` is missing or not a string, or it is empty or only spaces. No connection is opened and no paid call is made.
+  - **422 `invalid_request`:** the body isn't JSON or isn't an object, `question` is missing or not a string, or it is empty or only whitespace. No connection is opened and no paid call is made.
   - **502 `upstream_failed`:** the ask failed upstream (`pipeline.ASK_ERRORS`): Voyage or Anthropic (answer or router) failed after its retries, or the model gave no usable answer or route (a refusal, a cut-off, output off the schema). Any `RuntimeError` or `ValueError` raised during the ask is reported the same way, because `ASK_ERRORS` lists those 2 base types.
   - **503 `database_unavailable`:** no connection within `DB_CONNECT_TIMEOUT_S`, the connection failed mid-request, or a statement ran past `DB_STATEMENT_TIMEOUT_MS` (psycopg's `OperationalError`, which includes a cancelled statement). No paid call is made when the connection can't be opened.
   - **500 `internal`:** anything else, including a database error that isn't a connection failure (e.g. a missing table).
@@ -66,7 +66,7 @@ Every response carries an `X-Request-ID` header (see Request IDs). Any endpoint 
 - **Purpose:** read the stored decision chain of one seed KEP, as `orgknow chain` prints it (`load_chain`). Read-only: it never builds a chain (`make chains` does).
 - **Request:** the path parameter `canonical_id`, a seed KEP's id, e.g. `kep:2572`. Any text without a `/` is looked up; a `/` inside the id matches no route (404), and a trailing `/` redirects (307) to the id without it.
 - **200:** the `Chain` model (`provenance/chain.py`):
-  - `seed`, `title`, `built_at` (ISO 8601, UTC).
+  - `seed`, `title`, `built_at` (ISO 8601, in the database session's time zone: UTC by the database's default, `Etc/UTC`, not enforced by the code).
   - `steps`: in step order (`problem`, `discussion`, `proposal`, `decision`, `implementation`, `current_docs`), each a `ChainStep`: `step`, `occurred_at`, `chunk_id`, `canonical_id`, `heading_path`, `source_type`, `source_url`, `tier`, `found_by`, `via_chunk_id`, `via_canonical_id`, `via_heading_path`, `missing_reason`. A missing step has only `step` and `missing_reason`; the rest are `null`.
 - **Other statuses:**
   - **404 `not_found`:** no chain is stored for this id. The message doesn't repeat the id (see Errors).
@@ -82,7 +82,7 @@ Every response carries an `X-Request-ID` header (see Request IDs). Any endpoint 
 - **202:** a new job: the `IngestionJob` model (`db/models.py`):
   - `id`: the job's id, an integer, for `GET /ingestion-jobs/{job_id}`. Ids grow but can skip numbers: each refused insert uses one up (e.g. a POST answered 200).
   - `status`: `queued`, `running`, `succeeded` or `failed` (see Worker). A new job is `queued`.
-  - `created_at`, `started_at`, `finished_at`: ISO 8601 times in UTC, or `null` until set. `started_at` is the first attempt's start, kept when the job is resumed.
+  - `created_at`, `started_at`, `finished_at`: ISO 8601 times, or `null` until set, in the database session's time zone as `built_at` above (UTC by default, not enforced). `started_at` is the first attempt's start, kept when the job is resumed.
   - `attempts`: the runs and resumes started; 0 for a new job.
   - `error`: a failed job's one-line reason, else `null` (see Worker, "The job's error text").
   - `request_id`: the `X-Request-ID` of the POST that created the job.
@@ -188,15 +188,15 @@ Each external call has a timeout and a retry limit from the settings (environmen
 | Postgres | `/ready`, `/query`, `/decisions`, `/ingestion-jobs` | Connect: `DB_CONNECT_TIMEOUT_S=2` (s). Each statement: `DB_STATEMENT_TIMEOUT_MS=10000` (all but `/ready`) | 0 | — | 503 `database_unavailable` (`/ready`: 503 `{"status": "unavailable"}`). Another database error: 500 `internal` |
 | Postgres, the worker's connection | `make worker`, not the API | Connect: `DB_CONNECT_TIMEOUT_S=2`. No statement timeout: a step's statements may run long | 0 | — | Never an API error. A connection that fails at start, or is lost later, stops the worker (see Worker) |
 | Voyage (question embedding) | `/query` | `VOYAGE_TIMEOUT_S=60` | `VOYAGE_MAX_RETRIES=3`, after 1 s, 2 s, 4 s (doubling) | HTTP 429 and 5xx only. Not a timeout or a failed connection | 502 `upstream_failed` |
-| Anthropic, answer | `/query` | `GENERATION_TIMEOUT_S=90` | `ANTHROPIC_MAX_RETRIES=2`, after ~0.5 s, then ~1 s | The SDK's rule: no connection, a timeout, HTTP 408, 409, 429, 5xx | 502 `upstream_failed` |
+| Anthropic, answer | `/query` | `GENERATION_TIMEOUT_S=90` | `ANTHROPIC_MAX_RETRIES=2`, after ~0.5 s, then ~1 s | The SDK's rule: no connection, a timeout, HTTP 408, 409, 429, 5xx; an error response's `x-should-retry` header, when `true` or `false`, decides first, whatever the status | 502 `upstream_failed` |
 | Anthropic, router | `/query` in temporal and authority modes | `ROUTER_TIMEOUT_S=30` | `ANTHROPIC_MAX_RETRIES=2`, as above | As above | 502 `upstream_failed` |
 | GitHub | Not the API: only `make fetch-github`, a manual command | `GITHUB_TIMEOUT_S=30` | 0 | — | Never called by the API. The command stops with `Nothing written: <item>: <error>` and writes nothing |
 | Langfuse | `/query` when both Langfuse keys are set | The SDK's 5 s per export (its own `LANGFUSE_TIMEOUT` variable, not a `Settings` field) | The SDK's exporter's own, within that 5 s | — | Never an error. The SDK exports traces in the background; a failed export loses the trace, never the answer |
 
 Notes:
 
-- `DB_CONNECT_TIMEOUT_S`: libpq treats values below 2 as 2.
-- Anthropic: not retried are other 4xx errors (e.g. a wrong key: 401) and a refusal or cut-off answer, which is a normal reply. The SDK waits ~0.5 s then ~1 s between tries (with jitter), or as long as a `retry-after` header says.
+- `DB_CONNECT_TIMEOUT_S`: libpq treats values below 2 as 2 (psycopg follows its rule). It applies to each address tried: psycopg resolves the host name and tries each of its addresses in turn, each with the full timeout, so a host name with 2 addresses can wait up to 4 s.
+- Anthropic: not retried are other 4xx errors (e.g. a wrong key: 401), unless the response's `x-should-retry` header is `true`, and a refusal or cut-off answer, which is a normal reply. The SDK waits ~0.5 s then ~1 s between tries (with jitter), or as long as a `retry-after` header says.
 - Voyage: any other HTTP error fails at once. A Voyage retry writes one WARNING log line.
 - The worker's embed step calls Voyage with the same timeout and retries. A Voyage failure there fails the step and the job (see Worker, "The job's error text"); the API never sees it.
 - Startup checks only that `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` are set. A wrong key shows up as a 502 on `/query`.
@@ -209,7 +209,7 @@ A known limit, not a promise: authority mode (the default), every step failing a
 
 | Step | Limit |
 |---|---|
-| Connect to Postgres | 2 s |
+| Connect to Postgres | 2 s per address tried |
 | Route (router call) | 3 tries × 30 s + at most 1.5 s of waits = 91.5 s |
 | Embed the question (Voyage) | 4 tries × 60 s + 1 + 2 + 4 s of waits = 247 s |
 | Answer (Anthropic) | 3 tries × 90 s + at most 1.5 s of waits = 271.5 s |
@@ -221,7 +221,7 @@ Why it isn't a hard bound:
 
 - A timeout bounds each wait on the network (connecting, or the gap between bytes received), not a whole try. A reply that trickles in can take longer.
 - When Anthropic sends a `retry-after` header (e.g. with a 429), the SDK waits that long instead; SDK 1.11.0 sets no upper cap.
-- The SQL statements and the reranker add to the 612 s.
+- The SQL statements and the reranker add to the 612 s, and so does each extra address of the database's host name (2 s each).
 
 ## Worker
 

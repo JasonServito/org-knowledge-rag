@@ -420,7 +420,7 @@ Tasks:
 - [x] **S14-T4 `[core]` Job table, corpus-writer lock, snapshot reads.** The jobs table is the queue (ADR-013). Deps: T1–T3.
 - [x] **S14-T5 `[core]` The worker (`make worker`).** Deps: T4.
 - [x] **S14-T6 `[commodity]` Job endpoints.** Deps: T4, T5.
-- [ ] **S14-T7 `[commodity]` Docs and the S14 retro.** Deps: T6.
+- [x] **S14-T7 `[commodity]` Docs and the S14 retro.** Deps: T6.
 
 ### ✅ S13 Phase 2 provenance MVP
 
