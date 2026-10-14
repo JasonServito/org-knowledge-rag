@@ -51,3 +51,17 @@
 - Errors arrive as psycopg exceptions (`UniqueViolation`, `CheckViolation`, `ExclusionViolation`, …). Superseding a version must close the old one before inserting the new one, in one transaction.
 - `btree_gist` is recorded in ADR-004 (amendment 2026-10-04). It must be checked on the RDS instance in S15.
 - Connection pooling isn't needed until the API serves queries (S12). It would be a new dependency then.
+
+## Amendment 2026-10-13 (S14-R1 sitting)
+
+Consequences' "Connection pooling … would be a new dependency then" is decided: **no pool for now.** Decided by the developer in the S14-R1 sitting (decision 2), after a devil's advocate argued for a pool. The evidence is in `docs/slices/S14-backend-hardening.md`, run S14-R1.
+
+- **API connections are autocommit, with a statement timeout** (`DB_STATEMENT_TIMEOUT_MS`, 10 s), opened per request by one helper in `db/`. `/ready` keeps its own fresh-connection ping.
+- **Why autocommit:** `/query` held an open transaction during the LLM call. The sitting probe (a slow fake generator against the dev database) saw the connection `idle in transaction` during generation. Autocommit removes it, and read consistency doesn't change: under READ COMMITTED each statement already took its own snapshot.
+- **Why no pool:** a local connect + `SELECT 1` takes p50 10.8 ms (20 tries), and a full ask p50 8.7 s, p95 14.9 s, max 29.7 s (658 saved eval rows), so connecting is ~0.1% of a request. One uvicorn process runs plain `def` endpoints on 40 threads, so it opens at most ~40 connections.
+- **Revisit trigger (S15):** measure RDS's `max_connections` and the peak open connections (API + worker). Add `psycopg_pool` (a bounded pool with a short wait mapped to 503) if the limit is under 2× the peak, or if the EC2 → RDS connect time is over 5% of a median ask.
+
+| Option | Why not |
+|---|---|
+| `psycopg_pool`, at most 8 connections, a 2 s wait then 503 | A new dependency for a cost that is ~0.1% of a request today. The connection count, its real argument, can only be measured on RDS (the trigger above) |
+| No change (non-autocommit connections) | The idle transaction was confirmed |

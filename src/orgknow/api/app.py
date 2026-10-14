@@ -1,17 +1,22 @@
 """FastAPI app factory: `/health`, `/ready`, `POST /query` (S12-T2), which answers through the
 same pipeline as `orgknow ask` (`pipeline.answer_question`), and `GET /decisions/{canonical_id}`
 (S13-T5), which reads a stored decision chain as `orgknow chain` does (`load_chain`). `make serve`
-runs it with uvicorn."""
+runs it with uvicorn. Every response carries an `X-Request-ID`, and every error one envelope
+(S14-T2; docs/interfaces.md)."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import anthropic
 import psycopg
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from langfuse import Langfuse
 from pydantic import BaseModel, Field, SecretStr
+from starlette.exceptions import HTTPException
 
+from orgknow.api.errors import ApiError, api_error, http_error, invalid_request
+from orgknow.api.middleware import RequestIdMiddleware
 from orgknow.db.health import is_reachable
 from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
@@ -75,7 +80,18 @@ def create_app(
             if langfuse is not None:
                 langfuse.flush()  # the traces still queued (ADR-006 D3)
 
-    app = FastAPI(title="orgknow", lifespan=lifespan)
+    app = FastAPI(
+        title="orgknow",
+        lifespan=lifespan,
+        # Each error as the one envelope (api/errors.py). An unexpected exception becomes the
+        # `internal` 500 in the middleware instead.
+        exception_handlers={
+            ApiError: api_error,
+            RequestValidationError: invalid_request,
+            HTTPException: http_error,
+        },
+    )
+    app.add_middleware(RequestIdMiddleware)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -93,10 +109,11 @@ def create_app(
         return {"status": "unavailable"}
 
     @app.post("/query")
-    def query(body: Query) -> Answer:
+    def query(body: Query, request: Request) -> Answer:
         """The answer `orgknow ask` prints for the question, with its `trace_id` (null when
-        tracing is off). An ask error is a 502 with its one-line message; a database that can't
-        be reached, a 503."""
+        tracing is off). An ask error is a 502 `upstream_failed` with its one-line message; a
+        database that can't be reached, a 503 `database_unavailable`. Any other error (e.g. a
+        missing table) is the middleware's 500 `internal`."""
         # A plain `def`, as `/ready`: it runs in a worker thread, so the blocking calls can't
         # stall the event loop.
         assert embedder is not None and generator is not None  # built at startup
@@ -105,7 +122,7 @@ def create_app(
             with psycopg.connect(
                 app_settings.database_url, connect_timeout=app_settings.db_connect_timeout_s
             ) as conn:
-                return answer_question(
+                result = answer_question(
                     body.question,
                     conn,
                     embedder,
@@ -116,19 +133,21 @@ def create_app(
                     router,
                 )
         except ASK_ERRORS as error:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, one_line(error)) from error
+            raise ApiError("upstream_failed", one_line(error)) from error
         except psycopg.OperationalError as error:
             # Never the error's own message: it can name the database URL.
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "database unreachable"
-            ) from error
+            raise ApiError("database_unavailable", "database unavailable") from error
+        if result.trace_id is not None:
+            # For the middleware's log line of this request (S14-R1 Claude's call f).
+            request.state.trace_id = result.trace_id
+        return result
 
     @app.get("/decisions/{canonical_id}")
     def decision(canonical_id: str) -> Chain:
         """The stored decision chain of the seed KEP `canonical_id` (e.g. `kep:2572`): the model
         `orgknow chain` prints from (`load_chain`). Free, read-only, never builds (`make chains`
-        does). No stored chain: a 404 with the CLI's line; a database that can't be reached: a
-        503, as `/query`."""
+        does). No stored chain: a 404 `not_found`; a database that can't be reached: a 503, as
+        `/query`."""
         repo_urls = load_repo_urls(app_settings.corpus_manifest_path)
         try:
             with psycopg.connect(
@@ -137,13 +156,12 @@ def create_app(
                 chain = load_chain(conn, canonical_id, repo_urls)
         except psycopg.OperationalError as error:
             # Never the error's own message: it can name the database URL.
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "database unreachable"
-            ) from error
+            raise ApiError("database_unavailable", "database unavailable") from error
         if chain is None:
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND,
-                f"no stored decision chain for {canonical_id}; chains are built by make chains",
+            # The id isn't repeated: a message never carries the caller's input.
+            raise ApiError(
+                "not_found",
+                "no stored decision chain for this canonical_id; chains are built by make chains",
             )
         return chain
 

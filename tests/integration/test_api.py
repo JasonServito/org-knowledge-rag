@@ -1,4 +1,5 @@
 import json
+import re
 import socket
 from contextlib import nullcontext
 
@@ -20,6 +21,8 @@ from orgknow.api.app import create_app
 from orgknow.cli import ask
 from orgknow.settings import Settings
 
+NEW_ID = re.compile(r"[0-9a-f]{32}")  # a new random request ID (docs/interfaces.md)
+
 
 @pytest.fixture
 def closed_port() -> int:
@@ -33,10 +36,15 @@ def closed_port() -> int:
 def test_health_and_ready_are_200_when_db_is_up(settings: Settings) -> None:
     client = TestClient(create_app(settings))
 
-    assert client.get("/health").json() == {"status": "ok"}
+    health = client.get("/health")
+    assert health.json() == {"status": "ok"}
     ready = client.get("/ready")
     assert ready.status_code == 200
     assert ready.json() == {"status": "ready"}
+    # Every response carries its own new request ID.
+    ids = [health.headers["X-Request-ID"], ready.headers["X-Request-ID"]]
+    assert all(NEW_ID.fullmatch(request_id) for request_id in ids)
+    assert ids[0] != ids[1]
 
 
 def test_ready_is_503_but_health_stays_200_when_db_is_unreachable(closed_port: int) -> None:
@@ -48,7 +56,8 @@ def test_ready_is_503_but_health_stays_200_when_db_is_unreachable(closed_port: i
 
     ready = client.get("/ready")
     assert ready.status_code == 503
-    assert ready.json() == {"status": "unavailable"}
+    assert ready.json() == {"status": "unavailable"}  # a probe answer, not the error envelope
+    assert NEW_ID.fullmatch(ready.headers["X-Request-ID"])
     # Liveness must not depend on the DB, or an orchestrator would restart a healthy process.
     health = client.get("/health")
     assert health.status_code == 200
@@ -135,5 +144,13 @@ def test_query_is_503_when_the_database_is_unreachable(
         response = client.post("/query", json={"question": QUESTION})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "database unreachable"}
+    request_id = response.headers["X-Request-ID"]
+    assert NEW_ID.fullmatch(request_id)
+    assert response.json() == {
+        "error": {
+            "code": "database_unavailable",
+            "message": "database unavailable",
+            "request_id": request_id,
+        }
+    }
     assert embedder.calls == []
