@@ -7,7 +7,7 @@
 
 ## Outcome
 
-Every API response carries a request ID that also appears in one-line JSON logs, with one error shape and explicit timeouts and bounded retries on every external call (R1). `POST /ingestion-jobs` queues a job that `make worker` runs to completion with per-step progress; a duplicate delivery or a killed worker leaves the same ingestion fingerprint (R2).
+Every API response carries a request ID that also appears in one-line JSON logs, with one error shape and explicit timeouts and bounded retries on every external call (R1). `POST /ingestion-jobs` queues a job that `make worker` runs to completion with per-step progress; the same job run twice or a killed worker leaves the same ingestion fingerprint (R2).
 
 ## Why now
 
@@ -22,7 +22,7 @@ Every API response carries a request ID that also appears in one-line JSON logs,
 - [ ] Anthropic, Voyage and GitHub calls use timeouts and retry counts from settings; tests show the retries are bounded.
 - [ ] API tests cover temporal and authority modes (S12-R1 input).
 - [ ] *(R2)* `POST /ingestion-jobs` → `make worker` → the job reaches `succeeded` with per-step progress in `GET /ingestion-jobs/{id}`.
-- [ ] *(R2)* A duplicate delivery and a worker killed mid-job each end with the same fingerprint as a clean run.
+- [ ] *(R2)* The same job run twice and a worker killed mid-job each end with the same fingerprint (and the same embedding, lifecycle and chain-step counts) as a clean run.
 - [ ] *(R2)* Two writers can't store the same identifier (R3) or embed the same texts twice.
 - [ ] Phase 1 retrieval unchanged: `make eval-retrieval` (free) prints S13's numbers exactly.
 - [ ] `make check` and `make test-int` green.
@@ -37,8 +37,8 @@ Every API response carries a request ID that also appears in one-line JSON logs,
 | Timeouts and bounded retries from settings | Circuit breakers; fallback models |
 | A database connection pool for the API (if decided) | Async (`async def`) database access |
 | API tests for temporal and authority modes | Retrieval or scoring changes |
-| *(R2)* A job table, a local queue shaped like SQS, a worker, the job endpoints | Real SQS, S3 and EC2 (S15) |
-| *(R2)* A single-writer guarantee for ingest and embed (R3) | Refreshing the corpus lock (K2: a proposed addition) |
+| *(R2)* A job table that is also the queue (ADR-013), a worker, the job endpoints | SQS (ADR-013 D1: not needed); S3 and EC2 (S15) |
+| *(R2)* A single-writer guarantee for every corpus writer (R3) | Refreshing the corpus lock (K2: a proposed addition) |
 | | Auth, rate limits, cost protection on public endpoints (S15's security review) |
 
 ## Metric to move
@@ -70,28 +70,28 @@ These mirror `docs/backlog.md`; details live here.
 - **Notes / pointers:** `embeddings/voyage.py` (`TIMEOUT_S`, `RETRY_DELAYS_S`), `ingestion/github.py` (`TIMEOUT_S`), the Anthropic SDK's defaults (10 minutes, 2 retries); ADR-005 ("connection pooling… would be a new dependency then"); PR #45 parked 8, PR #46 parked 2.
 - **Deps:** T2 (retries log with the request ID).
 
-### S14-T4: Job table, local queue, single-writer lock `[core]`
+### S14-T4: Job table, corpus-writer lock, snapshot reads `[core]`
 
-- **Goal:** a job record in Postgres and a queue that behaves like SQS (at-least-once delivery, visibility timeout).
-- **Done when:** decided in the S14-R2 sitting (ADR-013).
+- **Goal:** a job record in Postgres that is also the queue, and one lock every corpus writer takes (ADR-013 D1, D3, D4, D6).
+- **Done when:** the `ingestion_jobs` migration with the one-active-job rule; the writer lock taken by all 6 writers; the report and chain reads each in one snapshot (pinned in the S14-R2 contract).
 - **Notes / pointers:** blueprint §22 ("Track partial failure and job progress in PostgreSQL"); the R3 race item; PR #30's report snapshot; PR #48's chain-read snapshot.
 - **Deps:** T1–T3.
 
 ### S14-T5: The worker (`make worker`) `[core]`
 
-- **Goal:** run a job's steps (ingest, lifecycle, embed, chains) idempotently, with progress, surviving duplicate delivery and crashes.
-- **Done when:** decided in the S14-R2 sitting.
+- **Goal:** run a job's steps (ingest, lifecycle, embed, chains) idempotently, with progress, surviving a repeated run and crashes.
+- **Done when:** `make worker` runs a job's 4 steps in order with per-step progress; an error fails the job at once; a killed worker's job is resumed at its first unfinished step, up to 3 attempts; the scope guard (ADR-013 D2, D5; pinned in the S14-R2 contract).
 - **Deps:** T4.
 
 ### S14-T6: Job endpoints `[commodity]`
 
 - **Goal:** `POST /ingestion-jobs`, `GET /ingestion-jobs/{id}`; `docs/interfaces.md` gains them.
-- **Done when:** decided in the S14-R2 sitting.
+- **Done when:** POST answers 202 with a new job or 200 with the active one; GET returns the job with its steps, 404 or 422; `docs/interfaces.md` documents both (ADR-013 D4; pinned in the S14-R2 contract).
 - **Deps:** T4, T5.
 
 ### S14-T7: Docs and the S14 retro `[commodity]`
 
-- **Goal:** architecture, README, slice brief.
+- **Goal:** architecture, README, slice brief; the doc fixes kept in the S14-R2 sitting (K1, K2).
 - **Deps:** T6.
 
 ## Risks & unknowns
@@ -104,7 +104,7 @@ These mirror `docs/backlog.md`; details live here.
 ## Decisions expected (ADRs)
 
 - R1: no connection pool; autocommit API connections (ADR-005 amendment 2026-10-13, decided in the S14-R1 sitting).
-- R2: ADR-013, async ingestion (job model, queue, idempotency). Deployment topology moves to ADR-014 (S15).
+- R2: ADR-013, async ingestion (Accepted in the S14-R2 sitting, 2026-10-14): the jobs table is the queue, no SQS; a fixed 4-step job; one corpus-writer lock; one active job; errors fail, crashes resume; one table. Deployment topology moves to ADR-014 (S15).
 
 ## Run contracts
 
@@ -112,7 +112,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S14-R1: Hardening
 
-- **Status:** PR open (split after T2 on the size alarm: PR 1 T1–T2, PR 2 T3, stacked)
+- **Status:** merged (PRs #49 and #50, 2026-10-14; split after T2 on the size alarm)
 - **Tasks:** T1, T2, T3.
 - **Goal (plain words):** write down every endpoint's contract and one error format; give every request an ID that shows up in its response, its errors and its JSON log lines; and put a timeout and a retry limit on every external call, with no database transaction left open during the LLM call.
 
@@ -265,6 +265,182 @@ Show each response's `X-Request-ID` beside its JSON log line. Stop the server by
 #### Paid calls allowed
 
 None. Every test uses fakes; the demo calls free endpoints only. No Anthropic credit needed.
+
+### Run S14-R2: Async ingestion
+
+- **Status:** planned
+- **Tasks:** T4, T5, T6, T7 (T7 ends with the S14 retro as the run's last commit).
+- **Goal (plain words):** a POST records a rebuild job; `make worker` runs it (ingest → lifecycle → embed → chains) with per-step progress in the job's row; only one corpus writer can run at a time; a killed worker's job is resumed, and a repeated or resumed job leaves the same data.
+
+#### Sitting evidence (2026-10-14)
+
+Probe scripts were run in the sitting's scratchpad (not committed), on a scratch database `orgknow_r2probe` (migrated, seeded, the dev database's `embeddings` table copied in: 21,762 rows, 51 s). Each result below is copied from its output.
+
+- **Fresh full ingest** (empty corpus): 74 s (`TIME make ingest : 73.678719547 s rc=0`); `Fingerprint: sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165` (the dev database's).
+- **Then embed and chains:** `Model voyage-4-large: 0 texts had no vector`, `Requests: 0`, `Orphan vectors deleted: 0` (0.33 s); `kep:2572: 6 steps stored, 6 found, 0 missing`, `kep:3015: 6 steps stored, 5 found, 1 missing (decision: no_link)` (0.42 s). Stored: 21,762 embeddings, 3,295 lifecycle rows.
+- **A no-op re-run:** `New documents: 0. New versions: 0. Closed versions: 0. Unchanged documents: 1173.` `New chunks: 0.` `Failed: 0`, the same fingerprint.
+- **Killed ingest** (SIGKILL to the Python process; corpus emptied first):
+  ```
+  == killed at 40s; stored after kill:
+  1173|2887|10387|3295            (documents|versions|chunks|lifecycle rows)
+  New chunks: 38096.  Failed: 0 documents or versions.
+  Fingerprint: sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165
+  == killed at 60s; stored after kill:
+  1173|2887|40129|3295
+  New chunks: 8354.  Failed: 0 documents or versions.
+  Fingerprint: sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165
+  ```
+- **A first, flawed kill probe** sent SIGKILL to `uv run`'s PID: its Python child kept running, and the re-run overlapped it (2 writers at once). Kill the Python process, never the `make`/`uv` wrapper.
+- **The lock:** a subprocess held `pg_advisory_lock(1414)`; `try-lock while held: False`; after SIGKILL to the holder, `try-lock after SIGKILL: True after 0.000 s`.
+- **The full corpus's tokens:** 21,762 distinct texts, 5,690,119 estimated tokens (characters / 4), above `EMBED_MAX_TOKENS_PER_RUN` (2,000,000): a lost vector cache makes embed refuse, not pay.
+- **The one-active-job rule:** a unique index on `((true))` where status is queued or running: a second queued insert with `ON CONFLICT DO NOTHING` gives `INSERT 0 0`; a `succeeded` row inserts.
+- **Writers** (modules that write the corpus tables): `ingestion/ingest.py`, `ingestion/lifecycle.py`, `ingestion/seed.py`, `embeddings/embed.py`, `provenance/build.py`, and the new worker.
+- **Devil's advocates** (one per decision 1–6's topic): changed decision 1 (from an SQS-shaped message table to the jobs table as the queue), decision 5 (from "retry every error 3 times" to "errors fail, crashes resume") and decision 6 (from a steps table to a JSON list); added decision 2's 2 guards (embed's orphan deletion), decision 3's "the lock lives on the writer's only connection", and decision 4's database-enforced rule (2 POSTs at once).
+
+#### Decisions (made in the sitting, 2026-10-14)
+
+| # | Decision | Rejected | Why |
+|---|---|---|---|
+| Step 0 | Triage of S14-R1's 15 parked items and 3 questions: K1 (PR #49 parked 6) and K2 (PR #50 parked 8) → T7's docs pass; K3–K6 (PR #49 parked 1–4, question 3; PR #50 parked 3–4) → one Proposed addition, "S15 security review inputs"; D1–D7 (PR #49 parked 5, 7; PR #50 parked 1, 2, 5, 6, 7) dropped. PR #49 questions 1 (a 405 keeps FastAPI's body) and 2 (`/ready`'s probe body) accepted | — | K1–K2 fit T7; K3–K6 matter once the API is public (S15) |
+| Run shape | **1 run, 1 PR** for T4–T7, even if the size alarm fires (the developer's call for this run) | 2 stacked PRs on the size alarm | The developer's choice |
+| 1 | **The jobs table is the queue; no SQS** (ADR-013 D1). The worker holds the writer lock and takes the oldest queued-or-running job; a running job found under the lock was orphaned by a dead worker. SQS leaves S15's plan | An SQS-shaped message table behind an interface; ElasticMQ + boto3 | 1 worker, 1 job type, 1 shared database; one source of truth; a dead worker noticed at once (0.000 s) |
+| 2 | **A fixed job:** ingest → lifecycle → embed → chains, no request input. Guards: the worker refuses `INGEST_SCOPE` other than `full`; embed runs only after ingest succeeded in the same job (ADR-013 D2) | No embed in the job; caller-chosen steps | 0 texts at the current lock; the cap bounds surprises; the guards stop embed's orphan deletion from wiping the cache |
+| 3 | **One corpus-writer lock** taken by all 6 writers, on the writer's only connection; CLI writers exit 1 when it's held; the worker retries on its next poll (ADR-013 D3) | Locks inside the 2 identifier functions only; one identifiers table | One mechanism for R3, double-paid embeds and dead-worker detection; no table change |
+| 4 | **One active job:** a repeated POST returns it (202 new, 200 existing), enforced by the database (ADR-013 D4) | 409 with a 6th code; always create; queue one more while running | Safe to click twice; no new code; 2 POSTs at once make 1 job |
+| 5 | **Errors fail the job at once; a crash is resumed** at the first unfinished step, at most 3 attempts (ADR-013 D5) | Retry every error 3 times; a permanent/temporary split | Ingest's errors are deterministic; the kill probes show resume is safe |
+| 6 | **One table**, the 4 steps as a JSON list in the job row (ADR-013 D6) | A separate steps table | Every read is one job by ID; no cross-job query |
+| Plan | The verification plan and PR plan below; no paid calls | — | — |
+
+**Claude's calls** (reversible; confirmed at the read-back):
+- a. **The lock:** one fixed key in `db/`; a CLI writer that can't get it exits 1 with `Another corpus writer is running (make ingest, lifecycle, embed, chains, seed or make worker); try again when it finishes.` `make reset-corpus` (raw `psql`) is outside it; the docs say so.
+- b. **The worker loop:** every `WORKER_POLL_S` (5 s): try the lock; with it, take the oldest queued-or-running job, run it, release the lock; with no job, release the lock and sleep. A hand-run writer can run while the worker is idle.
+- c. **Attempts:** counted when a run or resume starts; a job found at `WORKER_MAX_ATTEMPTS` (3) is marked failed (`gave up after 3 attempts`) without running.
+- d. **Steps and counts:** ingest (documents stored, new documents, new versions, closed versions, new chunks, failures, **fingerprint**), lifecycle (rows), embed (texts, requests, embedded, tokens, orphans deleted), chains (per seed: found, missing). Any ingest failure fails the step.
+- e. **The worker's connection:** one plain autocommit connection with the connect timeout and no statement timeout; the lock and every step use it.
+- f. **Start-up checks:** `INGEST_SCOPE` must be `full`; `VOYAGE_API_KEY` must be set; otherwise exit 1 with a message, before connecting.
+- g. **Logs:** the worker configures logging from `config/logging.json` (the same JSON formatter as `make serve`); while a job runs, `logs.request_id` is set to the job's `request_id` and its lines carry `job_id` (`extra=`).
+- h. **The job's error text:** known errors give their own message (releases mismatch, a missing GitHub snapshot, the embed cap, ingest failures: their count and the first one); anything else gives `internal error; see the worker log (job <id>)`, with the traceback logged.
+- i. **POST and GET:** POST inserts in one transaction (`ON CONFLICT DO NOTHING`); if refused, it reads the active job (if that job ended in between, it inserts again, at most 2 tries). GET: 404 `not_found` for an unknown ID, 422 `invalid_request` for a non-integer.
+- j. **R1's carried item (K1 of S13-R1):** `make ingest-report`'s reads and `stored_decision`'s 2 reads each run in one read-only REPEATABLE READ transaction.
+- k. **New settings:** `WORKER_POLL_S=5` (`ge=1`), `WORKER_MAX_ATTEMPTS=3` (`ge=1`), with `.env.example` lines.
+- l. **Docs in the contract commit:** ADR-013 (Accepted) and its index row; the backlog's S14 outcome and T4 title, S15's Terraform list (no SQS), the ADR queue row, the "S15 security review inputs" Proposed addition; this slice doc's outcome, exit checks, scope, T4–T7 and R1's status.
+
+#### Pinned: T4 (job table, writer lock, snapshot reads)
+
+- **Migration `0009_ingestion_jobs`:** `ingestion_jobs`:
+  - `id` bigint identity primary key; `status` text not null default `queued`, check in (`queued`, `running`, `succeeded`, `failed`);
+  - `created_at` timestamptz not null default `now()`; `started_at`, `finished_at` timestamptz null; `attempts` integer not null default 0 (check ≥ 0);
+  - `error` text null; `request_id` text null; `steps` jsonb not null.
+  - The unique index `ingestion_jobs_one_active` on `((true))` where status in (`queued`, `running`).
+  - The migration test covers upgrade and downgrade, like the earlier ones.
+- **`db/models.py`:** `JobStep` (`name`, `status` ∈ pending/running/succeeded/failed, `started_at`, `finished_at`, `counts: dict[str, int | str]`, `error`) and `IngestionJob` (the columns, `steps: list[JobStep]`). The API returns `IngestionJob` as is.
+- **`db/jobs.py`** (the only SQL for jobs): create a job with the 4 steps pending (or return None when the rule refuses it), read a job by ID, read the active job, save a job's status, times, attempts, error and steps.
+- **`db/writer_lock.py`:** the fixed key; `try_writer_lock(conn) -> bool`; `release_writer_lock(conn)`; a context manager that raises `WriterBusy` when it's held elsewhere. A session lock (`pg_try_advisory_lock`), never a transaction lock.
+- **The 5 CLI writers** (`ingest`, `lifecycle`, `seed`, `embed`, `provenance.build`): take the lock right after connecting, on that connection, before any read or write; `WriterBusy` → exit 1 with call a's message. `ingest.main`'s own lifecycle rebuild runs under the same hold.
+- **Snapshot reads** (call j): `report.main` and `stored_decision`.
+
+#### Pinned: T5 (the worker)
+
+- **`ingestion/worker.py`**, run by `make worker` (`uv run python -m orgknow.ingestion.worker`).
+- **Steps:** a list of `(name, function)` where a function takes the connection and returns its counts (call d), built by `main` from settings; tests pass their own list. The real steps call the existing functions (`ingest`, `rebuild_lifecycle`, `embed_missing` with a `VoyageEmbedder` from settings, the chain builder's per-seed store), not the `main`s.
+- **`run_once(conn, steps, max_attempts) -> int | None`:** try the lock (none → None); read the active job (none → release, None); if attempts ≥ max → failed, `gave up after N attempts`; else attempts + 1, status running, `started_at` if unset; run each step from the first not `succeeded` (a step left `running` restarts from its beginning), saving the step's status and times before and after; on an error: the step and the job `failed` with call h's text, later steps stay `pending`; all done → `succeeded`, `finished_at`. Release the lock; return the job ID.
+- **`main`:** call f's checks, logging (call g), connect (call e), then `run_once` every `WORKER_POLL_S` until Ctrl-C. A Ctrl-C mid-job is a crash (resumed on the next start).
+- **Embed after a failed ingest is impossible by construction** (steps stop at the first failure); a test pins it.
+
+#### Pinned: T6 (job endpoints)
+
+- `POST /ingestion-jobs`: no body (an unexpected body is ignored); 202 with `IngestionJob` when created, 200 with the active job otherwise; the job's `request_id` is the request's. Uses `api_connection`; 503 `database_unavailable` as the other routes.
+- `GET /ingestion-jobs/{job_id}`: 200 `IngestionJob`; 404 `not_found` (`no ingestion job with this id`); 422 for a non-integer; 503 as the other routes.
+- **`docs/interfaces.md`:** both in the endpoint table and as `### POST /ingestion-jobs` and `### GET /ingestion-jobs/{job_id}` (purpose, request, bodies, statuses, cost: free at the current lock, embed paid only for new texts and capped; retry: POST safe to repeat, it returns the active job); a "Worker" section: the lock, the loop, steps, statuses, attempts, the error text, the worker's log fields; the dependencies table gains the worker's database connection.
+
+#### Pinned: T7 (docs and retro)
+
+- `docs/architecture.md`: the jobs path and the writer lock, and the module table's missing modules (K2); the README's run commands (`make worker`, the 2 endpoints); K1's doc nits in `docs/interfaces.md`; the comment K2 names.
+- The S14 retro (`/slice-retro`) as the run's last commit: slice brief `docs/learning/S14-backend-hardening.md`, backlog ticks and slice status.
+
+#### Handoffs between tasks
+
+- T4 → T5: `db/jobs.py`, `IngestionJob`/`JobStep`, the lock functions; every CLI writer already takes the lock, so the worker's hold excludes them.
+- T5 → T6: `run_once` turns a created job into a finished one; T6 only creates and reads jobs (it never takes the writer lock).
+- T6 → T7: the endpoints' doc sections; the demo's outputs feed the retro's numbers.
+
+#### Edge cases
+
+- A POST while the worker runs the active job: 200 with it (decision 4).
+- The worker started while a CLI writer holds the lock: it waits (polls) and logs one INFO line per poll at most every 60 s, not every 5 s.
+- A job left `running` by a crash, with `attempts` = 3: failed without running (call c).
+- A killed worker mid-step: that step restarts from its beginning (every step is safe to re-run; the kill probes).
+- `ingest` reports failures → the ingest step fails; lifecycle, embed and chains don't run.
+- The embed cap refuses (`RunTooLarge`) → the embed step fails with its message; chains don't run.
+- Ctrl-C while idle: exits 0, holding nothing.
+- `make reset-corpus` while the worker runs: not prevented (raw `psql`; documented).
+- GET of a job ID beyond bigint (e.g. 20 digits): 422 or 404, never 500.
+- `make test-int`'s database gains the new table through the existing migration fixture.
+
+#### Files in scope
+
+`src/orgknow/db/migrations/versions/0009_ingestion_jobs.py`, `src/orgknow/db/jobs.py`, `src/orgknow/db/writer_lock.py`, `src/orgknow/ingestion/worker.py` (new); `src/orgknow/db/models.py`, `src/orgknow/db/decisions.py` (snapshot), `src/orgknow/ingestion/report.py` (snapshot), `src/orgknow/ingestion/ingest.py`, `src/orgknow/ingestion/lifecycle.py`, `src/orgknow/ingestion/seed.py`, `src/orgknow/embeddings/embed.py`, `src/orgknow/provenance/build.py` (the lock), `src/orgknow/api/app.py` (routes), `src/orgknow/settings.py`, `.env.example`, `Makefile` (`worker`); tests under `tests/unit/` and `tests/integration/`; `docs/interfaces.md`, `docs/architecture.md`, `README.md`, `docs/backlog.md`, this slice doc, `docs/learning/S14-backend-hardening.md` (T7).
+
+#### Proof map
+
+| Task | "Done when" | Proof | Expected values from |
+|---|---|---|---|
+| T4 | The table and the one-active-job rule | Integration: a second queued job is refused (create returns None); a succeeded one then allows a new one | Decision 4; the sitting's index check |
+| T4 | All 6 writers take the lock | Integration: the test holds the lock; each of the 5 CLI `main`s exits 1 with call a's message (the worker: T5's row) | The sitting's writer list |
+| T4 | The lock is freed when its holder dies | Integration: a subprocess holds it, is SIGKILLed; the test's try-lock succeeds | The sitting probe |
+| T4 | Snapshot reads | Integration: inside each, `SHOW transaction_isolation` = `repeatable read` and `transaction_read_only` = `on` (read through a test hook or a spy on the connection) | Call j |
+| T5 | 4 steps in order, each recorded | Integration, fake steps: `succeeded`, attempts 1, 4 steps `succeeded` with their counts and times | Decision 6 |
+| T5 | An error fails at once | A raising fake step 2: job `failed`, step 2 `failed` with its text, steps 3–4 `pending` and never called | Decision 5 |
+| T5 | A killed worker is resumed | A subprocess worker whose step 2 blocks; SIGKILL once step 2 reads `running`; `run_once` in the test: step 1 not called again, step 2 rerun, `succeeded`, attempts 2 | Decision 5 |
+| T5 | The attempt limit | A `running` job at attempts 3: `failed`, `gave up after 3 attempts`, no step called | Call c |
+| T5 | The worker excludes CLI writers and vice versa | `run_once` while the test holds the lock → None, job untouched | Decision 3 |
+| T5 | The scope guard and the key check | `main` with `INGEST_SCOPE=s04`, then with no key: exit 1 with the messages | Decision 2, call f |
+| T5 | Unknown errors hide their text | A fake step raising `RuntimeError("secret-xyz")`: the job's error is call h's text, without `secret-xyz` | Call h |
+| T6 | POST 202 then 200, same ID; GET 200 | Integration API tests | Decision 4 |
+| T6 | 2 POSTs at once make 1 job | Integration: 2 threads POST; 1 row; one 202 and one 200 | Decision 4 |
+| T6 | GET 404 and 422 | API tests | Call i |
+| T6 | The doc lists both routes | `test_interfaces_doc.py` (unchanged) | — |
+
+#### Break-it rules
+
+- T4: remove the lock from one CLI writer → its lock test fails.
+- T5: resume from the first step instead of the first unfinished one → the resume test fails.
+- T6: drop the one-active-job index from the migration → the 2-POST test fails.
+
+#### Real-data demo
+
+On the scratch database `orgknow_r2probe` (never the dev database), free: `EMBED_MAX_TOKENS_PER_RUN=1` makes any paid request refuse.
+
+```bash
+export DATABASE_URL=postgresql://orgknow:orgknow@localhost:5433/orgknow_r2probe EMBED_MAX_TOKENS_PER_RUN=1 HF_HUB_OFFLINE=1
+make migrate
+docker compose exec -T db psql -U orgknow -d orgknow_r2probe -c "TRUNCATE documents, document_aliases, document_versions, chunks RESTART IDENTITY CASCADE"
+make serve &                                   # stop it by PID at the end
+.venv/bin/python -m orgknow.ingestion.worker & # the Python PID itself, not make/uv
+curl -si -X POST http://127.0.0.1:8000/ingestion-jobs   # 202
+curl -si -X POST http://127.0.0.1:8000/ingestion-jobs   # 200, the same id
+# while the ingest step runs: `make ingest` exits 1 with the writer-lock message
+# at ~40 s: kill -9 <worker Python PID>; start the worker again
+curl -s http://127.0.0.1:8000/ingestion-jobs/<id>       # succeeded, attempts 2
+curl -si -X POST http://127.0.0.1:8000/ingestion-jobs   # 202, a new job: the repeated run
+```
+
+Expected (from the sitting's probe, not the code): both jobs `succeeded`; the ingest step's fingerprint `sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165` both times; the second job's ingest counts 0 new versions and 0 new chunks; embed 0 requests; chains `kep:2572` 6 found and `kep:3015` 5 found, 1 missing; afterwards 21,762 embeddings, 3,295 lifecycle rows, 2 decisions and 12 chain-step rows. Show the worker's JSON lines with the job's `request_id` equal to the POST's `X-Request-ID`.
+
+#### Bundle-level check
+
+1. `make migrate` on the dev database; `make check` and `make test-int` (Postgres checked at run start).
+2. `HF_HUB_OFFLINE=1 make eval-retrieval` prints S14-R1's baseline metric lines exactly (the timing line may differ).
+3. `make ingest-report` on the dev database prints `Fingerprint: sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165`.
+
+#### PR plan
+
+- **1 PR** for T4–T7 (decision "Run shape"): the size alarm doesn't split it; the brief records files and reviewable lines. Estimate ~1,400–1,800 reviewable lines.
+- Greptile: 1 trigger (22/50 → 23/50).
+
+#### Paid calls allowed
+
+None. Every test uses fakes; the demo's embed sends 0 texts, capped at 1 estimated token. No Anthropic credit needed.
 
 ## Retro (fill in at the end)
 

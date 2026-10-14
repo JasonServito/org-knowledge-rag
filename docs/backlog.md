@@ -402,22 +402,22 @@ Tasks:
 | Slice | Stage | Outcome |
 |---|---|---|
 | ✅ **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
-| 🟨 **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; a local queue abstraction shaped like SQS; idempotent worker; request IDs; structured logs; timeouts and retries. |
-| ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-014 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
+| 🟨 **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; the jobs table as the queue (no SQS, ADR-013); idempotent worker; request IDs; structured logs; timeouts and retries. |
+| ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-014 (deployment topology) and Terraform for EC2, RDS, S3, ECR, IAM, CloudWatch, and SSM (no SQS: ADR-013 D1). Budget alarm, a teardown runbook, and cost of $50/month or less. |
 | ⬜ **S16 CI/CD** | Stage 12 | ECR build/push, deploy to EC2, smoke eval in CI. |
 | ⬜ **S17 Next.js UI** | Stage 13 | Answer with citations, authority/version badges, a conflict panel, a timeline, and provenance views. |
 | ⬜ **S18 Final evaluation + portfolio assets** | Stage 14 | Full benchmark, architecture docs, README, demo video, resume bullets backed by measured results. |
 
 ### 🟨 S14 Backend hardening + async ingestion
 
-- **Outcome:** every API response carries a request ID that also appears in one-line JSON logs, with one error shape and explicit timeouts and bounded retries on every external call (R1). `POST /ingestion-jobs` queues a job that `make worker` runs to completion with per-step progress; a duplicate delivery or a killed worker leaves the same ingestion fingerprint (R2).
+- **Outcome:** every API response carries a request ID that also appears in one-line JSON logs, with one error shape and explicit timeouts and bounded retries on every external call (R1). `POST /ingestion-jobs` queues a job that `make worker` runs to completion with per-step progress; the same job run twice or a killed worker leaves the same ingestion fingerprint (R2).
 - **Metrics to move:** none (backend). Guard: Phase 1 retrieval metrics and the ingestion fingerprint stay exactly the same.
 - **Slice doc:** `docs/slices/S14-backend-hardening.md` (run contract S14-R1; R2 has its own sitting)
 
 - [x] **S14-T1 `[commodity]` Interface contracts (`docs/interfaces.md`).** Every endpoint, the error envelope, request IDs, logs, each dependency's timeout and retries; a test keeps routes and doc in step. Deps: none.
 - [x] **S14-T2 `[commodity]` Request IDs, JSON logs, one error handler.** Deps: T1.
 - [x] **S14-T3 `[commodity]` Timeouts, retries, autocommit API connections, API mode tests.** Deps: T2.
-- [ ] **S14-T4 `[core]` Job table, local queue, single-writer lock.** Decided in the S14-R2 sitting (ADR-013). Deps: T1–T3.
+- [ ] **S14-T4 `[core]` Job table, corpus-writer lock, snapshot reads.** The jobs table is the queue (ADR-013). Deps: T1–T3.
 - [ ] **S14-T5 `[core]` The worker (`make worker`).** Deps: T4.
 - [ ] **S14-T6 `[commodity]` Job endpoints.** Deps: T4, T5.
 - [ ] **S14-T7 `[commodity]` Docs and the S14 retro.** Deps: T6.
@@ -452,7 +452,7 @@ ADRs are decided when their slice starts, not earlier.
 | 010 | Conflict detection method | S10 (Accepted) |
 | 011 | Corrective retrieval | S11 (Accepted) |
 | 012 | Decision provenance | S13 (Accepted) |
-| 013 | Async ingestion (job model, queue, idempotency) | S14 (R2 sitting) |
+| 013 | Async ingestion (job model, queue, idempotency) | S14 (Accepted) |
 | 014 | Deployment topology | S15 |
 
 ## Proposed additions (triage by the developer)
@@ -505,4 +505,5 @@ ADRs are decided when their slice starts, not earlier.
   - **Chain rules v1, more cases (S13-R1, PRs #47 and #48; S14-R1 sitting K3):** `/approve cancel` counts as an approval (question 3); a merged PR with no stored text (empty description, only bot comments) crashes `make chains`: reuse `not_ingested` or add a reason (a migration; question 5, Greptile); an `/approve` posted on merge day after the merge is cited (post times are stored by day); a stored discussion with no comment reads as missing `no_link`; `git.k8s.io` redirect links read as `not_public`; a post with an unclosed code fence swallows later posts' headings. Same test rule: a fresh held-out chain.
 - **`CLAUDE.md`: the golden-set copy step in the desktop app (S13-R1 sitting).** Reason: "type it in the Claude Code prompt with a `!` prefix" doesn't run in the desktop app's Code tab (the message arrives as text); the developer used the Ubuntu terminal. Update "Getting a file in", step 2: an Ubuntu (WSL) terminal, or the app's Run button on a `bash` block.
 - **S13 cleanup (S13-R1, PRs #47 and #48; S14-R1 sitting K4).** Reason: small gaps and repeats the reviewers parked. Code: 4 unused chain model fields; the citation-URL helper repeats one in `generation/validate.py`; chain seeds re-read the manifest YAML; the gold loader repeats the golden-set loader's read block; the chain label check reads the YAML unvalidated. Gaps: `orgknow chain` with the database down prints a traceback; the gold loader accepts fewer than 6 steps or empty `texts`; the control credits a `none` gold step (no effect on v0); `make eval-chain` embeds a new question before checking the chains exist; the control's top 10 follows `RETRIEVAL_TOP_K` (pinned 10); a missing gold file gives a traceback. Tests: 1 duplicate assertion; 1 expected value taken from a pinned helper.
+- **S15 security review inputs from S14-R1 (PRs #49 and #50; kept in the S14-R2 sitting).** Reason: gaps that matter once the API is public. (1) Logs: the reranker's library (transformers) writes plain-text lines under `make serve`; a failed traced ask's log line has no `trace_id`; a 502 or 503 logs no cause (PR #49 parked 1, 3, 4). (2) Anthropic's SDK waits as long as a `retry-after` header says, with no cap, so a 429 can stall a request past the documented 612 s worst case (PR #49 parked 2). (3) A 502's message can carry a provider's text, any `RuntimeError`/`ValueError` in the ask is a 502, and a validation message can include the input (PR #49 question 3). (4) `VOYAGE_MAX_RETRIES` has no upper bound and its wait doubles without a cap; the API connection helper's `options` replaces any `options` in `DATABASE_URL` (e.g. a `search_path` on RDS) (PR #50 parked 3, 4).
 - **GitHub texts in CURRENT ("now") questions (S13-R1, PR #48 question 1; S14-R1 sitting K6).** Reason: discussion windows never close, so their comments pass CURRENT's filter; q01 lost all 4 labeled hits to Discussion #1290's comments (Phase 1 MRR 0.813 → 0.781). Options: leave, demote (an authority weight) or filter them in CURRENT mode. Also the answer prompt explains tiers 1–6, not tier 7 (Greptile, PR #47). A scoring change: measure on golden set v1, not v0.
