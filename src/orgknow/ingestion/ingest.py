@@ -2,7 +2,8 @@
 
 Run with `make ingest` (INGEST_SCOPE, default full), after `make seed`. Safe to re-run: each
 document's derived history is compared with what's stored (`plan_changes`), and only versions
-with no chunks are chunked, so a re-run writes nothing.
+with no chunks are chunked, so a re-run writes nothing. It first takes the corpus-writer lock
+(`db/writer_lock.py`, ADR-013 D3), and exits 1 if another writer holds it.
 
 1. Check (DB, read-only): the `releases` table must hold every manifest release with the same
    dates, since windows are derived from them. Otherwise stop, before any git read or write,
@@ -51,6 +52,7 @@ from orgknow.db.documents import add_alias, create_document, find_document, reso
 from orgknow.db.models import NewVersion, Release, VersionData
 from orgknow.db.releases import list_releases
 from orgknow.db.versions import close_version, insert_version, list_versions
+from orgknow.db.writer_lock import WriterBusy, writer_lock
 from orgknow.ingestion.blog import (
     Entry,
     Publication,
@@ -906,22 +908,27 @@ def main() -> None:
         settings.corpus_manifest_path, settings.corpus_lock_path, settings.ingest_scope
     )
     cache_dir = settings.corpus_cache_dir.expanduser()
-    # autocommit: each `conn.transaction()` block is its own committed transaction.
-    with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        try:
-            summary = ingest(
-                conn,
-                scope,
-                cache_dir,
-                releases,
-                strip,
-                settings.claim_synonyms,
-                settings.chunk_max_tokens,
-            )
-        except (ReleasesMismatch, GithubSnapshotError) as exc:
-            sys.exit(f"Nothing ingested: {exc}.")  # exit code 1, message on stderr
-        lifecycle = rebuild_lifecycle(conn, cache_dir, settings.claim_synonyms)
-        database = database_report(conn)
+    # autocommit: each `conn.transaction()` block is its own committed transaction. The writer
+    # lock (ADR-013 D3) is taken first, on this connection, and held through the lifecycle
+    # rebuild and the report.
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn, writer_lock(conn):
+            try:
+                summary = ingest(
+                    conn,
+                    scope,
+                    cache_dir,
+                    releases,
+                    strip,
+                    settings.claim_synonyms,
+                    settings.chunk_max_tokens,
+                )
+            except (ReleasesMismatch, GithubSnapshotError) as exc:
+                sys.exit(f"Nothing ingested: {exc}.")  # exit code 1, message on stderr
+            lifecycle = rebuild_lifecycle(conn, cache_dir, settings.claim_synonyms)
+            database = database_report(conn)
+    except WriterBusy as busy:
+        sys.exit(str(busy))
 
     # The report (S05-T8): every list sorted, so two ingests of the same data print the same.
     skipped = skip_lines(summary.skipped) + sorted(summary.skipped_versions)

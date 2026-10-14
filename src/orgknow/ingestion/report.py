@@ -184,6 +184,11 @@ def main() -> None:
     """`make ingest-report`: print the database part of the ingestion report."""
     settings = Settings()
     with psycopg.connect(settings.database_url) as conn:
+        # Every read in one read-only REPEATABLE READ transaction (S14-R2 call j), so the counts
+        # and the fingerprint come from one snapshot even while a writer commits. Not autocommit:
+        # the reads share the transaction psycopg starts, with these settings, at the first read.
+        conn.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
+        conn.read_only = True
         lines = database_report(conn)
     print("\n".join(lines))
 

@@ -21,6 +21,7 @@ from psycopg.rows import TupleRow
 
 from orgknow.db.chunks import add_embedding, delete_orphan_embeddings, texts_without_embedding
 from orgknow.db.models import TextToEmbed
+from orgknow.db.writer_lock import WriterBusy, writer_lock
 from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.ingestion.chunker import estimate_tokens
@@ -126,9 +127,10 @@ def main(settings: Settings | None = None) -> None:
         timeout_s=settings.voyage_timeout_s,
         max_retries=settings.voyage_max_retries,
     )
-    # autocommit: each `conn.transaction()` block is its own committed transaction.
-    with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        try:
+    # autocommit: each `conn.transaction()` block is its own committed transaction. The writer
+    # lock (ADR-013 D3) is taken first, on this connection.
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn, writer_lock(conn):
             summary = embed_missing(
                 conn,
                 embedder,
@@ -136,8 +138,8 @@ def main(settings: Settings | None = None) -> None:
                 settings.embed_batch_max_tokens,
                 settings.embed_max_tokens_per_run,
             )
-        except RunTooLarge as exc:
-            sys.exit(str(exc))
+    except (RunTooLarge, WriterBusy) as exc:
+        sys.exit(str(exc))
 
     print(
         f"Model {embedder.model}: {summary.texts} texts had no vector "

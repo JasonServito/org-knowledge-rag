@@ -222,3 +222,61 @@ def test_0008_downgrade_drops_both_tables_and_upgrade_adds_them_back(settings: S
     assert at_head == {"decisions", "decision_evidence"}
     assert after_downgrade == set()
     assert after_upgrade == {"decisions", "decision_evidence"}
+
+
+# --- 0009: the ingestion jobs table (S14-T4) -----------------------------------------------------
+
+
+def _jobs_table(connection: Connection) -> tuple[set[str], set[str]]:
+    """`ingestion_jobs`' columns and indexes, empty when the table doesn't exist."""
+    columns = connection.execute(
+        text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'ingestion_jobs'"
+        )
+    )
+    indexes = connection.execute(
+        text("SELECT indexname FROM pg_indexes WHERE tablename = 'ingestion_jobs'")
+    )
+    return {name for (name,) in columns}, {name for (name,) in indexes}
+
+
+def test_0009_downgrade_drops_the_jobs_table_and_upgrade_adds_it_back(settings: Settings) -> None:
+    # 0009's own downgrade() and upgrade(), inside one transaction that is rolled back, as for 0007.
+    spec = importlib.util.spec_from_file_location(
+        "migration_0009", next(MIGRATIONS.glob("0009_*.py"))
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = create_engine(with_psycopg_driver(settings.database_url), poolclass=NullPool)
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            at_head = _jobs_table(connection)
+            with Operations.context(MigrationContext.configure(connection)):
+                migration.downgrade()
+                after_downgrade = _jobs_table(connection)
+                migration.upgrade()
+                after_upgrade = _jobs_table(connection)
+        finally:
+            transaction.rollback()
+
+    # The S14-R2 contract's columns and indexes ("Pinned: T4"), typed by hand.
+    table = (
+        {
+            "id",
+            "status",
+            "created_at",
+            "started_at",
+            "finished_at",
+            "attempts",
+            "error",
+            "request_id",
+            "steps",
+        },
+        {"ingestion_jobs_pkey", "ingestion_jobs_one_active"},
+    )
+    assert at_head == table
+    assert after_downgrade == (set(), set())
+    assert after_upgrade == table

@@ -14,6 +14,7 @@ rows. Needs `make ingest` first.
 """
 
 import re
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,7 @@ from psycopg.rows import TupleRow
 from orgknow.db.lifecycle import reference_versions, replace_observations
 from orgknow.db.models import Confidence, Observation
 from orgknow.db.releases import list_releases
+from orgknow.db.writer_lock import WriterBusy, writer_lock
 from orgknow.ingestion.git_reader import read_file
 from orgknow.ingestion.normalize import decode
 from orgknow.settings import Settings
@@ -169,11 +171,15 @@ def lifecycle_line(rows: Sequence[Observation]) -> str:
 
 def main() -> None:
     settings = Settings()
-    # autocommit: the rebuild's `conn.transaction()` block is its own committed transaction.
-    with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        rows = rebuild_lifecycle(
-            conn, settings.corpus_cache_dir.expanduser(), settings.claim_synonyms
-        )
+    # autocommit: the rebuild's `conn.transaction()` block is its own committed transaction. The
+    # writer lock (ADR-013 D3) is taken first, on this connection.
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn, writer_lock(conn):
+            rows = rebuild_lifecycle(
+                conn, settings.corpus_cache_dir.expanduser(), settings.claim_synonyms
+            )
+    except WriterBusy as busy:
+        sys.exit(str(busy))
     print(lifecycle_line(rows))
 
 

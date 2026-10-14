@@ -417,7 +417,7 @@ Tasks:
 - [x] **S14-T1 `[commodity]` Interface contracts (`docs/interfaces.md`).** Every endpoint, the error envelope, request IDs, logs, each dependency's timeout and retries; a test keeps routes and doc in step. Deps: none.
 - [x] **S14-T2 `[commodity]` Request IDs, JSON logs, one error handler.** Deps: T1.
 - [x] **S14-T3 `[commodity]` Timeouts, retries, autocommit API connections, API mode tests.** Deps: T2.
-- [ ] **S14-T4 `[core]` Job table, corpus-writer lock, snapshot reads.** The jobs table is the queue (ADR-013). Deps: T1–T3.
+- [x] **S14-T4 `[core]` Job table, corpus-writer lock, snapshot reads.** The jobs table is the queue (ADR-013). Deps: T1–T3.
 - [ ] **S14-T5 `[core]` The worker (`make worker`).** Deps: T4.
 - [ ] **S14-T6 `[commodity]` Job endpoints.** Deps: T4, T5.
 - [ ] **S14-T7 `[commodity]` Docs and the S14 retro.** Deps: T6.

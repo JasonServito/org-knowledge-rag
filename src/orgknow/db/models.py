@@ -319,3 +319,35 @@ class StoredDecision(BaseModel):
     title: str
     built_at: AwareDatetime
     steps: list[StoredEvidence]
+
+
+# Ingestion jobs (S14-T4; ADR-013 D6; the S14-R2 contract's "Pinned: T4"): migration 0009's
+# CHECK list, and the statuses a step in a job's `steps` list can have.
+JobStatus = Literal["queued", "running", "succeeded", "failed"]
+StepStatus = Literal["pending", "running", "succeeded", "failed"]
+
+
+class JobStep(BaseModel):
+    """One step of an ingestion job, as its row's `steps` list stores it."""
+
+    name: str  # ingest, lifecycle, embed or chains (`db/jobs.py`)
+    status: StepStatus = "pending"
+    started_at: AwareDatetime | None = None
+    finished_at: AwareDatetime | None = None
+    # What the step reports (S14-R2 call d), e.g. ingest's new versions and its fingerprint.
+    counts: dict[str, int | str] = Field(default_factory=dict)
+    error: str | None = None  # a failed step's one-line reason
+
+
+class IngestionJob(BaseModel):
+    """One `ingestion_jobs` row, its steps in order. The API returns it as is."""
+
+    id: int
+    status: JobStatus
+    created_at: AwareDatetime
+    started_at: AwareDatetime | None
+    finished_at: AwareDatetime | None
+    attempts: int  # runs and resumes started (ADR-013 D5)
+    error: str | None  # a failed job's one-line reason
+    request_id: str | None  # the X-Request-ID of the POST that created it
+    steps: list[JobStep]
