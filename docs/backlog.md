@@ -401,14 +401,14 @@ Tasks:
 
 | Slice | Stage | Outcome |
 |---|---|---|
-| 🟨 **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
-| ⬜ **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; a local queue abstraction shaped like SQS; idempotent worker; request IDs; structured logs; timeouts and retries. |
+| ✅ **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
+| 🟨 **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; a local queue abstraction shaped like SQS; idempotent worker; request IDs; structured logs; timeouts and retries. |
 | ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-013 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
 | ⬜ **S16 CI/CD** | Stage 12 | ECR build/push, deploy to EC2, smoke eval in CI. |
 | ⬜ **S17 Next.js UI** | Stage 13 | Answer with citations, authority/version badges, a conflict panel, a timeline, and provenance views. |
 | ⬜ **S18 Final evaluation + portfolio assets** | Stage 14 | Full benchmark, architecture docs, README, demo video, resume bullets backed by measured results. |
 
-### 🟨 S13 Phase 2 provenance MVP
+### ✅ S13 Phase 2 provenance MVP
 
 - **Outcome:** `orgknow chain kep:2572` prints the release-cadence decision as 6 dated steps, each citing a stored text, built by rules from recorded links and dates (ADR-012). Decision-chain completeness is scored on 2 gold chains (release cadence and a random held-out KEP), beside a like-for-like plain-search control.
 - **Metrics to move:** decision-chain completeness (new); Phase 1's retrieval metrics hold within ±0.03.
@@ -416,10 +416,10 @@ Tasks:
 
 - [x] **S13-T1 `[core]` Ingest the chains' GitHub items.** `discussion` documents (tier 7), fetched into the cache and pinned by hash; migration; embeddings; the chain label check. Deps: none.
 - [x] **S13-T2 `[human]` Gold chains v0.** Both chains' steps and the held-out chain's WHY question, before any system output; drafted by Claude at the developer's request, signed off by the developer in the S13-R1 sitting. Deps: the contract.
-- [ ] **S13-T3 `[core]` Decision tables and the chain builder.** `decisions`, `decision_evidence`; `make chains`; `orgknow chain`. Deps: T1.
-- [ ] **S13-T4 `[core]` Decision-chain completeness.** `make eval-chain`: both numbers per chain, and the control. Deps: T2, T3.
-- [ ] **S13-T5 `[commodity]` `GET /decisions/{canonical_id}`.** Deps: T3.
-- [ ] **S13-T6 `[commodity]` Docs and the S13 retro.** Deps: T4, T5.
+- [x] **S13-T3 `[core]` Decision tables and the chain builder.** `decisions`, `decision_evidence`; `make chains`; `orgknow chain`. Deps: T1.
+- [x] **S13-T4 `[core]` Decision-chain completeness.** `make eval-chain`: both numbers per chain, and the control. Deps: T2, T3.
+- [x] **S13-T5 `[commodity]` `GET /decisions/{canonical_id}`.** Deps: T3.
+- [x] **S13-T6 `[commodity]` Docs and the S13 retro.** Deps: T4, T5.
 
 ---
 

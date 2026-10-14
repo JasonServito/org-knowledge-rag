@@ -218,3 +218,104 @@ class TemporalFilter(BaseModel):
     current_only: bool
     from_release: int | None
     until_release: int | None
+
+
+# The decision chain (S13-T3; ADR-012 D1-D2; the S13-R1 contract's "Pinned: T3"): migration
+# 0008's CHECK lists, as types.
+Step = Literal["problem", "discussion", "proposal", "decision", "implementation", "current_docs"]
+FoundBy = Literal["seed", "template_field", "merge_event", "linking_text", "similarity"]
+MissingReason = Literal[
+    "no_tracking_issue", "no_link", "not_public", "not_ingested", "not_merged", "no_linking_text"
+]
+
+
+class DocumentChunk(BaseModel):
+    """One chunk of a document's newest version, as the chain rules read it."""
+
+    id: int
+    ordinal: int
+    heading_path: list[str]
+    text: str  # header + body, as stored
+    content_hash: str
+
+
+class ChainDocument(BaseModel):
+    """A document's newest version (latest date window) and its chunks, by ordinal: a seed KEP
+    or a GitHub item, as the chain rules read it."""
+
+    document_id: int
+    canonical_id: str
+    source_type: str
+    source_path: str
+    metadata: dict[str, Any]  # a KEP's `kep.yaml`; a GitHub item's dates and url
+    chunks: list[DocumentChunk]
+
+
+class LinkCandidate(BaseModel):
+    """A blog post or release record chunk whose text holds a KEP's number: a candidate for the
+    implementation step (rule 7), one per chunk of every version."""
+
+    chunk_id: int
+    canonical_id: str
+    source_type: str
+    ordinal: int
+    heading_path: list[str]
+    text: str
+    valid_from_date: AwareDatetime  # its version's date-window start
+
+
+class NearText(BaseModel):
+    """A text near a KEP's Summary vector, among those valid at the latest release (rule 8),
+    with the chunk that cites it: in the newest such version holding it."""
+
+    content_hash: str
+    distance: float  # cosine distance, 0 (same direction) to 2
+    chunk_id: int
+    canonical_id: str
+    heading_path: list[str]
+    valid_from_date: AwareDatetime  # the cited chunk's version's date-window start
+
+
+class NewEvidence(BaseModel):
+    """A `decision_evidence` row to insert: a step that cites a chunk (with how it was found),
+    or a step that is missing (with its reason). The table's CHECKs, not this model, enforce
+    "exactly one of the two"."""
+
+    step: Step
+    chunk_id: int | None = None
+    occurred_at: AwareDatetime | None = None
+    found_by: FoundBy | None = None
+    via_chunk_id: int | None = None  # the chunk holding the link that connects this step
+    missing_reason: MissingReason | None = None
+
+
+class StoredEvidence(BaseModel):
+    """A stored step, with what a citation shows: the cited chunk's document, heading path and
+    version fields, and the via chunk's document and heading path. A missing step has only its
+    step and reason."""
+
+    step: Step
+    occurred_at: AwareDatetime | None
+    found_by: FoundBy | None
+    missing_reason: MissingReason | None
+    chunk_id: int | None
+    canonical_id: str | None
+    source_type: str | None
+    heading_path: list[str] | None
+    claimed_status: str | None
+    snapshot_repo: str | None
+    snapshot_sha: str | None
+    source_path: str | None
+    metadata: dict[str, Any] | None
+    via_chunk_id: int | None
+    via_canonical_id: str | None
+    via_heading_path: list[str] | None
+
+
+class StoredDecision(BaseModel):
+    """A stored decision chain: its seed KEP, title, build time and steps, in step order."""
+
+    seed: str  # the seed KEP's canonical id
+    title: str
+    built_at: AwareDatetime
+    steps: list[StoredEvidence]

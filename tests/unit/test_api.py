@@ -1,16 +1,18 @@
-"""`POST /query` (S12-T2) offline: `TestClient`, fakes for every paid client and for Langfuse, and
-no database.
+"""`POST /query` (S12-T2) and `GET /decisions/{canonical_id}` (S13-T5) offline: `TestClient`,
+fakes for every paid client and for Langfuse, and no database.
 
 The steps that read the database are replaced: the per-request connection is a placeholder,
 `retrieve` returns one hand-built hit (after embedding the question, as the real one does first)
 and `rule_conflicts` returns hand-built conflicts. The rest of the shared pipeline runs for real:
 the answer, its citations and the trace. Expected outputs are the CLI's pinned output and error
-lines for the same fakes (tests/integration/test_cli.py), written by hand.
+lines for the same fakes (tests/integration/test_cli.py), written by hand. For a decision chain,
+the data-access functions `load_chain` calls return hand-built rows; `load_chain` runs for real.
 """
 
 import json
 from collections.abc import Sequence
 from contextlib import nullcontext
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,10 +32,13 @@ from tests.conftest import (
 from orgknow import cli, pipeline
 from orgknow.api import app as api_app
 from orgknow.api.app import create_app
-from orgknow.db.models import Authority, Hit
+from orgknow.db.models import Authority, Hit, Observation, Release, StoredDecision, StoredEvidence
 from orgknow.embeddings.embedder import EmbedResult, InputType
 from orgknow.generation.conflicts import Conflict
 from orgknow.generation.schema import Generation, ModelAnswer
+from orgknow.ingestion.manifest import load_repo_urls
+from orgknow.provenance import chain as chain_module
+from orgknow.provenance.chain import Chain, chain_lines, load_chain
 from orgknow.settings import Settings
 
 MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
@@ -394,3 +399,196 @@ def test_startup_stops_on_a_missing_key_without_printing_it() -> None:
         pass
 
     assert str(error.value) == "VOYAGE_API_KEY is not set: add the key to .env (see .env.example)."
+
+
+# --- GET /decisions/{canonical_id} (S13-T5) ------------------------------------------------------
+
+KEP_SHA = "96fd20c76108d86a94abbbe9929cf862bdf82986"
+KEP_PATH = "keps/sig-release/2572-release-cadence/README.md"
+PR_URL = "https://github.com/kubernetes/enhancements/pull/2567"
+ISSUE_FIELDS = ["Opening post · @justaugustus · 2021-03-15", "Enhancement Description"]
+KEP_TITLE = "KEP-2572: Defining the Kubernetes Release Cadence"
+NO_CHAIN = "no stored decision chain for kep:9999; chains are built by make chains"
+
+
+def _evidence(**fields: Any) -> StoredEvidence:
+    """A stored step: every field None unless given."""
+    return StoredEvidence.model_validate(dict.fromkeys(StoredEvidence.model_fields) | fields)
+
+
+# 3 of KEP-2572's stored steps, shaped like the dev database's rows: the proposal (a KEP chunk),
+# the decision (a GitHub item's chunk) and a missing step.
+STORED = StoredDecision(
+    seed="kep:2572",
+    title=KEP_TITLE,
+    built_at=datetime.fromisoformat("2026-10-13T22:05:11.25+00:00"),
+    steps=[
+        _evidence(
+            step="proposal",
+            occurred_at=datetime.fromisoformat("2021-03-12T14:32:43+00:00"),
+            found_by="seed",
+            chunk_id=11,
+            canonical_id="kep:2572",
+            source_type="kep",
+            heading_path=[KEP_TITLE, "Summary"],
+            claimed_status="implementable",
+            snapshot_repo="enhancements",
+            snapshot_sha=KEP_SHA,
+            source_path=KEP_PATH,
+            metadata={"title": KEP_TITLE, "status": "implementable"},  # no feature gates
+            via_chunk_id=12,
+            via_canonical_id="gh:enhancements/issues/2572",
+            via_heading_path=ISSUE_FIELDS,
+        ),
+        _evidence(
+            step="decision",
+            occurred_at=datetime.fromisoformat("2021-04-23T15:38:03+00:00"),
+            found_by="merge_event",
+            chunk_id=13,
+            canonical_id="gh:enhancements/pull/2567",
+            source_type="discussion",
+            heading_path=["Comments", "@dchen1107 · 2021-04-22"],
+            snapshot_repo="enhancements",
+            snapshot_sha="8e239c85a4231d15f157634dc066a456d5b45ea8",
+            source_path="github/enhancements/pull/2567.json",
+            metadata={"url": PR_URL, "kind": "pull", "number": 2567},
+            via_chunk_id=12,
+            via_canonical_id="gh:enhancements/issues/2572",
+            via_heading_path=ISSUE_FIELDS,
+        ),
+        _evidence(step="implementation", missing_reason="no_linking_text"),
+    ],
+)
+# The response, typed by hand: the source URLs as a citation's (a KEP's file at its snapshot
+# commit; a GitHub item's own page) and the tiers at the latest release (ADR-003 D3: an
+# implementable KEP with no gates is 5, a discussion 7). Pydantic writes UTC as "Z".
+EXPECTED_CHAIN = {
+    "seed": "kep:2572",
+    "title": KEP_TITLE,
+    "built_at": "2026-10-13T22:05:11.250000Z",
+    "steps": [
+        {
+            "step": "proposal",
+            "occurred_at": "2021-03-12T14:32:43Z",
+            "chunk_id": 11,
+            "canonical_id": "kep:2572",
+            "heading_path": [KEP_TITLE, "Summary"],
+            "source_type": "kep",
+            "source_url": f"https://github.com/kubernetes/enhancements/blob/{KEP_SHA}/{KEP_PATH}",
+            "tier": 5,
+            "found_by": "seed",
+            "via_chunk_id": 12,
+            "via_canonical_id": "gh:enhancements/issues/2572",
+            "via_heading_path": ISSUE_FIELDS,
+            "missing_reason": None,
+        },
+        {
+            "step": "decision",
+            "occurred_at": "2021-04-23T15:38:03Z",
+            "chunk_id": 13,
+            "canonical_id": "gh:enhancements/pull/2567",
+            "heading_path": ["Comments", "@dchen1107 · 2021-04-22"],
+            "source_type": "discussion",
+            "source_url": PR_URL,
+            "tier": 7,
+            "found_by": "merge_event",
+            "via_chunk_id": 12,
+            "via_canonical_id": "gh:enhancements/issues/2572",
+            "via_heading_path": ISSUE_FIELDS,
+            "missing_reason": None,
+        },
+        {
+            "step": "implementation",
+            "occurred_at": None,
+            "chunk_id": None,
+            "canonical_id": None,
+            "heading_path": None,
+            "source_type": None,
+            "source_url": None,
+            "tier": None,
+            "found_by": None,
+            "via_chunk_id": None,
+            "via_canonical_id": None,
+            "via_heading_path": None,
+            "missing_reason": "no_linking_text",
+        },
+    ],
+}
+
+
+@pytest.fixture
+def stored_rows(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The request's connection is a placeholder, and `load_chain`'s reads return the rows
+    above: KEP-2572's chain, none for any other id, 1.37 as the latest release, no gate rows.
+    Return the ids `stored_decision` was asked for."""
+    asked: list[str] = []
+
+    def stored_decision(conn: object, canonical_id: str) -> StoredDecision | None:
+        assert conn is CONNECTION
+        asked.append(canonical_id)
+        return STORED if canonical_id == "kep:2572" else None
+
+    def list_releases(conn: object) -> list[Release]:
+        return [
+            Release(
+                version="1.37", release_date=date(2026, 8, 5), end_of_life_date=date(2027, 10, 28)
+            )
+        ]
+
+    def observations(conn: object, gates: Sequence[str], until: int) -> list[Observation]:
+        return []
+
+    monkeypatch.setattr(api_app.psycopg, "connect", lambda url, **kwargs: nullcontext(CONNECTION))
+    monkeypatch.setattr(chain_module, "stored_decision", stored_decision)
+    monkeypatch.setattr(chain_module, "list_releases", list_releases)
+    monkeypatch.setattr(chain_module, "observations", observations)
+    return asked
+
+
+def test_a_stored_chain_is_200_with_the_model_the_cli_prints_from(
+    stored_rows: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings = _settings()
+    client = TestClient(create_app(settings))  # no startup: the route needs no paid client
+
+    response = client.get("/decisions/kep:2572")
+
+    assert response.status_code == 200
+    assert response.json() == EXPECTED_CHAIN
+    assert stored_rows == ["kep:2572"]
+    # The same JSON as `load_chain`'s model for the same rows, the model `orgknow chain` prints.
+    chain = load_chain(CONNECTION, "kep:2572", load_repo_urls(MANIFEST))
+    assert chain is not None
+    assert response.json() == chain.model_dump(mode="json")
+    # Read back, the JSON prints exactly what `orgknow chain` prints for the same rows.
+    assert cli.chain("kep:2572", CONNECTION, settings) == 0
+    printed = capsys.readouterr().out.splitlines()
+    assert printed == chain_lines(Chain.model_validate(response.json()))
+    _no_secret(response.text)
+
+
+def test_a_chain_that_is_not_stored_is_404_with_the_make_chains_hint(
+    stored_rows: list[str],
+) -> None:
+    client = TestClient(create_app(_settings()))
+
+    response = client.get("/decisions/kep:9999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": NO_CHAIN}
+    assert stored_rows == ["kep:9999"]
+
+
+def test_decisions_is_503_when_the_database_is_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(url: str, **kwargs: Any) -> None:
+        # The message names the URL, password included: the response must not repeat it.
+        raise psycopg.OperationalError(f"connection to {url} failed: Connection refused")
+
+    monkeypatch.setattr(api_app.psycopg, "connect", refuse)
+    client = TestClient(create_app(_settings()))
+
+    response = client.get("/decisions/kep:2572")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "database unreachable"}
+    _no_secret(response.text)

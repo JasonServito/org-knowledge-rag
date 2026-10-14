@@ -1,0 +1,85 @@
+Mode: authority. S12's run: eval/results/conflict-20261012T171932Z/questions.jsonl
+
+## 1. With the discussion texts (as stored)
+q01 CURRENT: recall 0.571 -> 0.000, hit 1 -> 0, mrr 0.500 -> 0.000, ndcg 0.449 -> 0.000
+   ranks where a label is credited: S12 [2, 5, 8, 9], now []
+     1 kep                    kep:2572 | KEP-2572: Defining the Kubernetes Release Cadence > Motivation
+   + 2 discussion             gh:sig-release/discussions/1290 | Comments > @johnbelamaric · 2020-10-15
+   + 3 discussion             gh:sig-release/discussions/1290 | Comments > @onlydole · 2020-10-20
+   + 4 discussion             gh:sig-release/discussions/1290 | Comments > @lasomethingsomething · 2020-10-15
+   + 5 discussion             gh:sig-release/discussions/1290 | Comments > @leodido · 2020-10-15
+   + 6 discussion             gh:sig-release/discussions/1290 | Comments > @ameukam · 2020-10-14
+   + 7 discussion             gh:sig-release/discussions/1290 | Comments > @saschagrunert · 2020-10-14
+   + 8 discussion             gh:sig-release/discussions/1290 | Comments > @ehashman · 2020-10-27
+   + 9 discussion             gh:sig-release/discussions/1290 | Comments > @jackfrancis · 2020-10-15
+   +10 discussion             gh:sig-release/discussions/1290 | Comments > @palnabarun · 2020-10-15
+q02 HISTORY: recall 0.250 -> 0.250, hit 1 -> 1, mrr 0.111 -> 0.125, ndcg 0.118 -> 0.123
+   ranks where a label is credited: S12 [9], now [8]
+     1 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | What this means for end users
+     2 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | What's changing and when
+     3 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | What's changing and when
+     4 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | What's changing and when
+     5 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | Why we decided to change the release cadence
+     6 kep                    kep:2572 | KEP-2572: Defining the Kubernetes Release Cadence > Proposal
+     7 kep                    kep:2572 | KEP-2572: Defining the Kubernetes Release Cadence > Proposal
+     8 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | 
+   + 9 discussion             gh:enhancements/pull/2567 | Comments > @liggitt · 2021-04-16
+   +10 discussion             gh:enhancements/pull/2567 | Comments > @jberkus · 2021-04-16
+q03 CHANGE: recall 0.667 -> 0.167, hit 1 -> 1, mrr 1.000 -> 0.333, ndcg 0.657 -> 0.151
+   ranks where a label is credited: S12 [1, 3, 6, 8], now [3]
+   + 1 discussion             gh:enhancements/pull/2567 | Comments > @jeremyrickard · 2021-04-13
+   + 2 discussion             gh:enhancements/pull/2567 | Comments > @jeremyrickard · 2021-04-14
+     3 kep                    kep:2572 | KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories
+   + 4 discussion             gh:enhancements/pull/2567 | Comments > @youngnick · 2021-04-14
+   + 5 discussion             gh:enhancements/pull/2567 | Comments > @jeremyrickard · 2021-04-14
+   + 6 discussion             gh:enhancements/pull/2567 | Comments > @jeremyrickard · 2021-04-13
+   + 7 discussion             gh:sig-release/discussions/1290 | Comments > @savitharaghunathan · 2020-10-14
+   + 8 discussion             gh:sig-release/discussions/1290 | Comments > @chris-short · 2020-10-22
+   + 9 discussion             gh:sig-release/discussions/1290 | Comments > @onlydole · 2020-10-20
+   +10 discussion             gh:sig-release/discussions/1290 | Comments > @ehashman · 2020-10-27
+q04 WHY: recall 0.500 -> 0.500, hit 1 -> 1, mrr 1.000 -> 1.000, ndcg 0.521 -> 0.503
+   ranks where a label is credited: S12 [1, 7], now [1, 10]
+     1 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | Why we decided to change the release cadence
+     2 blog_post              web:/blog/2021/08/04/kubernetes-1-22-release-announcement/ | 
+     3 blog_post              web:/blog/2021/08/04/kubernetes-1-22-release-announcement/ | 
+     4 blog_post              web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/ | 
+   + 5 discussion             gh:sig-release/discussions/1290 | Comments > @johnbelamaric · 2020-10-15
+   + 6 discussion             gh:sig-release/discussions/1290 | Comments > @saschagrunert · 2020-10-14
+   + 7 discussion             gh:sig-release/discussions/1290 | Comments > @johnbelamaric · 2021-02-04
+   + 8 discussion             gh:sig-release/discussions/1290 | Comments > @ehashman · 2020-10-27
+   + 9 discussion             gh:sig-release/discussions/1290 | Comments > @johnbelamaric · 2021-02-04
+   +10 kep                    kep:2572 | KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories > SIG Release members
+q22 CURRENT: recall 1.000 -> 1.000, hit 1 -> 1, mrr 1.000 -> 1.000, ndcg 0.850 -> 0.850
+   ranks where a label is credited: S12 [1, 5], now [1, 5]
+     1 release_record         web:/releases/release/ | The Release Cycle
+     2 release_record         web:/releases/release/ | Targeting enhancements, Issues and PRs to Release Milestones
+     3 release_record         web:/releases/release/ | Definitions
+     4 release_record         web:/releases/release/ | TL;DR > [Code Freeze][code-freeze] (Weeks 12-14)
+     5 governance_doc         community:contributors/devel/sig-release/release.md | Targeting enhancements, Issues and PRs to Release Milestones > The Release Cycle
+     6 kep                    kep:2572 | KEP-2572: Defining the Kubernetes Release Cadence > Proposal
+     7 governance_doc         community:contributors/devel/sig-release/release.md | Targeting enhancements, Issues and PRs to Release Milestones
+   + 8 discussion             gh:enhancements/pull/2567 | Comments > @ehashman · 2021-04-14
+   + 9 discussion             gh:enhancements/pull/2567 | Comments > @ehashman · 2021-04-13
+    10 governance_doc         community:contributors/devel/sig-release/release.md | Targeting enhancements, Issues and PRs to Release Milestones > Definitions
+q26 WHY: recall 1.000 -> 1.000, hit 1 -> 1, mrr 1.000 -> 1.000, ndcg 0.807 -> 0.818
+   ranks where a label is credited: S12 [1, 8], now [1, 7]
+     1 kep                    kep:1498 | Kubernetes Yearly Support Period > Motivation
+     2 blog_post              web:/blog/2023/04/06/keeping-kubernetes-secure-with-updated-go-versions/ | The problem
+     3 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | Why we decided to change the release cadence
+     4 kep                    kep:1498 | Kubernetes Yearly Support Period > Motivation
+     5 kep                    kep:1498 | Kubernetes Yearly Support Period > Alternatives
+     6 blog_post              web:/blog/2021/07/20/new-kubernetes-release-cadence/ | What this means for end users
+     7 kep                    kep:1498 | Kubernetes Yearly Support Period > Summary
+     8 kep                    kep:1498 | Kubernetes Yearly Support Period > Proposal
+     9 kep                    kep:1498 | Kubernetes Yearly Support Period > Implementation History
+   +10 kep                    kep:1498 | Kubernetes Yearly Support Period > Design Details > Component changes
+Means over 36: recall 0.522  hit 0.972  mrr 0.781  ndcg 0.508  CURRENT MRR 0.733
+Scores differ from S12: 5 ['q01', 'q02', 'q03', 'q04', 'q26']
+Top 10 differs from S12, scores equal: 1 ['q22']
+
+## 2. Without them (deleted inside a transaction that is always rolled back)
+Discussion chunks deleted inside the transaction: 210
+Means over 36: recall 0.552  hit 1.000  mrr 0.813  ndcg 0.535  CURRENT MRR 0.783
+Scores differ from S12: 0 []
+Top 10 differs from S12, scores equal: 0 []
+After the rollback, discussion chunks stored: 210

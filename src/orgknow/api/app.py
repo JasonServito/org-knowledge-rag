@@ -1,5 +1,7 @@
-"""FastAPI app factory: `/health`, `/ready`, and `POST /query` (S12-T2), which answers through the
-same pipeline as `orgknow ask` (`pipeline.answer_question`). `make serve` runs it with uvicorn."""
+"""FastAPI app factory: `/health`, `/ready`, `POST /query` (S12-T2), which answers through the
+same pipeline as `orgknow ask` (`pipeline.answer_question`), and `GET /decisions/{canonical_id}`
+(S13-T5), which reads a stored decision chain as `orgknow chain` does (`load_chain`). `make serve`
+runs it with uvicorn."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,7 +17,9 @@ from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.generation.generator import AnthropicGenerator, Generator
 from orgknow.generation.schema import Answer
+from orgknow.ingestion.manifest import load_repo_urls
 from orgknow.pipeline import ASK_ERRORS, answer_question, langfuse_client, load_reranker, one_line
+from orgknow.provenance.chain import Chain, load_chain
 from orgknow.retrieval.rerank import Reranker
 from orgknow.retrieval.router import ClaudeRouter, Router
 from orgknow.settings import Settings
@@ -118,6 +122,30 @@ def create_app(
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "database unreachable"
             ) from error
+
+    @app.get("/decisions/{canonical_id}")
+    def decision(canonical_id: str) -> Chain:
+        """The stored decision chain of the seed KEP `canonical_id` (e.g. `kep:2572`): the model
+        `orgknow chain` prints from (`load_chain`). Free, read-only, never builds (`make chains`
+        does). No stored chain: a 404 with the CLI's line; a database that can't be reached: a
+        503, as `/query`."""
+        repo_urls = load_repo_urls(app_settings.corpus_manifest_path)
+        try:
+            with psycopg.connect(
+                app_settings.database_url, connect_timeout=app_settings.db_connect_timeout_s
+            ) as conn:
+                chain = load_chain(conn, canonical_id, repo_urls)
+        except psycopg.OperationalError as error:
+            # Never the error's own message: it can name the database URL.
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "database unreachable"
+            ) from error
+        if chain is None:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                f"no stored decision chain for {canonical_id}; chains are built by make chains",
+            )
+        return chain
 
     return app
 

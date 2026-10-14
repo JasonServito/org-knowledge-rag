@@ -183,3 +183,42 @@ def test_0007_downgrade_restores_both_checks_and_upgrade_adds_them_back(
 
     assert after_downgrade == [True, True, True]
     assert after_upgrade == [False, False, False]
+
+
+# --- 0008: the decision tables (S13-T3) ----------------------------------------------------------
+
+
+def _tables(connection: Connection) -> set[str]:
+    rows = connection.execute(
+        text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name LIKE 'decision%'"
+        )
+    )
+    return {name for (name,) in rows}
+
+
+def test_0008_downgrade_drops_both_tables_and_upgrade_adds_them_back(settings: Settings) -> None:
+    # 0008's own downgrade() and upgrade(), inside one transaction that is rolled back, as for 0007.
+    spec = importlib.util.spec_from_file_location(
+        "migration_0008", next(MIGRATIONS.glob("0008_*.py"))
+    )
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = create_engine(with_psycopg_driver(settings.database_url), poolclass=NullPool)
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            at_head = _tables(connection)
+            with Operations.context(MigrationContext.configure(connection)):
+                migration.downgrade()
+                after_downgrade = _tables(connection)
+                migration.upgrade()
+                after_upgrade = _tables(connection)
+        finally:
+            transaction.rollback()
+
+    assert at_head == {"decisions", "decision_evidence"}
+    assert after_downgrade == set()
+    assert after_upgrade == {"decisions", "decision_evidence"}

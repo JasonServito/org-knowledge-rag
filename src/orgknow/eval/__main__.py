@@ -6,6 +6,13 @@
 - `check-chains`: print one line per `texts` label of the gold chains file (EVAL_CHAINS_PATH,
   ADR-012 D4) with the number of distinct stored chunk texts it matches, then a total (S13-T1).
   Exits 1 if a label matches nothing, naming it.
+- `chain`: score each gold decision chain (EVAL_CHAINS_PATH; S13-T4, ADR-012 D4): its stored chain
+  and the control (its question retrieved in authority mode with the mode WHY, no router call),
+  then print and write `chains.json` and `chains.md` under EVAL_RESULTS_DIR/s13-chains
+  (`chains.py`). The file is checked against the database first. Paid only once: a question with
+  no stored vector is embedded (one Voyage request) and saved beside the golden questions'
+  vectors, so a re-run makes no request. No Anthropic call. Exits 1 on an invalid file or a chain
+  that isn't stored.
 - `sections CANONICAL_ID`: list a document's sections (canonical_id or alias) as labels write
   them, one line per distinct heading path in any version, first appearance first, each with
   its number of distinct texts.
@@ -64,7 +71,19 @@ from orgknow.db.models import Release
 from orgknow.db.releases import list_releases
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.eval import runner
-from orgknow.eval.chains import count_texts, label_line, text_labels
+from orgknow.eval.chains import (
+    RESULTS_FOLDER,
+    ChainsReport,
+    chain_documents,
+    count_texts,
+    label_line,
+    load_chains_file,
+    report_text,
+    resolve_chains,
+    score_chains,
+    text_labels,
+    write_report,
+)
 from orgknow.eval.conflicts import (
     ConflictFile,
     ConflictSetError,
@@ -85,6 +104,7 @@ from orgknow.eval.golden import (
 )
 from orgknow.eval.table import write_table
 from orgknow.generation.generator import AnthropicGenerator
+from orgknow.ingestion.manifest import load_repo_urls
 from orgknow.pipeline import load_reranker
 from orgknow.retrieval.router import ClaudeRouter
 from orgknow.settings import Settings
@@ -124,6 +144,57 @@ def check_chains(settings: Settings) -> int:
         print(f"error: no stored text matches {label_line(label, 0)}", file=sys.stderr)
     print(f"Labels: {len(labels)}. Unmatched: {len(unmatched)}.")
     return 1 if unmatched else 0
+
+
+def chain(settings: Settings) -> int:
+    """`make eval-chain`: check the gold chains file, embed (once) a question with no stored
+    vector, score each chain and its control, then write and print the report; 1 on an error."""
+    # The control's mode is pinned (S13-R1 decision 5): authority, whatever RETRIEVAL_MODE says.
+    settings = settings.model_copy(update={"retrieval_mode": "authority"})
+    path = settings.eval_chains_path
+    vectors_path = settings.eval_vectors_dir / f"{settings.embedding_model}.json"
+    embedder = None  # needed only for a question with no stored vector: the runner says so
+    if settings.voyage_api_key:
+        embedder = VoyageEmbedder(
+            settings.voyage_api_url, settings.voyage_api_key, settings.embedding_model
+        )
+    try:
+        reranker, _ = _load_reranker(settings)
+    except OSError as error:
+        return _load_failed(error)
+    try:
+        chains_file = load_chains_file(path)
+        with psycopg.connect(settings.database_url) as conn:
+            chains = resolve_chains(chains_file, canonical_ids(conn, chain_documents(chains_file)))
+            # After the file's checks, before any search: the only paid step.
+            vectors = runner.load_vectors(vectors_path)
+            questions = [gold.question for gold in chains]
+            embedded = runner.embed_missing(questions, vectors, embedder)
+            if embedded:
+                runner.save_vectors(vectors_path, vectors)
+            print(runner.vectors_line(vectors_path, embedded, len(questions)))
+            repo_urls = load_repo_urls(settings.corpus_manifest_path)
+            scores = score_chains(conn, chains, vectors, settings, reranker, repo_urls)
+    except GoldenSetError as error:
+        return _invalid(path, error)
+    except runner.EvalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    report = ChainsReport(
+        gold_path=str(path),
+        gold_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        gold_version=chains_file.version,
+        control=(
+            f"authority mode, mode WHY (no router call), top {settings.retrieval_top_k}, "
+            "the best-ranked hit per step by the lookup table"
+        ),
+        chains=scores,
+    )
+    folder = settings.eval_results_dir / RESULTS_FOLDER
+    write_report(folder, report)
+    print(report_text(report), end="")
+    print(f"Wrote {folder / 'chains.json'} and {folder / 'chains.md'}.")
+    return 0
 
 
 def sections(settings: Settings, document: str) -> int:
@@ -361,6 +432,11 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     commands.add_parser(
         "check-chains", help="check the gold chains' text labels against the database"
     )
+    commands.add_parser(
+        "chain",
+        help="score the gold decision chains and their control, and write the results (free "
+        "after one question vector)",
+    )
     sections_parser = commands.add_parser(
         "sections", help="list a document's sections as labels write them"
     )
@@ -401,6 +477,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         return check(settings)
     if args.command == "check-chains":
         return check_chains(settings)
+    if args.command == "chain":
+        return chain(settings)
     if args.command == "sections":
         return sections(settings, args.canonical_id)
     if args.command == "run":

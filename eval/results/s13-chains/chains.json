@@ -1,0 +1,558 @@
+{
+  "gold_path": "eval/golden_set/chains-v0.yaml",
+  "gold_sha256": "50323a244638dd154abf7839ab20b5894e27d4a56e6ce0da6f583d75df9e3068",
+  "gold_version": "chains-v0",
+  "control": "authority mode, mode WHY (no router call), top 10, the best-ranked hit per step by the lookup table",
+  "chains": [
+    {
+      "seed": "kep:2572",
+      "role": "built-on",
+      "question": "Why did Kubernetes move to three releases per year?",
+      "built_at": "2026-10-13T22:05:11.106948Z",
+      "rows": [
+        {
+          "step": "problem",
+          "gold": "2 texts, 2020-10-14",
+          "built": {
+            "canonical_id": "gh:sig-release/discussions/1290",
+            "heading_path": [
+              "Opening post · @justaugustus · 2020-10-14",
+              "What would you like to be added:"
+            ],
+            "occurred_at": "2020-10-14T20:36:05Z",
+            "found_by": "template_field",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": true,
+          "control": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": null
+          },
+          "control_right": false
+        },
+        {
+          "step": "discussion",
+          "gold": "1 text, 2020-10-14",
+          "built": {
+            "canonical_id": "gh:sig-release/discussions/1290",
+            "heading_path": [
+              "Comments",
+              "@markjacksonfishing · 2020-10-14"
+            ],
+            "occurred_at": "2020-10-14T00:00:00Z",
+            "found_by": "template_field",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": true,
+          "control": {
+            "canonical_id": "gh:sig-release/discussions/1290",
+            "heading_path": [
+              "Comments",
+              "@johnbelamaric · 2020-10-15"
+            ],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": 5
+          },
+          "control_right": true
+        },
+        {
+          "step": "proposal",
+          "gold": "2 texts, 2021-03-12",
+          "built": {
+            "canonical_id": "kep:2572",
+            "heading_path": [
+              "KEP-2572: Defining the Kubernetes Release Cadence",
+              "Summary"
+            ],
+            "occurred_at": "2021-03-12T14:32:43Z",
+            "found_by": "seed",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": true,
+          "control": {
+            "canonical_id": "kep:2572",
+            "heading_path": [
+              "KEP-2572: Defining the Kubernetes Release Cadence",
+              "Proposal",
+              "User Stories",
+              "SIG Release members"
+            ],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": 10
+          },
+          "control_right": true
+        },
+        {
+          "step": "decision",
+          "gold": "7 texts, 2021-04-23",
+          "built": {
+            "canonical_id": "gh:enhancements/pull/2567",
+            "heading_path": [
+              "Comments",
+              "@dchen1107 · 2021-04-22"
+            ],
+            "occurred_at": "2021-04-23T15:38:03Z",
+            "found_by": "merge_event",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": true,
+          "control": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": null
+          },
+          "control_right": false
+        },
+        {
+          "step": "implementation",
+          "gold": "4 texts, 2021-08-04",
+          "built": {
+            "canonical_id": "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+            "heading_path": [
+              "Where you can find out more"
+            ],
+            "occurred_at": "2021-07-20T00:00:00Z",
+            "found_by": "linking_text",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": false,
+          "control": {
+            "canonical_id": "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+            "heading_path": [
+              "Why we decided to change the release cadence"
+            ],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": 1
+          },
+          "control_right": true
+        },
+        {
+          "step": "current_docs",
+          "gold": "3 texts",
+          "built": {
+            "canonical_id": "web:/releases/release/",
+            "heading_path": [
+              "The Release Cycle"
+            ],
+            "occurred_at": "2024-12-11T00:00:00Z",
+            "found_by": "similarity",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": null,
+          "control": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": null
+          },
+          "control_right": false
+        }
+      ],
+      "right": 6,
+      "steps": 6,
+      "right_with_date": 4,
+      "dated": 5,
+      "control_right": 3,
+      "verdict": "builder 6, control 3: beats",
+      "control_hits": [
+        {
+          "rank": 1,
+          "canonical_id": "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+          "heading_path": [
+            "Why we decided to change the release cadence"
+          ],
+          "source_type": "blog_post",
+          "step": "implementation"
+        },
+        {
+          "rank": 2,
+          "canonical_id": "web:/blog/2021/08/04/kubernetes-1-22-release-announcement/",
+          "heading_path": [],
+          "source_type": "blog_post",
+          "step": "implementation"
+        },
+        {
+          "rank": 3,
+          "canonical_id": "web:/blog/2021/08/04/kubernetes-1-22-release-announcement/",
+          "heading_path": [],
+          "source_type": "blog_post",
+          "step": "implementation"
+        },
+        {
+          "rank": 4,
+          "canonical_id": "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/",
+          "heading_path": [],
+          "source_type": "blog_post",
+          "step": "implementation"
+        },
+        {
+          "rank": 5,
+          "canonical_id": "gh:sig-release/discussions/1290",
+          "heading_path": [
+            "Comments",
+            "@johnbelamaric · 2020-10-15"
+          ],
+          "source_type": "discussion",
+          "step": "discussion"
+        },
+        {
+          "rank": 6,
+          "canonical_id": "gh:sig-release/discussions/1290",
+          "heading_path": [
+            "Comments",
+            "@saschagrunert · 2020-10-14"
+          ],
+          "source_type": "discussion",
+          "step": "discussion"
+        },
+        {
+          "rank": 7,
+          "canonical_id": "gh:sig-release/discussions/1290",
+          "heading_path": [
+            "Comments",
+            "@johnbelamaric · 2021-02-04"
+          ],
+          "source_type": "discussion",
+          "step": "discussion"
+        },
+        {
+          "rank": 8,
+          "canonical_id": "gh:sig-release/discussions/1290",
+          "heading_path": [
+            "Comments",
+            "@ehashman · 2020-10-27"
+          ],
+          "source_type": "discussion",
+          "step": "discussion"
+        },
+        {
+          "rank": 9,
+          "canonical_id": "gh:sig-release/discussions/1290",
+          "heading_path": [
+            "Comments",
+            "@johnbelamaric · 2021-02-04"
+          ],
+          "source_type": "discussion",
+          "step": "discussion"
+        },
+        {
+          "rank": 10,
+          "canonical_id": "kep:2572",
+          "heading_path": [
+            "KEP-2572: Defining the Kubernetes Release Cadence",
+            "Proposal",
+            "User Stories",
+            "SIG Release members"
+          ],
+          "source_type": "kep",
+          "step": "proposal"
+        }
+      ]
+    },
+    {
+      "seed": "kep:3015",
+      "role": "held-out",
+      "question": "Why did Kubernetes add the PreferSameZone and PreferSameNode traffic distribution options for Services?",
+      "built_at": "2026-10-13T22:05:11.284917Z",
+      "rows": [
+        {
+          "step": "problem",
+          "gold": "3 texts, 2021-10-14",
+          "built": {
+            "canonical_id": "gh:enhancements/pull/3010",
+            "heading_path": [
+              "Opening post · @danwinship · 2021-10-14"
+            ],
+            "occurred_at": "2021-10-14T13:59:38Z",
+            "found_by": "template_field",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": true,
+          "control": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": null
+          },
+          "control_right": false
+        },
+        {
+          "step": "discussion",
+          "gold": "1 text, 2021-10-14",
+          "built": {
+            "canonical_id": "gh:enhancements/pull/3010",
+            "heading_path": [
+              "Comments",
+              "@aojea · 2021-10-14"
+            ],
+            "occurred_at": "2021-10-14T00:00:00Z",
+            "found_by": "template_field",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": true,
+          "control": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": null
+          },
+          "control_right": false
+        },
+        {
+          "step": "proposal",
+          "gold": "2 texts, 2025-02-06",
+          "built": {
+            "canonical_id": "kep:3015",
+            "heading_path": [
+              "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution",
+              "Summary"
+            ],
+            "occurred_at": "2025-01-23T00:00:00Z",
+            "found_by": "seed",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": false,
+          "control": {
+            "canonical_id": "kep:4444",
+            "heading_path": [
+              "KEP-4444: Traffic Distribution for Services",
+              "Alternatives",
+              "An alternative definition of `PreferClose`"
+            ],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": 3
+          },
+          "control_right": false
+        },
+        {
+          "step": "decision",
+          "gold": "not_stored",
+          "built": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": "no_link",
+            "rank": null
+          },
+          "right": false,
+          "right_with_date": null,
+          "control": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": null
+          },
+          "control_right": false
+        },
+        {
+          "step": "implementation",
+          "gold": "4 texts, 2025-04-23",
+          "built": {
+            "canonical_id": "web:/blog/2025/07/28/kubernetes-v1-34-sneak-peek/",
+            "heading_path": [
+              "Featured enhancements of Kubernetes v1.34",
+              "`PreferSameZone` and `PreferSameNode` traffic distribution for Services"
+            ],
+            "occurred_at": "2025-07-28T14:42:30Z",
+            "found_by": "linking_text",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": false,
+          "control": {
+            "canonical_id": "web:/blog/2025/12/17/kubernetes-v1-35-release/",
+            "heading_path": [
+              "Features graduating to Stable",
+              "PreferSameNode traffic distribution"
+            ],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": 1
+          },
+          "control_right": true
+        },
+        {
+          "step": "current_docs",
+          "gold": "3 texts",
+          "built": {
+            "canonical_id": "web:/docs/concepts/services-networking/service/",
+            "heading_path": [
+              "Virtual IP addressing mechanism",
+              "Traffic distribution control"
+            ],
+            "occurred_at": "2026-08-26T00:00:00Z",
+            "found_by": "similarity",
+            "missing_reason": null,
+            "rank": null
+          },
+          "right": true,
+          "right_with_date": null,
+          "control": {
+            "canonical_id": null,
+            "heading_path": [],
+            "occurred_at": null,
+            "found_by": null,
+            "missing_reason": null,
+            "rank": null
+          },
+          "control_right": false
+        }
+      ],
+      "right": 5,
+      "steps": 6,
+      "right_with_date": 2,
+      "dated": 4,
+      "control_right": 1,
+      "verdict": "builder 5, control 1: beats",
+      "control_hits": [
+        {
+          "rank": 1,
+          "canonical_id": "web:/blog/2025/12/17/kubernetes-v1-35-release/",
+          "heading_path": [
+            "Features graduating to Stable",
+            "PreferSameNode traffic distribution"
+          ],
+          "source_type": "blog_post",
+          "step": "implementation"
+        },
+        {
+          "rank": 2,
+          "canonical_id": "web:/blog/2025/07/28/kubernetes-v1-34-sneak-peek/",
+          "heading_path": [
+            "Featured enhancements of Kubernetes v1.34",
+            "`PreferSameZone` and `PreferSameNode` traffic distribution for Services"
+          ],
+          "source_type": "blog_post",
+          "step": "implementation"
+        },
+        {
+          "rank": 3,
+          "canonical_id": "kep:4444",
+          "heading_path": [
+            "KEP-4444: Traffic Distribution for Services",
+            "Alternatives",
+            "An alternative definition of `PreferClose`"
+          ],
+          "source_type": "kep",
+          "step": "proposal"
+        },
+        {
+          "rank": 4,
+          "canonical_id": "kep:3015",
+          "heading_path": [
+            "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution",
+            "Motivation",
+            "Goals"
+          ],
+          "source_type": "kep",
+          "step": "proposal"
+        },
+        {
+          "rank": 5,
+          "canonical_id": "web:/blog/2025/08/27/kubernetes-v1-34-release/",
+          "heading_path": [
+            "Graduations, deprecations, and removals in v1.34",
+            "Deprecations and removals",
+            "`PreferClose` traffic distribution is deprecated"
+          ],
+          "source_type": "blog_post",
+          "step": "implementation"
+        },
+        {
+          "rank": 6,
+          "canonical_id": "kep:4444",
+          "heading_path": [
+            "KEP-4444: Traffic Distribution for Services",
+            "Alternatives",
+            "Reuse the fields internal/externalTrafficPolicy to offer these routing preferences"
+          ],
+          "source_type": "kep",
+          "step": "proposal"
+        },
+        {
+          "rank": 7,
+          "canonical_id": "web:/docs/reference/networking/virtual-ips/",
+          "heading_path": [
+            "Traffic Distribution"
+          ],
+          "source_type": "docs_page",
+          "step": null
+        },
+        {
+          "rank": 8,
+          "canonical_id": "web:/docs/reference/networking/virtual-ips/",
+          "heading_path": [
+            "Traffic Distribution"
+          ],
+          "source_type": "docs_page",
+          "step": null
+        },
+        {
+          "rank": 9,
+          "canonical_id": "kep:3015",
+          "heading_path": [
+            "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution",
+            "Design Details",
+            "Addition of `PreferSameNode`"
+          ],
+          "source_type": "kep",
+          "step": "proposal"
+        },
+        {
+          "rank": 10,
+          "canonical_id": "kep:3015",
+          "heading_path": [
+            "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution",
+            "Summary"
+          ],
+          "source_type": "kep",
+          "step": "proposal"
+        }
+      ]
+    }
+  ]
+}

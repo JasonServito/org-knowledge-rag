@@ -1,8 +1,8 @@
 # Domain model
 
-- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10. Amended in the S05-R3 sitting (2026-10-07): the chunking rules (S05-T7), the ingestion report and its fingerprint (S05-T8).
-- **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live)
-- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5); migration `0005` and lexical search (S07-T1)
+- **Status:** Approved by the developer (S03-T2, S03-R1 sitting, 2026-10-04). Amended in the S04-R1 sitting (2026-10-04): one vector per unique text, the chunk header, and how windows are derived. Amended in the S05-R1 sitting (2026-10-07): windows from 1.20, release records, the reset, renames, feature gates. Amended in the S05-R2 sitting (2026-10-07): merge-time dating, the release clamp of date-scoped sources, KEPs and governance docs, blog posts, CHANGELOGs, R10. Amended in the S05-R3 sitting (2026-10-07): the chunking rules (S05-T7), the ingestion report and its fingerprint (S05-T8). Amended in the S13-R1 sitting (2026-10-13): the `discussion` source and the decision tables (ADR-012).
+- **Builds on:** ADR-002 (versions, windows, identity), ADR-003 (source types, statuses), ADR-005 (data access, where rules live), ADR-012 (decision provenance)
+- **Implemented by:** migration `0002` (S03-T3), the data-access functions in `src/orgknow/db/` (S03-T4), the releases seed (S03-T5); migration `0003` and ingestion (S04-R1); migration `0004` and dense retrieval (S04-T5); migration `0005` and lexical search (S07-T1); migration `0007` and the GitHub items (S13-T1); migration `0008` and the decision chain (S13-T3)
 
 This is the spec for the tables, their rules, and the write functions S04 ingestion calls. If code and this doc disagree, fix one of them in the same PR.
 
@@ -44,8 +44,8 @@ This is the spec for the tables, their rules, and the write functions S04 ingest
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `bigint` identity PK | |
-| `canonical_id` | `text` NOT NULL UNIQUE | CHECK: starts with an ADR-002 D4 prefix: `web:`, `gate:`, `kep:`, `changelog:`, `community:`, `sig-release:` |
-| `source_type` | `text` NOT NULL | CHECK: one of `docs_page`, `release_record`, `feature_gate_reference`, `kep`, `blog_post`, `governance_doc` (ADR-003 D1; `discussion` arrives with Phase 2) |
+| `canonical_id` | `text` NOT NULL UNIQUE | CHECK: starts with an ADR-002 D4 prefix: `web:`, `gate:`, `kep:`, `changelog:`, `community:`, `sig-release:`, `gh:` (`gh:` added by migration `0007`, S13-T1) |
+| `source_type` | `text` NOT NULL | CHECK: one of `docs_page`, `release_record`, `feature_gate_reference`, `kep`, `blog_post`, `governance_doc`, `discussion` (ADR-003 D1; `discussion` added by migration `0007`, S13-T1) |
 
 ### `document_aliases`
 
@@ -61,10 +61,10 @@ This is the spec for the tables, their rules, and the write functions S04 ingest
 | `id` | `bigint` identity PK | |
 | `document_id` | `bigint` NOT NULL → `documents` | |
 | `content_hash` | `text` NOT NULL | SHA-256 of the normalized content, 64 lowercase hex characters (CHECK) |
-| `source_path` | `text` NOT NULL | Repo-relative path of the file at this version |
+| `source_path` | `text` NOT NULL | Repo-relative path of the file at this version. A `discussion` version: its snapshot's path in the corpus cache, `github/<repo>/<kind>/<number>.json` |
 | `snapshot_repo` | `text` NOT NULL | Manifest repo key, e.g. `website` |
-| `snapshot_ref` | `text` NOT NULL | Branch, e.g. `release-1.24` or `main` |
-| `snapshot_sha` | `text` NOT NULL | 40 lowercase hex characters (CHECK) |
+| `snapshot_ref` | `text` NOT NULL | Branch, e.g. `release-1.24` or `main`. A `discussion` version: its snapshot's fetch time from the lock, e.g. `2026-10-13T21:01:30Z` |
+| `snapshot_sha` | `text` NOT NULL | 40 lowercase hex characters (CHECK): a git commit SHA. A `discussion` version: the first 40 hex characters of its snapshot file's sha256 (no git commit holds it) |
 | `valid_from_release` | `smallint` NOT NULL → `releases.minor` | |
 | `valid_until_release` | `smallint` NULL → `releases.minor` | Inclusive |
 | `valid_from_date` | `timestamptz` NOT NULL | |
@@ -125,6 +125,38 @@ Added by migration `0006` (S09-T5, ADR-003 D2): each feature gate's stage at eac
 - **Size:** 3,295 rows over 1.20–1.37, 35 of them low.
 - `make reset-corpus` leaves the table in place until the next `make ingest` rebuilds it.
 
+### `decisions` and `decision_evidence`
+
+Added by migration `0008` (S13-T3, ADR-012 D2): each seed KEP's **decision chain**, the 6 steps that explain why a decision changed (problem → discussion → proposal → decision → implementation → current docs). The rules that fill them are ADR-012 D1, pinned in the S13-R1 contract (`provenance/rules.py`).
+
+`decisions`: one row per seed KEP.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `bigint` identity PK | |
+| `document_id` | `bigint` NOT NULL UNIQUE → `documents`, ON DELETE CASCADE | The seed KEP: one chain per KEP |
+| `title` | `text` NOT NULL | The KEP's title, as its chunk header writes it |
+| `built_at` | `timestamptz` NOT NULL | When `make chains` built it |
+
+`decision_evidence`: one row per step, citing a stored chunk or saying why it can't.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `bigint` identity PK | |
+| `decision_id` | `bigint` NOT NULL → `decisions`, ON DELETE CASCADE | UNIQUE with `step`: each step once per chain |
+| `step` | `text` NOT NULL | CHECK: `problem`, `discussion`, `proposal`, `decision`, `implementation` or `current_docs` |
+| `chunk_id` | `bigint` NULL → `chunks`, ON DELETE CASCADE | The cited chunk |
+| `occurred_at` | `timestamptz` NULL | The step's date. NULL for a missing step, and for a KEP step dated by a KEP with no `creation-date` |
+| `found_by` | `text` NULL | How the chunk was found. CHECK: `seed` (the KEP itself), `template_field` (a tracking-issue field's link), `merge_event` (the PR's merge), `linking_text` (a text linking the KEP), `similarity` (the nearest vector) |
+| `via_chunk_id` | `bigint` NULL → `chunks`, ON DELETE CASCADE | The chunk holding the link that connects this step: the tracking issue's field line, or the linking text itself. Set for `template_field`, `merge_event` and `linking_text`, and for the proposal when its PR is stored; NULL otherwise |
+| `missing_reason` | `text` NULL | CHECK: `no_tracking_issue`, `no_link` (no field, or no full URL on it: a bare `#N` isn't a link), `not_public` (a URL off GitHub, e.g. a Google Doc), `not_ingested` (a GitHub item not stored), `not_merged`, `no_linking_text` |
+
+- **Two CHECKs across columns:** exactly one of `chunk_id` and `missing_reason` is set; `found_by` is set exactly when `chunk_id` is.
+- **Derived data, like embeddings:** `make chains` rebuilds every chain the manifest's `decision_chains` lists, one transaction each: delete its `decisions` row (its steps cascade), then insert it and its 6 steps. A re-run stores the same rows, with new ids and build time.
+- **Emptied by `make reset-corpus`:** its `TRUNCATE … CASCADE` reaches both tables through their foreign keys. Deleting a cited chunk deletes its step. `make chains` rebuilds them after `make ingest` and `make embed`.
+- **Tested:** each CHECK, both UNIQUEs, the cascade from a deleted chunk and the reset (`tests/integration/test_decisions.py`).
+- **Size (S13-R1):** 2 chains, 12 steps.
+
 ### Chunk header
 
 Every chunk's `text` is a header, a blank line, then the body. The header holds only fields that are the same in every version of a document (S04-R1 sitting, decision 4):
@@ -142,6 +174,7 @@ Section: <heading path joined with " > ">
   - an old single-file KEP: its front-matter `title`, with no `KEP-<n>:` prefix (it has no number)
   - a governance doc (S05-R2 decision 4): the version's first `# ` heading, as the chunker reads it (see "Chunking rules": no inline HTML comment, no `{#id}` anchor, none inside a comment block; `# Google Cloud Platform <!-- omit in toc -->` → `Google Cloud Platform`), else its repo path. Ingestion stores it as the version's metadata `title`, so the chunk header and citations read it like any other title.
   - a CHANGELOG (decision 4): its file name, `CHANGELOG-1.R`, stored the same way.
+  - a GitHub item (`discussion`, S13-T1): the item's title, from its snapshot.
 - **Section:** omitted when the heading path is empty (text before the first heading).
 
 **A gate's chunk text** (S05-R1 decision 1). A gate's stages live only in its front matter, so a `gate:` document whose file has `stages` gets them at the start of its body: the header, a blank line, the YAML, a blank line, then the body.
@@ -248,7 +281,7 @@ Each rule has an integration test that breaks it on purpose and asserts the exac
 - `claimed_status` and `claimed_stage` appear only on KEP versions.
 - Re-ingesting creates no new versions.
 
-## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0, S04-T5, S05-T1, S05-T8)
+## Data-access functions (S03-T4, S03-T5, S04-R1, S04-T0, S04-T5, S05-T1, S05-T8, S13-T3)
 
 All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transaction to the caller (ADR-005). Inputs are Pydantic models, with timezone-aware datetimes only.
 
@@ -275,6 +308,11 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
 | `counts_by_source_type(conn)`, `counts_by_release(conn) -> list[Counts]` | The ingestion report's counts: documents, versions, chunks and distinct texts per source type with a total row; per release (valid at R) per source type, with a total row per release (S05-T8) |
 | `chunk_id_range(conn) -> (min, max) \| None` | The lowest and highest chunk id (S05-T8) |
 | `stored_documents`, `stored_aliases`, `stored_versions`, `stored_chunks(conn) -> list` | Every stored record except generated ids, named by `canonical_id` (a chunk also by its version's `valid_from_date`): the fingerprint's input (S05-T8) |
+| `newest_document(conn, canonical_id) -> ChainDocument \| None` | A document's newest version (latest date window) and its chunks by ordinal, by `canonical_id` only: a seed KEP or a GitHub item, as the chain rules read it (S13-T3) |
+| `linking_candidates(conn, number) -> list[LinkCandidate]` | Every chunk of every blog post and release record version whose text holds the KEP's number, oldest version first: rule 7's candidates. The rule itself checks which ones link the KEP (S13-T3) |
+| `nearest_current_texts(conn, content_hash, model, latest, k, ef_search) -> list[NearText]` | The `k` texts nearest the stored vector of `content_hash` (a KEP's first Summary chunk), among texts valid at release `latest` in docs pages, feature gates, release records other than CHANGELOGs and governance docs; ties by hash. Each cites its chunk in the newest such version. `search`'s HNSW scan, iterative in strict order (rule 8, S13-T3) |
+| `replace_decision(conn, document_id, title, evidence) -> id` | Delete the seed KEP's stored decision (its steps cascade), then insert it, built now, with its steps; the caller's transaction makes it one per chain (S13-T3) |
+| `stored_decision(conn, canonical_id) -> StoredDecision \| None` | A seed KEP's stored chain, steps in step order, each with its cited chunk's document, heading path and version fields, and its via chunk's document and heading path. Read-only (S13-T3) |
 
 `versions_at_release` and `version_at_time` hold the window conventions in one place, and their tests cover both edges of a window.
 
@@ -297,7 +335,7 @@ All live in `src/orgknow/db/`, take a `psycopg.Connection`, and leave the transa
   - The first version of a page starts at the scope's first release, even if the page is older: 20 from S05 (the `full` scope), 24 in S04.
   - Each source type is hashed with its own strip list: release records with `release_record`'s (which strips `card`), docs pages with `docs_page`'s, feature gates and their pages with `feature_gate_reference`'s (`_build`, `weight`, `card`). `stages` and `removed` are never stripped, so a stage change is a new version.
   - A file matched by the paths of two release-scoped groups is an error when the scope is loaded, before any read or write.
-- **Rebuilding from empty (S05-R1 decision 2):** moving the first release from 24 to 20 changes every stored first version, which a re-ingest reports as a history mismatch. `make reset-corpus` empties `documents`, `document_aliases`, `document_versions` and `chunks` (ids restart at 1), then `make ingest` rebuilds them. `releases` and `embeddings` are kept: vectors are a cache keyed by content hash, so an unchanged chunk text keeps its vector. Dev database only.
+- **Rebuilding from empty (S05-R1 decision 2):** moving the first release from 24 to 20 changes every stored first version, which a re-ingest reports as a history mismatch. `make reset-corpus` empties `documents`, `document_aliases`, `document_versions` and `chunks` (ids restart at 1), then `make ingest` rebuilds them. `releases` and `embeddings` are kept: vectors are a cache keyed by content hash, so an unchanged chunk text keeps its vector. Since S13-T3 the CASCADE also empties `decisions` and `decision_evidence`, which `make chains` rebuilds. Dev database only.
 - **Date-scoped sources (KEPs, governance docs):** snapshots are the repo's default branch at each release date, plus `head`.
   - A new version's `valid_from_date` is its **merge time** (S05-R2 sitting): the committer time, in UTC, of the **last first-parent commit** touching the document's files between the previous snapshot and this one (`git log --first-parent -1 --format=%cI <prev>..<snap> -- <paths>`). For the first snapshot, the range is its whole history. The paths are the document's files at both snapshots, so a move or a KEP folder rename is seen.
   - First-parent follows only the default branch, so a pull request's version starts when it was merged, not at its branch's commits. KEP-2579's first version starts at 2021-05-12T16:25:28Z (its merge), not 2021-05-11T20:46:27Z (its branch's last commit, S04's date).
@@ -390,6 +428,26 @@ The rules are `ingestion/blog.py`; the blog's history is read by `git_reader.pos
   - The URL is the front-matter `url:` (tokens allowed), else the manifest's `permalink` (`/:section/:year/:month/:day/:slug/`). `:year`/`:month`/`:day` come from the page date as written; `:slug` is the front-matter `slug`, else the filename's (only when the date came from the filename), else the title through an approximation of Hugo's urlize (lowercase, punctuation dropped, spaces to hyphens); `:section` is `blog`.
   - **Aliases:** the URL of every later stored version that differs from the id, and every front-matter `aliases` entry of the stored versions, never the id itself. On real data: 3 URLs changed after publication (`introducing-headlamp-plugin-for-karpenter` 09/23 → 10/06, `ingress-nginx-retirement` 11/12 → 11/11, `ccm-new-metric-route-sync-total` 02/26 → 05/15, whose front-matter alias is its id), plus `web:/dockershim/` (the 2022 dockershim FAQ's `aliases`).
   - Two posts with one id are an error, never a merge (0 on real data).
+
+## GitHub items: `discussion` documents (ADR-012 D3, S13-T1)
+
+The rules are `ingestion/github.py`. Only the items a decision chain lists in the manifest (`decision_chains`) are stored (ADR-001): 5 on real data.
+
+- **Which items** (the S13-R1 contract, "Which items a chain gets"): a seed KEP's tracking issue (same number as the KEP), and the proposal PR and the "Discussion Link:" item its template fields name, each only as a full URL. Chain 1 (KEP-2572): Discussion #1290 (sig-release), issue #2572, PR #2567. Chain 2 (KEP-3015): issue #3015, PR #3010.
+- **Identity** (ADR-002 D4 as changed in S13-R1): `gh:<repo key>/<issues|pull|discussions>/<number>`, e.g. `gh:sig-release/discussions/1290`. No aliases. Tier 7 (ADR-003 D3), searchable in every mode.
+- **Snapshot:** `make fetch-github` writes each item's JSON (only the fields its document uses: rendering and metadata) to `<corpus cache>/github/<repo>/<kind>/<number>.json`, and pins its sha256 and fetch time in the lock's `github:` section.
+  - `make ingest` reads only that file, never the network. A missing file, or a hash the lock doesn't pin, stops it before any write, naming the item.
+  - Bot posts stay in the snapshot; the rendering drops them. GitHub text is never committed (ADR-001).
+- **Rendering** (the text that is hashed, ADR-002 D2, and chunked):
+  - `# Opening post · @<author> · <YYYY-MM-DD>`, then the item's body (a PR's description, an issue's or discussion's opening post).
+  - `# Comments`, then `## @<login> · <YYYY-MM-DD>` per kept post, in time order: comments, discussion replies (`… · reply`) and non-empty review bodies (`… · review`). Dates are UTC days. No kept post: no `# Comments`.
+  - Kept: every post whose login doesn't end in `-robot`, `-bot` or `[bot]`. Prow's bots are typed "User", so it's never by account type. A PR's comments on diff lines aren't fetched.
+  - Headings inside a post move down 1 level (opening post) or 2 (a comment), at most to level 6, so each post stays one section. CRLF and CR become LF.
+  - No front matter: the whole text is the chunk body.
+- **One version per snapshot,** date-scoped (ADR-002 D3): `valid_from_date` is the last kept post's time (the opening post's when none is kept), and the window stays open. The stored text was the live thread from then on. `claimed_status` is null.
+- **Snapshot columns** name the cache file, not a git commit: `snapshot_ref` is the lock's fetch time, `snapshot_sha` the first 40 hex of the file's sha256 (see `document_versions`). Chunking renders the file again and checks that prefix, so a refetched file is never chunked under an old version.
+- **Metadata:** `kind`, `number`, `url`, `title`, `author`, `created_at`, `closed_at`, and for a PR `merged_at` and `merged_by`. The merge comes from the PR's own fields, so a bot's merge survives the bot filter. A citation's source URL is the item's own page (`url`).
+- **Real data** (S13-R1): 5 documents, 5 versions, 210 chunks, 210 distinct texts (`make ingest-report`). Posts per item as the rendering keeps them, opening post included: 89 (Discussion #1290, 4 of them replies), 3 (issue #2572), 51 (PR #2567, 4 of them review bodies), 49 (issue #3015), 9 (PR #3010).
 
 ## Ingestion report and fingerprint (S05-T8, S05-R3 decisions 7 and 8)
 

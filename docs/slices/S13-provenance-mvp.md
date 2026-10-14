@@ -1,9 +1,9 @@
 # S13: Phase 2 provenance MVP
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** 9 (Phase-2 provenance MVP)
 - **Started:** 2026-10-13
-- **Finished:**
+- **Finished:** 2026-10-13
 
 ## Outcome
 
@@ -17,12 +17,12 @@
 
 ## Exit checks
 
-- [ ] The chains' GitHub items are stored as `discussion` documents, chunked and embedded; re-ingesting gives an identical fingerprint (AC8 still holds).
-- [ ] Phase 1's retrieval metrics on golden v0, with the new texts searchable: each within ±0.03 of S12's final row, or the change explained (`make eval-retrieval`, free).
-- [ ] `orgknow chain kep:2572` prints the chain; every step cites a stored chunk with its source URL, date and tier, or says why it's missing.
-- [ ] Decision-chain completeness for the builder and the negative control, on both gold chains, in `docs/evaluation.md`.
-- [ ] `make check` and `make test-int` green.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] The chains' GitHub items are stored as `discussion` documents, chunked and embedded; re-ingesting gives an identical fingerprint (AC8 still holds).
+- [x] Phase 1's retrieval metrics on golden v0, with the new texts searchable: each within ±0.03 of S12's final row, or the change explained (`make eval-retrieval`, free).
+- [x] `orgknow chain kep:2572` prints the chain; every step cites a stored chunk with its source URL, date and tier, or says why it's missing.
+- [x] Decision-chain completeness for the builder and the negative control, on both gold chains, in `docs/evaluation.md`.
+- [x] `make check` and `make test-int` green.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -113,7 +113,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S13-R1: Provenance MVP
 
-- **Status:** planned
+- **Status:** PR open
 - **Tasks:** T1, T3, T4, T5, T6. T2 (`[human]`) is done in the sitting, before "go".
 - **Goal (plain words):** bring in the release-cadence decision's GitHub discussion, issue and PR; rebuild the decision as 6 dated steps by following Kubernetes' own recorded links; store and show it; and score it, and a random held-out KEP's chain, against gold chains and against plain search.
 
@@ -351,3 +351,32 @@ curl -s localhost:8000/decisions/kep:2572
 - **The wording conflict, decided after the draw:** T1 said "the first PR on the line", T3 "the first URL". **Decision (option A): only full URLs count**, the literal frozen rule; rejected: reading a bare `#N` as that repo's item (B), because it was chosen after seeing that it would find the decision. Expected effect: KEP-3015's decision step is missing `no_link`; reported with the score, not tuned.
 - **Its items (T1's rule):** `{enhancements, issues, 3015}` (the tracking issue) and `{enhancements, pull, 3010}` (the first URL of "Discussion Link:"). PRs #3016, #4931 and #5140 are not ingested.
 - **Its gold chain and WHY question:** labeled by the developer in the sitting (T2), in `eval/golden_set/chains-v0.yaml`.
+
+## Retro
+
+- **Shipped (with numbers):**
+  - **S13-R1** (1 run, 5 tasks; T2 done in the sitting), split after T1 into 2 stacked PRs (ingestion │ chain): 66 files and ~6,000 reviewable lines against `main`, over the ~800 alarm.
+    - **T1:** 5 GitHub items as `discussion` documents (tier 7): 210 chunks; stored posts 89, 3, 51 (chain 1, as `expected_posts.log`) and 49, 9 (held-out). Re-ingest fingerprint identical (`sha256:0f0ee078…`). 210 texts embedded (Voyage 39,143 tokens). The chain label check: 32 of 32 labels match.
+    - **T3:** migration `0008` (`decisions`, `decision_evidence`); `make chains` rebuilds 2 chains, 12 rows, identical on a re-run; `orgknow chain`. Chain 1 matches all 6 of the sitting's expected picks.
+    - **T4:** `make eval-chain`: builder 6 of 6 vs. control 3 of 6 (chain 1); 5 of 6 vs. 1 of 6 (held-out KEP-3015). Both "beats".
+    - **T5:** `GET /decisions/{canonical_id}`: 200 equals the CLI's model; 404 with the `make chains` hint; 503 when the database is down.
+    - **T6:** the domain model, architecture, evaluation ("Decision provenance (S13)") and README; this retro and the slice brief.
+  - **Metric:** decision-chain completeness (new), above. Same UTC day: 4 of 5 and 2 of 4.
+  - **Phase 1 re-check:** Recall@10 0.552 → 0.522, Hit@10 1.000 → 0.972, MRR 0.813 → 0.781 (−0.032, just outside ±0.03). Explained per question (`eval/results/s13-chains/per_question.log`): 5 of 36 questions' scores change, all through discussion texts; with them removed (rolled back), all 36 match the earlier run exactly.
+  - **Tests:** 1,061 unit (896 at S12's close), 214 integration (189).
+  - **Reviews:** 0 must-fix in T1, T3, T5; 2 in T4 (a duplicated opening-post check; the backlog tick); 6 in T6 (an unsourced timing, wrong per-question counts, a sources overclaim, the Quickstart's missing `make fetch-github`). All fixed.
+  - **Paid in S13-R1:** Voyage only, ~US$0.007 (210 texts, 39,143 tokens, at an assumed list price) plus 1 question vector; cap US$0.05. No Anthropic calls. Greptile 18/50 before the PRs.
+- **Surprises:**
+  - **Discussion comments outrank the docs for "now" questions:** their windows never close, so they pass CURRENT's filter. q01 loses all 4 of its labeled hits (Recall@10 0.571 → 0.000) to Discussion #1290's comments.
+  - **Post headings repeat:** two adjacent posts by one author on one day share a heading, and #1290's opening post has no text before its first subheading. Chunks are matched by heading-path prefix, never an exact path.
+  - **Dates are the weaker half:** 3 steps cite the right text on a different day than the gold (chain 1's implementation: the 07-20 blog vs. 1.22's release 08-04), the gold calls flagged in the sitting.
+  - **Plain search fills neither the problem nor the decision step** on either chain: no WHY-question top 10 holds a discussion's opening post or a PR's post (`chains.md`).
+- **What didn't work / negative results:**
+  - **KEP-3015's decision step is missing (`no_link`):** its update PR is a bare `#5140`, and the frozen rule reads full URLs only. Reported, not tuned (a proposed addition tests the fix on a fresh held-out chain).
+  - **Phase 1's MRR moved 0.032**, outside ±0.03. No scoring was changed: whether to demote or filter discussions in CURRENT mode is the developer's call.
+  - **Post times are stored by day only,** so rule 6's "before the merge" compares days; an `/approve` posted on the merge day after the merge would still be cited (neither chain has one).
+- **Do differently next slice:**
+  - Probe a new source's effect on Phase 1, per question, in the sitting (free): open windows passing CURRENT's filter was predictable before the run.
+  - Estimate reviewable lines per task with tests included: the sitting estimated ~2,300; the run's tasks came to ~7,100 changed lines, ~3,300 of them tests.
+  - In a docs task, name the command behind every number as it is written: the T6 review found 6 sourcing and wording errors.
+- **Slice brief:** `docs/learning/S13-provenance-mvp.md`

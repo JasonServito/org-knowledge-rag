@@ -11,7 +11,7 @@ It's evaluated on the public Kubernetes project: KEPs, versioned docs, release n
 
 It refuses when the public record doesn't contain the answer.
 
-> **Status:** Phase 1 closed (M1) with 3 stated exceptions (AC4, AC5, AC6). See [`docs/m1-report.md`](docs/m1-report.md) and [`docs/backlog.md`](docs/backlog.md).
+> **Status:** Phase 1 closed (M1) with 3 stated exceptions (AC4, AC5, AC6). Phase 2's provenance MVP (S13) rebuilds a decision as a dated, cited chain. See [`docs/m1-report.md`](docs/m1-report.md) and [`docs/backlog.md`](docs/backlog.md).
 
 ## Why this is harder than "chat with your docs"
 
@@ -48,6 +48,14 @@ Phase 1 closes with 3 stated exceptions, each with its measured cause ([`docs/m1
 - **AC6, 8 of 9 dated "back then" answers cite text inside the asked-for window:** q02's citations all postdate "before 2021".
 - The AC5 and AC6 rules were chosen on these runs, with the time-blind dense baseline (2 of 10, 6 of 9) as the control. Golden set v1 is their clean test.
 
+## Decision provenance (Phase 2 MVP)
+
+- `uv run orgknow chain kep:2572` prints why Kubernetes moved from 4 to 3 releases a year as 6 dated steps (problem → discussion → proposal → decision → implementation → current docs), each citing a stored text or saying why it's missing. `GET /decisions/kep:2572` returns it as JSON.
+- **Rules, not an LLM, build it** from links Kubernetes records itself: the KEP's tracking issue, its template fields, Prow's `/approve` and the merge ([ADR-012](docs/decisions/ADR-012-decision-provenance.md)).
+- **To build:** `make fetch-github` (needs `GITHUB_TOKEN`), `make ingest`, `make embed` (paid), then `make chains` (free).
+- **Result** (`make eval-chain`, free): 6 of 6 steps right on the chain the rules were written on, and 5 of 6 on a random held-out KEP, the best possible on each; plain search plus a lookup by source type gets 3 and 1. Two chains show feasibility, not a rate ([`docs/evaluation.md`](docs/evaluation.md)).
+- **Its cost to Phase 1:** the 5 GitHub items are searchable, so v0's MRR drops 0.813 → 0.781; no scoring was changed.
+
 ## Quickstart
 
 ### Prerequisites
@@ -79,6 +87,7 @@ To load the corpus scope (the whole S05 manifest: the docs pages of SIG Auth, Ne
 make seed                   # load the releases from the corpus manifest (safe to re-run)
 # reset-corpus is needed after any chunker change (a stored version keeps its old chunks) or any change to how versions are dated (a re-ingest reports a history mismatch); otherwise it's optional, to rebuild from empty
 make reset-corpus           # empty the dev database's documents, versions and chunks (ids restart at 1); keeps releases and vectors
+make fetch-github           # the decision chains' 5 GitHub items into the cache; needs GITHUB_TOKEN (make ingest stops without them)
 make ingest                 # read the scope at the locked SHAs, store one version per content change, chunk new versions, rebuild the observed lifecycle (safe to re-run); ends with the ingestion report
 make lifecycle              # rebuild only the observed lifecycle: each feature gate's stage at each release, from that release's own feature-gate reference (free; a re-run stores the same rows)
 make ingest-report          # print the report's database part alone: counts per source type and per release, chunk ids, and a fingerprint of every stored corpus value except generated ids (equal fingerprints = identical data)

@@ -815,12 +815,128 @@ S12-R1 sitting, 2026-10-12 (UTC). Phase 1 closes with 3 stated exceptions (AC4, 
 - **Both rules were chosen on the runs they score,** and the negative control is the guard. Golden set v1 is their first out-of-sample test.
 - **The three runs aren't three confirmations:** retrieval is deterministic, so they differ only in which hits the model cites.
 
+## Decision provenance (S13)
+
+S13-R1 run, 2026-10-13 (UTC). Phase 2 adds one capability (ADR-012): rebuild why a decision changed as a **decision chain**, 6 dated steps (problem → discussion → proposal → decision → implementation → current docs), each citing 1 stored text.
+
+- **Rules build the chain, not an LLM:** they follow links Kubernetes records itself (the KEP's tracking issue, its template fields, Prow's `/approve` and the merge), then dates and one vector search (`make chains`).
+- **The metric, decision-chain completeness** (blueprint §19.2): how many of a gold chain's steps the builder gets right. Its rule and its control (a baseline graded the same way) were fixed in the S13-R1 sitting, before any score (ADR-012 D4).
+- **Sources:**
+  - the chain tables and their summary: `make eval-chain` (free; this run printed `Voyage requests: 0`; saved in `eval/results/s13-chains/chains.md`);
+  - the retrieval block: `make eval-retrieval` (free);
+  - the per-question table and the rolled-back check: `uv run python eval/results/s13-chains/per_question.py eval/results/conflict-20261012T171932Z/questions.jsonl` (free, read-only; output in `per_question.log`), against S12's final run;
+  - the draw (35 KEPs), the 12 labeled steps and the 3 flagged calls: the S13-R1 contract.
+
+**The gold chains** (`eval/golden_set/chains-v0.yaml`, sha256 `50323a24…`):
+
+- **2 chains:** KEP-2572, the release cadence (4 → 3 releases a year), which the rules were written on; and KEP-3015 (PreferSameZone and PreferSameNode traffic distribution), drawn at random from 35 KEPs after the rules were committed.
+- **Per step:** the acceptable texts (a document and section, ADR-007 D2's rule) and the event's UTC day; or `not_public`, `not_stored` or `none` when no stored text can count.
+- **KEP-3015's decision is `not_stored`:** its tracking issue names the merged PR as a bare `#5140`, and only full URLs count, so PR #5140 isn't ingested. The best headline is therefore 6 of 6 and 5 of 6.
+- **Who labeled them:** drafted by Claude at the developer's request, knowing the builder's rules; the developer reviewed all 12 steps and signed off, with 3 calls flagged (the S13-R1 contract, "Gold chains v0").
+
+**The rule (ADR-012 D4):**
+
+- **Headline, "steps right":** a step counts when it's the right kind and cites an acceptable text. `not_public` counts only when the builder reports the step missing as `not_public`; `none`, when it's missing for any reason; `not_stored` never counts.
+- **Steps that share a document must be labeled with different sections** (the loader enforces it), so one text can't credit 2 steps.
+- **Beside it, "right with the same UTC day":** right, and dated on the gold day. Over the event steps with texts (current docs has no date).
+- **The control:** the chain's WHY question (q04 for KEP-2572), retrieved in authority mode with the mode set to WHY, top 10.
+  - A lookup by source type gives each hit a step: a discussion's opening post → problem; any other post of a discussion or issue → discussion; a PR's post → decision; a KEP → proposal; a blog post or CHANGELOG → implementation; a docs page, gate, other release record or governance doc valid at 1.37 → current docs.
+  - The best-ranked hit per step fills it, graded by the headline rule.
+- **"Beats":** the builder gets at least 1 more step right than the control on that chain.
+
+**The result:** the builder beats the control on both chains, and reaches the best headline on both.
+
+| Chain | Steps right | Right with the same UTC day | Control steps right | Verdict |
+|---|---|---|---|---|
+| kep:2572 (built on) | 6 of 6 | 4 of 5 | 3 of 6 | builder 6, control 3: beats |
+| kep:3015 (held out) | 5 of 6 | 2 of 4 | 1 of 6 | builder 5, control 1: beats |
+
+**kep:2572 (built-on).** Question: "Why did Kubernetes move to three releases per year?" Chain built 2026-10-13 22:05:11 UTC.
+
+| step | gold | built | right | right with date | control's pick | control right |
+|---|---|---|---|---|---|---|
+| problem | 2 texts, 2020-10-14 | gh:sig-release/discussions/1290 › Opening post · @justaugustus · 2020-10-14 > What would you like to be added:, 2020-10-14, template_field | yes | yes | no hit | no |
+| discussion | 1 text, 2020-10-14 | gh:sig-release/discussions/1290 › Comments > @markjacksonfishing · 2020-10-14, 2020-10-14, template_field | yes | yes | #5 gh:sig-release/discussions/1290 › Comments > @johnbelamaric · 2020-10-15 | yes |
+| proposal | 2 texts, 2021-03-12 | kep:2572 › KEP-2572: Defining the Kubernetes Release Cadence > Summary, 2021-03-12, seed | yes | yes | #10 kep:2572 › KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories > SIG Release members | yes |
+| decision | 7 texts, 2021-04-23 | gh:enhancements/pull/2567 › Comments > @dchen1107 · 2021-04-22, 2021-04-23, merge_event | yes | yes | no hit | no |
+| implementation | 4 texts, 2021-08-04 | web:/blog/2021/07/20/new-kubernetes-release-cadence/ › Where you can find out more, 2021-07-20, linking_text | yes | no | #1 web:/blog/2021/07/20/new-kubernetes-release-cadence/ › Why we decided to change the release cadence | yes |
+| current_docs | 3 texts | web:/releases/release/ › The Release Cycle, 2024-12-11, similarity | yes | n/a | no hit | no |
+
+**kep:3015 (held-out).** Question: "Why did Kubernetes add the PreferSameZone and PreferSameNode traffic distribution options for Services?" Chain built 2026-10-13 22:05:11 UTC.
+
+| step | gold | built | right | right with date | control's pick | control right |
+|---|---|---|---|---|---|---|
+| problem | 3 texts, 2021-10-14 | gh:enhancements/pull/3010 › Opening post · @danwinship · 2021-10-14, 2021-10-14, template_field | yes | yes | no hit | no |
+| discussion | 1 text, 2021-10-14 | gh:enhancements/pull/3010 › Comments > @aojea · 2021-10-14, 2021-10-14, template_field | yes | yes | no hit | no |
+| proposal | 2 texts, 2025-02-06 | kep:3015 › KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution > Summary, 2025-01-23, seed | yes | no | #3 kep:4444 › KEP-4444: Traffic Distribution for Services > Alternatives > An alternative definition of `PreferClose` | no |
+| decision | not_stored | missing: no_link | no | n/a | no hit | no |
+| implementation | 4 texts, 2025-04-23 | web:/blog/2025/07/28/kubernetes-v1-34-sneak-peek/ › Featured enhancements of Kubernetes v1.34 > `PreferSameZone` and `PreferSameNode` traffic distribution for Services, 2025-07-28, linking_text | yes | no | #1 web:/blog/2025/12/17/kubernetes-v1-35-release/ › Features graduating to Stable > PreferSameNode traffic distribution | yes |
+| current_docs | 3 texts | web:/docs/concepts/services-networking/service/ › Virtual IP addressing mechanism > Traffic distribution control, 2026-08-26, similarity | yes | n/a | no hit | no |
+
+**Reading the misses:**
+
+- **KEP-2572, implementation's date:** the builder dates it by the blog that announced the change (2021-07-20); the gold, by 1.22's release (2021-08-04), the first release on the new cadence. One of the 3 flagged calls.
+- **KEP-3015, decision:** missing `no_link`, from the bare `#5140` above.
+- **KEP-3015, proposal's date:** no proposal PR is linked, so the Summary is dated by the KEP's `creation-date` (2025-01-23); the gold dates the accepted proposal (2025-02-06), another flagged call.
+- **KEP-3015, implementation's date:** the earliest linking text on or after the proposal is the v1.34 sneak-peek blog (2025-07-28); the gold dates alpha in 1.33 (2025-04-23).
+- **The control** finds no PR post and no current-docs text in either top 10. On KEP-3015 it finds no GitHub item at all, and its proposal pick is another KEP (kep:4444).
+
+**Limits of the evidence:**
+
+- **n = 2: two chains show feasibility, not a rate** (ADR-012, Consequences).
+- **The rules were written on KEP-2572,** and probed on 3 more KEPs in the sitting (KEP-2579, KEP-2799, KEP-4858). KEP-3015 is the one clean test; its score is reported, not tuned. Reading bare `#N` references is a proposed addition, to test on a fresh held-out chain.
+- **The gold labels were drafted by Claude, who knew the rules.** The developer's full review of all 12 steps is the guard.
+
+### Phase 1 re-check with the new texts
+
+The 5 `discussion` documents (210 texts) are searchable in every mode, so v0's retrieval was re-measured (exit check 2). `make eval-retrieval` (free: stored vectors and routes, local reranker):
+
+```
+Mode: authority (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, max length 512, router claude-opus-5-5, slack 1, boost 1.25, demote 0.8). Answerable questions: 36.
+Recall@10 0.522  Hit@10 0.972  MRR 0.781  nDCG@10 0.508
+Stale rate 0.000 (0 of 100 CURRENT hits)  Temporal accuracy 0.522 (47 of 90 dated HISTORY hits)
+Authority selection 0.889 (8 of 9 CURRENT questions)  CURRENT MRR 0.733
+Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-only, 7 windowed, 19 unfiltered
+Rule conflicts: 5 claim_mismatch (q16 q17 q18 q19 q32), 0 history_date
+Retrieve time: p50 5.03 s, p95 6.76 s (36 questions). Reranker load 8.3 s.
+```
+
+| Metric | S12's final row | With the discussions | Change |
+|---|---|---|---|
+| Recall@10 | 0.552 | 0.522 | −0.030 |
+| Hit@10 | 1.000 | 0.972 | −0.028 |
+| MRR | 0.813 | 0.781 | −0.032 |
+| nDCG@10 | 0.535 | 0.508 | −0.027 |
+| Authority selection | 9 of 9 | 8 of 9 | −1 question |
+| CURRENT MRR | 0.783 | 0.733 | −0.050 |
+
+- **MRR moves 0.002 past ±0.03** (Recall@10 sits on the edge), so the change is explained per question. The stale rate, temporal accuracy, router line and rule conflicts are unchanged.
+- **5 of 36 questions' scores change;** q22's top 10 also gains 2 PR #2567 comments (ranks 8–9) with unchanged scores; the other 30 are identical. Per question, against S12's final run (`conflict-20261012T171932Z`; `per_question.log`):
+
+| Question | Recall@10 | MRR | What's in its top 10 now |
+|---|---|---|---|
+| q01 (CURRENT): "How many Kubernetes minor releases happen per year?" | 0.571 → 0.000 | 0.500 → 0.000 | KEP-2572's Motivation at rank 1 (not a q01 label), Discussion #1290's comments at ranks 2–10. In S12, 4 of its 7 labels were credited (ranks 2, 5, 8, 9); now none. The only Hit@10 loss |
+| q03 (CHANGE): "When was the move to three releases a year decided, and which release was the first to follow it?" | 0.667 → 0.167 | 1.000 → 0.333 | PR #2567's comments at ranks 1–2 and 4–6, #1290's at 7–10; its one labeled hit is KEP-2572 at rank 3 |
+| q02 (HISTORY) | 0.250 → 0.250 | 0.111 → 0.125 | Its first labeled hit moves from rank 9 to 8; PR #2567's comments at ranks 9–10 |
+| q04 (WHY) | 0.500 → 0.500 | 1.000 → 1.000 | nDCG@10 0.521 → 0.503: #1290's comments at ranks 5–9 |
+| q26 (WHY) | 1.000 → 1.000 | 1.000 → 1.000 | nDCG@10 0.807 → 0.818: no discussion text in its top 10, but its candidates changed (KEP-3744's Motivation leaves rank 3) |
+
+- **The discussions are the whole cause.** With their 210 chunks deleted inside a transaction that is always rolled back (the same script), all 36 questions have exactly S12's scores and top 10s (Recall@10 0.552, Hit@10 1.000, MRR 0.813, nDCG@10 0.535, CURRENT MRR 0.783); 210 discussion chunks are still stored after the rollback.
+- **Why they displace labeled text:**
+  - v0's labels predate the new texts, so they can't credit them: a #1290 comment about the cadence isn't one of q01's labeled primary sources (ADR-007).
+  - Discussions are searchable in every mode with no multiplier (S13-R1, Claude's call c; ADR-003 D4 unchanged), so tier 7 doesn't push them down.
+  - Their date windows are open (a thread's one version starts at its last kept post), so they pass CURRENT's "current text only" filter (q01).
+- **No scoring was changed.** Whether discussions should be demoted or filtered, for example in CURRENT mode, is an open question for the developer.
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
 - **37 of the 43 questions were checked by Claude only.** The developer spot-checked 6.
 - **Latency leaves out the question embedding, the router call and the reranker's load.** The vectors and routes are stored, so a live `orgknow ask` adds one Voyage call and, in temporal and authority modes, one router call (p95 4.27 s). Each `orgknow ask` also loads the reranker (~7.5 s); the API (`make serve`, S12-T2) loads it once at startup, so a `POST /query` request doesn't.
 - **AC5 and AC6 check citations' release windows, not claim support,** and their rules were chosen on the runs they score (S12). Golden set v1 is their clean test.
+- **The GitHub texts lower v0's retrieval numbers** (S13): MRR 0.813 → 0.781, and q01 loses all its labeled hits (Recall@10 0.571 → 0.000) to Discussion #1290's comments. v0's labels can't credit the new texts; no scoring was changed.
+- **Decision-chain completeness rests on 2 chains,** with gold labels drafted by Claude, who knew the rules (S13). It shows feasibility, not a rate.
+- **A chain's links count only as full URLs** (S13-R1): a bare `#N` isn't read, so KEP-3015's decision step is missing `no_link`.
 - **Retrieve p95 is n/a for the dense and hybrid runs.** They ran before the retrieval step was timed (S08-T3).
   - Their p95 latency and cost were added to each `summary.json` from its `questions.jsonl` by `make eval-resummarize`, and match the numbers above.
 - **The time metrics are n/a for the dense, hybrid and rerank runs.** Their hits don't record whether they're current or their release windows (S09-T3). `make eval-retrieval` scores both for any mode, free.
