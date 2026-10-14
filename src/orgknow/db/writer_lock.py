@@ -2,8 +2,9 @@
 
 Every corpus writer (make ingest, lifecycle, embed, chains, seed, and the worker) takes one
 Postgres advisory lock, with one fixed key, before it reads or writes, and holds it to the end.
-So at most one writes at a time: R3's check-then-insert can't race, and no text is embedded (and
-paid for) twice.
+So at most one writes at a time: R3's check-then-insert can't race, and no 2 writers embed (and
+pay for) the same texts at once. A writer killed between a Voyage request and its commit re-sends
+that one batch when re-run or resumed.
 
 A session lock (`pg_try_advisory_lock`), never a transaction lock: it is held across the
 writer's many small transactions, until released or until its connection ends, however the
