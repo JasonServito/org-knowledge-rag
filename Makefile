@@ -1,7 +1,7 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed fetch-github ingest lifecycle ingest-report \
-	reset-corpus embed chains eval-check eval-check-chains eval-chain eval-sections eval-retrieval \
-	eval-conflicts eval-routes eval-smoke eval eval-table eval-resummarize serve
+	reset-corpus embed chains worker eval-check eval-check-chains eval-chain eval-sections \
+	eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table eval-resummarize serve
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -105,6 +105,16 @@ embed:
 # chain with `uv run orgknow chain kep:2572`.
 chains:
 	uv run python -m orgknow.provenance.build
+
+# Run ingestion jobs (S14-T5, ADR-013): every WORKER_POLL_S seconds (default 5), take the
+# corpus-writer lock and run the queued or running job, if any: ingest, lifecycle, embed, chains,
+# each step's status, times and counts saved in the job's row. An error fails the job; a job left
+# running by a killed worker is resumed at its first unfinished step, at most WORKER_MAX_ATTEMPTS
+# (3) starts. PAID only when embed finds new texts (capped by EMBED_MAX_TOKENS_PER_RUN). Needs
+# INGEST_SCOPE=full, VOYAGE_API_KEY, `make up`, `make migrate` and `make seed`. Logs JSON lines on
+# stderr (config/logging.json). Stop it with Ctrl-C: a job stopped midway is resumed next start.
+worker:
+	uv run python -m orgknow.ingestion.worker
 
 # Validate the golden set (EVAL_GOLDEN_PATH, default eval/golden_set/v0.yaml), then check every
 # label against the dev database: one line per label with the distinct chunk texts it matches,

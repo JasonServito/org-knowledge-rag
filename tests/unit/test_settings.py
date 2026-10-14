@@ -419,3 +419,19 @@ def test_no_retries_are_accepted() -> None:
     )
 
     assert (settings.anthropic_max_retries, settings.voyage_max_retries) == (0, 0)
+
+
+def test_worker_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("WORKER_POLL_S", "WORKER_MAX_ATTEMPTS"):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # S14-R2 call k: poll every 5 s; at most 3 attempts (ADR-013 D5).
+    assert (settings.worker_poll_s, settings.worker_max_attempts) == (5, 3)
+
+
+@pytest.mark.parametrize("field", ["worker_poll_s", "worker_max_attempts"])
+def test_a_worker_poll_or_attempt_limit_below_1_is_refused(field: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: 0})

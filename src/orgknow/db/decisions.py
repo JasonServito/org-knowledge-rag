@@ -10,6 +10,7 @@ release, in docs pages, feature gates, release records other than CHANGELOGs, go
 from collections.abc import Sequence
 
 import psycopg
+from psycopg.pq import TransactionStatus
 from psycopg.rows import TupleRow, class_row, dict_row
 
 from orgknow.db.models import (
@@ -184,7 +185,23 @@ def replace_decision(
 
 def stored_decision(conn: psycopg.Connection[TupleRow], canonical_id: str) -> StoredDecision | None:
     """The stored chain of the seed KEP `canonical_id`, its steps in step order, each with its
-    cited chunk's and via chunk's fields; None when no chain is stored for it."""
+    cited chunk's and via chunk's fields; None when no chain is stored for it.
+
+    Its 2 reads (the decision, then its steps) run in one read-only REPEATABLE READ transaction
+    (S14-R2 call j), so both see one snapshot: `make chains` rebuilding the chain between them
+    (delete, then insert under a new id) can't give the decision with no steps. A caller already
+    inside a transaction (a test's rolled-back one) keeps it: the isolation level can only be
+    set as a transaction starts.
+    """
+    if conn.info.transaction_status != TransactionStatus.IDLE:
+        return _read_decision(conn, canonical_id)
+    with conn.transaction():
+        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        return _read_decision(conn, canonical_id)
+
+
+def _read_decision(conn: psycopg.Connection[TupleRow], canonical_id: str) -> StoredDecision | None:
+    """`stored_decision`'s 2 reads."""
     with conn.cursor(row_factory=dict_row) as cur:
         decision = cur.execute(
             """

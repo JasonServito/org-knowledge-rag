@@ -1,8 +1,10 @@
 """FastAPI app factory: `/health`, `/ready`, `POST /query` (S12-T2), which answers through the
 same pipeline as `orgknow ask` (`pipeline.answer_question`), and `GET /decisions/{canonical_id}`
-(S13-T5), which reads a stored decision chain as `orgknow chain` does (`load_chain`). `make serve`
-runs it with uvicorn. Every response carries an `X-Request-ID`, and every error one envelope
-(S14-T2; docs/interfaces.md)."""
+(S13-T5), which reads a stored decision chain as `orgknow chain` does (`load_chain`), and the
+ingestion job routes (S14-T6; ADR-013): `POST /ingestion-jobs` queues a rebuild that `make worker`
+runs, and `GET /ingestion-jobs/{job_id}` shows its progress. `make serve` runs it with uvicorn.
+Every response carries an `X-Request-ID`, and every error one envelope (S14-T2;
+docs/interfaces.md)."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -19,11 +21,14 @@ from orgknow.api.errors import ApiError, api_error, http_error, invalid_request
 from orgknow.api.middleware import RequestIdMiddleware
 from orgknow.db.connect import api_connection
 from orgknow.db.health import is_reachable
+from orgknow.db.jobs import active_job, create_job, get_job
+from orgknow.db.models import IngestionJob
 from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.generation.generator import AnthropicGenerator, Generator
 from orgknow.generation.schema import Answer
 from orgknow.ingestion.manifest import load_repo_urls
+from orgknow.logs import request_id
 from orgknow.pipeline import ASK_ERRORS, answer_question, langfuse_client, load_reranker, one_line
 from orgknow.provenance.chain import Chain, load_chain
 from orgknow.retrieval.rerank import Reranker
@@ -171,6 +176,49 @@ def create_app(
                 "no stored decision chain for this canonical_id; chains are built by make chains",
             )
         return chain
+
+    @app.post("/ingestion-jobs", status_code=status.HTTP_202_ACCEPTED)
+    def create_ingestion_job(response: Response) -> IngestionJob:
+        """Queue a rebuild of the corpus (ingest, lifecycle, embed, chains; ADR-013 D2), which
+        `make worker` runs: a 202 with the new job, its `request_id` this request's. When a job is
+        already queued or running, a 200 with that job instead (D4), so a repeated POST is safe.
+        Takes no input: a request body is ignored. Never takes the corpus-writer lock. A database
+        that can't be reached, or a statement past its timeout: a 503, as `/query`."""
+        try:
+            with api_connection(app_settings) as conn:
+                # One insert per try, refused while a job is active (the database's
+                # one-active-job rule). A refused insert, then no active job: that job ended in
+                # between, so the next insert succeeds. At most 2 tries (S14-R2 call i).
+                for _ in range(2):
+                    job = create_job(conn, request_id.get())
+                    if job is not None:
+                        return job
+                    job = active_job(conn)
+                    if job is not None:
+                        response.status_code = status.HTTP_200_OK
+                        return job
+        except psycopg.OperationalError as error:
+            # Never the error's own message: it can name the database URL.
+            raise ApiError("database_unavailable", "database unavailable") from error
+        # Practically unreachable: a job ended between each refused insert and the read after it.
+        # The middleware logs this and answers the `internal` 500; the caller can POST again.
+        raise RuntimeError("no ingestion job created or active after 2 tries")
+
+    @app.get("/ingestion-jobs/{job_id}")
+    def ingestion_job(job_id: int) -> IngestionJob:
+        """The ingestion job `job_id`, with each step's status, times and counts. No such job: a
+        404 `not_found`; a non-integer id: a 422; a database that can't be reached, or a
+        statement past its timeout: a 503, as `/query`."""
+        try:
+            with api_connection(app_settings) as conn:
+                # An id beyond bigint's range is sent as a numeric and matches no row: a 404.
+                job = get_job(conn, job_id)
+        except psycopg.OperationalError as error:
+            raise ApiError("database_unavailable", "database unavailable") from error
+        if job is None:
+            # The id isn't repeated: a message never carries the caller's input.
+            raise ApiError("not_found", "no ingestion job with this id")
+        return job
 
     return app
 

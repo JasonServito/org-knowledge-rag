@@ -18,6 +18,7 @@ An ADR records **one decision**, why it was made, and what it costs. ADRs are th
 | [010](ADR-010-conflict-detection.md) | Conflict detection method | Accepted; changed in S10-R2 and after S10-T8's run 1; amended in S11-R1 and S12-R1 (D4's detector probed, not adopted) |
 | [011](ADR-011-corrective-retrieval.md) | Corrective retrieval: not adopted | Accepted; amended in S12-R1 |
 | [012](ADR-012-decision-provenance.md) | Decision provenance | Accepted |
+| [013](ADR-013-async-ingestion.md) | Async ingestion: the jobs table is the queue (no SQS), one writer lock | Accepted |
 
 "Changed": a sub-decision updated in place and logged in a Changes table. "Amended": a dated Amendment section at the end. Both are described under Rules.
 

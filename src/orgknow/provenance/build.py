@@ -23,6 +23,7 @@ from orgknow.db.decisions import (
 )
 from orgknow.db.models import ChainDocument, NewEvidence
 from orgknow.db.releases import list_releases
+from orgknow.db.writer_lock import WriterBusy, writer_lock
 from orgknow.ingestion.chunker import document_title
 from orgknow.ingestion.manifest import load_repo_urls
 from orgknow.provenance.rules import (
@@ -123,14 +124,18 @@ def main() -> None:
     that can't be built stops the run with one line naming it; chains stored before it stay."""
     settings = Settings()
     seeds = chain_seeds(settings.corpus_manifest_path)
-    # autocommit: each chain's `conn.transaction()` block is its own committed transaction.
-    with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        for seed in seeds:
-            try:
-                evidence = store_chain(conn, seed, settings)
-            except ValueError as error:
-                sys.exit(f"{seed}: {error}")
-            print(chain_line(seed, evidence))
+    # autocommit: each chain's `conn.transaction()` block is its own committed transaction. The
+    # writer lock (ADR-013 D3) is taken first, on this connection.
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True) as conn, writer_lock(conn):
+            for seed in seeds:
+                try:
+                    evidence = store_chain(conn, seed, settings)
+                except ValueError as error:
+                    sys.exit(f"{seed}: {error}")
+                print(chain_line(seed, evidence))
+    except WriterBusy as busy:
+        sys.exit(str(busy))
 
 
 if __name__ == "__main__":

@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     # Plain libpq form, e.g. postgresql://user:password@host:port/dbname. No default: a
     # missing value should fail at startup, not silently point at some database.
     database_url: str
-    # How long /ready and POST /query wait for a new DB connection. libpq treats values below 2
-    # as 2.
+    # How long /ready, POST /query, GET /decisions, the /ingestion-jobs routes and the worker wait
+    # for a new DB connection. libpq treats values below 2 as 2.
     db_connect_timeout_s: int = 2
     # The API's per-request connections (POST /query, GET /decisions; `db/connect.py`) cancel any
     # one SQL statement after this many milliseconds, and the request is a 503 (S14-R1 decision
@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     # `make embed` refuses to start when the texts it would send exceed this many estimated
     # tokens: a guard against embedding far more than planned (CLAUDE.md, spending).
     embed_max_tokens_per_run: int = 2_000_000
+    # `make worker` (S14-T5; ADR-013 D1, D5; S14-R2 call k): while idle, it looks for a job every
+    # WORKER_POLL_S seconds; a job found with WORKER_MAX_ATTEMPTS runs already started (each ended
+    # by a crash) is failed without running again. Both at least 1.
+    worker_poll_s: int = Field(default=5, ge=1)
+    worker_max_attempts: int = Field(default=3, ge=1)
     # How many chunk texts retrieval returns, in every mode (S04-R2 decision 6). At most 40, the
     # cap S04-R2 set when every search used pgvector's default width (40); the width is now
     # HNSW_EF_SEARCH, which must be at least this (checked below). No similarity threshold: the
