@@ -24,6 +24,7 @@ from orgknow.embeddings.embed import RunTooLarge
 from orgknow.ingestion import worker
 from orgknow.ingestion.ingest import Summary
 from orgknow.ingestion.worker import Step, StepCounts, run_once
+from orgknow.provenance.rules import ChainError
 from orgknow.settings import Settings
 
 Conn = psycopg.Connection[TupleRow]
@@ -224,13 +225,28 @@ def test_a_cli_writer_is_refused_while_the_worker_runs_a_step(
     assert tries == [False, False, False, False, True]
 
 
+def test_a_chain_errors_text_is_shown_in_the_job(conn: Conn) -> None:
+    job = new_job(conn)
+    calls: Calls = []
+    text = "kep:2572 is not stored: run `make ingest`"  # the chain builder's message, by hand
+    steps = all_recording(calls)
+    steps[3] = raising("chains", calls, ChainError(text))
+
+    run_once(conn, steps, 3)
+
+    failed = stored(conn, job.id)
+    assert (failed.status, failed.error, failed.steps[3].error) == ("failed", text, text)
+
+
+# A plain ValueError stays hidden: only the chain builder's own error type is shown.
+@pytest.mark.parametrize("error", [RuntimeError("secret-xyz"), ValueError("secret-xyz")])
 def test_an_unknown_errors_text_stays_in_the_worker_log(
-    conn: Conn, caplog: pytest.LogCaptureFixture
+    conn: Conn, caplog: pytest.LogCaptureFixture, error: Exception
 ) -> None:
     job = new_job(conn)
     calls: Calls = []
     steps = all_recording(calls)
-    steps[0] = raising("ingest", calls, RuntimeError("secret-xyz"))
+    steps[0] = raising("ingest", calls, error)
 
     run_once(conn, steps, 3)
 

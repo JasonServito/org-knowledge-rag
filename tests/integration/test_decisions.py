@@ -34,6 +34,7 @@ from orgknow.ingestion.chunker import chunk_text
 from orgknow.ingestion.manifest import load_repo_urls
 from orgknow.provenance.build import store_chain
 from orgknow.provenance.chain import load_chain
+from orgknow.provenance.rules import ChainError
 from orgknow.settings import Settings
 
 Conn = psycopg.Connection[TupleRow]
@@ -323,7 +324,7 @@ def test_re_running_make_chains_stores_the_same_rows(conn: Conn, chain_settings:
 def test_a_seed_that_is_not_stored_stops_with_a_message(
     conn: Conn, chain_settings: Settings
 ) -> None:
-    with pytest.raises(ValueError, match="kep:9999 is not stored"):
+    with pytest.raises(ChainError, match="kep:9999 is not stored"):
         store_chain(conn, "kep:9999", chain_settings)
 
 

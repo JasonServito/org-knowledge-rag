@@ -472,3 +472,6 @@ None. Every test uses fakes; the demo's embed sends 0 texts, capped at 1 estimat
   - Run each new command's real entry point once before review: only the real `python -m` run found the dropped log lines.
   - Keep estimating with tests included: R2's came to ~1,980 lines, ~10% above its estimate's top (1,400–1,800); S13's was 3× low.
 - **Slice brief:** `docs/learning/S14-backend-hardening.md`
+- **PR #51 review answers (the developer, 2026-10-14):**
+  - **Chain errors are shown as written** (changes call h). The chain builder's 4 messages share one error type, `ChainError` (a `ValueError`, so `make chains` is unchanged), which the worker adds to the errors a job shows as written; `docs/interfaces.md` ("Worker") lists them. Why: each is a fixed sentence naming only a seed, an id, a section or the command to run. Rejected: only ``<seed> is not stored: run `make ingest` `` (option A: the other 3 stay "internal error"); showing every `ValueError` (any library's text could reach the API).
+  - The other 2 answers (a lost connection stops the worker; giving up also fails the step left running) are ADR-013's amendment 2026-10-14.

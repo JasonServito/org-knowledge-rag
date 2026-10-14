@@ -30,6 +30,7 @@ from orgknow.provenance.rules import (
     DISCUSSION_FIELD,
     KEP_FIELD,
     UPDATE_PR_FIELD,
+    ChainError,
     Link,
     current_docs_step,
     decision_step,
@@ -62,11 +63,11 @@ def build_chain(
     conn: psycopg.Connection[TupleRow], seed: str, settings: Settings
 ) -> tuple[ChainDocument, list[NewEvidence]]:
     """The seed KEP and its 6 steps, in step order, by rules 1-8. Writes nothing. Raises
-    ValueError when the KEP isn't stored, lacks a Summary or Motivation, or no text has a
+    ChainError when the KEP isn't stored, lacks a Summary or Motivation, or no text has a
     vector."""
     kep = newest_document(conn, seed)
     if kep is None:
-        raise ValueError(f"{seed} is not stored: run `make ingest`")
+        raise ChainError(f"{seed} is not stored: run `make ingest`")
     number = kep_number(seed)
     keys = repo_keys(load_repo_urls(settings.corpus_manifest_path))
     issue = newest_document(conn, tracking_issue_id(number))
