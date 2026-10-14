@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # How long /ready and POST /query wait for a new DB connection. libpq treats values below 2
     # as 2.
     db_connect_timeout_s: int = 2
+    # The API's per-request connections (POST /query, GET /decisions; `db/connect.py`) cancel any
+    # one SQL statement after this many milliseconds, and the request is a 503 (S14-R1 decision
+    # 2). At least 1: Postgres reads 0 as no timeout.
+    db_statement_timeout_ms: int = Field(default=10_000, ge=1)
     # A relative path is resolved from the working directory; the make targets run from the
     # repo root.
     corpus_manifest_path: Path = Path("config/corpus_manifest.yaml")
@@ -36,6 +40,10 @@ class Settings(BaseSettings):
     github_token: SecretStr | None = None
     # GitHub's REST API root; GraphQL is at <root>/graphql.
     github_api_url: str = "https://api.github.com"
+    # `make fetch-github` waits at most this many seconds for each step of a request (connect,
+    # each read), and never retries: it is run by hand, and stops with nothing written (S14-R1
+    # Claude's call c).
+    github_timeout_s: int = Field(default=30, ge=1)
     # Status synonyms (ADR-003 D5), applied to KEP claims (claimed_status and claimed_stage) and
     # to the feature-gate stages `make lifecycle` reads. ADR-003 D5 allows only this one; any
     # other unknown value is stored as written.
@@ -48,6 +56,11 @@ class Settings(BaseSettings):
     # fake. SecretStr shows "**********" when settings are printed or logged.
     voyage_api_key: SecretStr | None = None
     voyage_api_url: str = "https://api.voyageai.com/v1/embeddings"
+    # Each Voyage request waits at most VOYAGE_TIMEOUT_S seconds for each step (connect, each
+    # read). An HTTP 429 or 5xx is retried up to VOYAGE_MAX_RETRIES times (0: never), after 1 s,
+    # 2 s, 4 s, ... (doubling); any other error fails at once (S14-R1 Claude's call c).
+    voyage_timeout_s: int = Field(default=60, ge=1)
+    voyage_max_retries: int = Field(default=3, ge=0)
     # Vectors are stored under this name, so a new model embeds everything again.
     embedding_model: str = "voyage-4-large"
     # One request holds at most this many texts and estimated tokens (characters / 4). A single
@@ -105,11 +118,14 @@ class Settings(BaseSettings):
     history_date_tolerance_days: int = Field(default=7, ge=0)
     # The answer step (ADR-006 D1). Opus 5.5 always reasons, and effort sets how much; there is
     # no temperature (Opus 5.5 rejects it). Reasoning counts toward the max tokens and is billed
-    # as output. At most 21,333: above that, the SDK refuses a non-streaming call (it expects
-    # it to take over 10 minutes).
+    # as output. At most 21,333: above that, the SDK refuses a non-streaming call made without
+    # its own timeout (it expects it to take over 10 minutes). The answer call waits at most
+    # GENERATION_TIMEOUT_S seconds for each step of a try (connect, each read; S14-R1 Claude's
+    # call c).
     generation_model: str = "claude-opus-5-5"
     generation_effort: Effort = "medium"
     generation_max_tokens: int = Field(default=16_000, ge=1, le=21_333)
+    generation_timeout_s: int = Field(default=90, ge=1)
     # The model's prices in US dollars per million tokens (ADR-006 D1), for the eval summary's cost
     # per question (S08-T3). Output tokens include reasoning.
     generation_price_input_usd_per_mtok: float = 4.0
@@ -118,14 +134,20 @@ class Settings(BaseSettings):
     # and the time scope the question names. Effort low, as the S09-R1 sitting measured it. The
     # cap (1 to 16,000) counts reasoning; the sitting's routes used ~40 output tokens each,
     # reasoning included (ADR-009). The prices, in US dollars per million tokens, give
-    # `make eval-routes`'s cost.
+    # `make eval-routes`'s cost. The call waits at most ROUTER_TIMEOUT_S seconds for each step of
+    # a try (connect, each read; S14-R1 Claude's call c).
     router_model: str = "claude-opus-5-5"
     router_effort: Effort = "low"
     router_max_tokens: int = Field(default=4096, ge=1, le=16_000)
+    router_timeout_s: int = Field(default=30, ge=1)
     router_price_input_usd_per_mtok: float = 4.0
     router_price_output_usd_per_mtok: float = 20.0
     # No key: the answer step and the router can't run (tests use fakes).
     anthropic_api_key: SecretStr | None = None
+    # The Anthropic client's retries (0: never), for the answer and the router call alike, by the
+    # SDK's rule: no connection, a timeout, HTTP 408, 409, 429 or 5xx (S14-R1 Claude's call c:
+    # the SDK's default, 2).
+    anthropic_max_retries: int = Field(default=2, ge=0)
     # Langfuse tracing (ADR-006 D3): one trace per `ask`. Either key unset: tracing off, and `ask`
     # still runs. The public key is a SecretStr too, so neither key is ever printed.
     langfuse_public_key: SecretStr | None = None

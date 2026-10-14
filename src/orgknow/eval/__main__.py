@@ -156,7 +156,11 @@ def chain(settings: Settings) -> int:
     embedder = None  # needed only for a question with no stored vector: the runner says so
     if settings.voyage_api_key:
         embedder = VoyageEmbedder(
-            settings.voyage_api_url, settings.voyage_api_key, settings.embedding_model
+            settings.voyage_api_url,
+            settings.voyage_api_key,
+            settings.embedding_model,
+            timeout_s=settings.voyage_timeout_s,
+            max_retries=settings.voyage_max_retries,
         )
     try:
         reranker, _ = _load_reranker(settings)
@@ -238,8 +242,16 @@ def run(settings: Settings, smoke: bool, name: str) -> int:
     # Voyage is needed only for questions with no stored vector: the run says so if one has none.
     embedder = None
     if voyage_key:
-        embedder = VoyageEmbedder(settings.voyage_api_url, voyage_key, settings.embedding_model)
-    client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
+        embedder = VoyageEmbedder(
+            settings.voyage_api_url,
+            voyage_key,
+            settings.embedding_model,
+            timeout_s=settings.voyage_timeout_s,
+            max_retries=settings.voyage_max_retries,
+        )
+    client = anthropic.Anthropic(
+        api_key=anthropic_key.get_secret_value(), max_retries=settings.anthropic_max_retries
+    )
     generator = AnthropicGenerator(client, settings)
     # Temporal and authority modes route the questions with no stored route (ADR-009 D3); the key
     # is set.
@@ -344,12 +356,19 @@ def routes(settings: Settings) -> int:
     # Each key is needed only when a route or a vector is missing: the runner says so if one is.
     router = None
     if settings.anthropic_api_key:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key.get_secret_value())
+        client = anthropic.Anthropic(
+            api_key=settings.anthropic_api_key.get_secret_value(),
+            max_retries=settings.anthropic_max_retries,
+        )
         router = ClaudeRouter(client, settings)
     embedder = None
     if settings.voyage_api_key:
         embedder = VoyageEmbedder(
-            settings.voyage_api_url, settings.voyage_api_key, settings.embedding_model
+            settings.voyage_api_url,
+            settings.voyage_api_key,
+            settings.embedding_model,
+            timeout_s=settings.voyage_timeout_s,
+            max_retries=settings.voyage_max_retries,
         )
     path = settings.eval_routes_dir / f"{settings.router_model}.json"
     vectors_path = settings.eval_vectors_dir / f"{settings.embedding_model}.json"

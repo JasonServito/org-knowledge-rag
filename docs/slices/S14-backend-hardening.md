@@ -112,7 +112,7 @@ Written by `/plan-run` in the sitting, and committed as the run branch's first c
 
 ### Run S14-R1: Hardening
 
-- **Status:** planned
+- **Status:** PR open (split after T2 on the size alarm: PR 1 T1–T2, PR 2 T3, stacked)
 - **Tasks:** T1, T2, T3.
 - **Goal (plain words):** write down every endpoint's contract and one error format; give every request an ID that shows up in its response, its errors and its JSON log lines; and put a timeout and a retry limit on every external call, with no database transaction left open during the LLM call.
 

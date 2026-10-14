@@ -67,7 +67,8 @@ class ClaudeRouter:
     """The `Router` on the Anthropic API: `messages.parse` with the route schema, at
     ROUTER_MODEL, ROUTER_EFFORT and ROUTER_MAX_TOKENS.
 
-    As in the generator, the SDK's defaults stay (a 10-minute timeout and 2 retries) and there is
+    As in the generator, each try waits at most ROUTER_TIMEOUT_S seconds for each step (connect,
+    each read), the client's caller sets its retries (ANTHROPIC_MAX_RETRIES; S14-T3), and there is
     no `fallbacks` parameter. `input_tokens` and `output_tokens` add up the usage of every call
     this router made, refused ones included, for the cost.
     """
@@ -77,6 +78,7 @@ class ClaudeRouter:
         self._model = settings.router_model
         self._effort = settings.router_effort
         self._max_tokens = settings.router_max_tokens
+        self._timeout_s = settings.router_timeout_s
         self.input_tokens = 0
         self.output_tokens = 0  # reasoning included, as billed
 
@@ -91,6 +93,7 @@ class ClaudeRouter:
             messages=[{"role": "user", "content": question}],
             output_format=Route,
             output_config={"effort": self._effort},
+            timeout=self._timeout_s,
         )
         self.input_tokens += response.usage.input_tokens
         self.output_tokens += response.usage.output_tokens

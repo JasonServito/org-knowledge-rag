@@ -945,6 +945,19 @@ def test_the_request_and_a_parsed_reply(settings: Settings) -> None:
     )
 
 
+def test_the_answer_call_waits_at_most_generation_timeout_s(settings: Settings) -> None:
+    requests: list[httpx2.Request] = []
+    reply = _reply(
+        [{"type": "text", "text": ANSWER_JSON}], "end_turn", {"input_tokens": 1, "output_tokens": 1}
+    )
+    limited = settings.model_copy(update={"generation_timeout_s": 45})
+
+    AnthropicGenerator(_client(reply, requests), limited).generate("SYS", "PROMPT")
+
+    # S14-T3: 45 s for each wait on the network (the SDK's default read timeout is 600 s).
+    assert requests[0].extensions["timeout"] == {"connect": 45, "read": 45, "write": 45, "pool": 45}
+
+
 def test_a_refusal_reply_has_no_output(settings: Settings) -> None:
     reply = _reply([], "refusal", {"input_tokens": 4200, "output_tokens": 0})
     reply["stop_details"] = {"type": "refusal", "category": None, "explanation": None}

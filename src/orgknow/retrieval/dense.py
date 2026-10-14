@@ -32,7 +32,13 @@ def main(settings: Settings | None = None) -> None:
     api_key = settings.voyage_api_key
     if api_key is None or not api_key.get_secret_value():
         sys.exit("VOYAGE_API_KEY is not set: add the key to .env (see .env.example).")
-    embedder = VoyageEmbedder(settings.voyage_api_url, api_key, settings.embedding_model)
+    embedder = VoyageEmbedder(
+        settings.voyage_api_url,
+        api_key,
+        settings.embedding_model,
+        timeout_s=settings.voyage_timeout_s,
+        max_retries=settings.voyage_max_retries,
+    )
     vector = embedder.embed([question], "query").vectors[0]
     with psycopg.connect(settings.database_url) as conn:
         hits = search(

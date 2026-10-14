@@ -119,7 +119,13 @@ def main(settings: Settings | None = None) -> None:
             "VOYAGE_API_KEY is not set. `make embed` calls the Voyage API: add the key to .env "
             "(see .env.example)."
         )
-    embedder = VoyageEmbedder(settings.voyage_api_url, api_key, settings.embedding_model)
+    embedder = VoyageEmbedder(
+        settings.voyage_api_url,
+        api_key,
+        settings.embedding_model,
+        timeout_s=settings.voyage_timeout_s,
+        max_retries=settings.voyage_max_retries,
+    )
     # autocommit: each `conn.transaction()` block is its own committed transaction.
     with psycopg.connect(settings.database_url, autocommit=True) as conn:
         try:

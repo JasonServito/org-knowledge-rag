@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException
 
 from orgknow.api.errors import ApiError, api_error, http_error, invalid_request
 from orgknow.api.middleware import RequestIdMiddleware
+from orgknow.db.connect import api_connection
 from orgknow.db.health import is_reachable
 from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
@@ -60,7 +61,10 @@ def create_app(
         routed = app_settings.retrieval_mode in ("temporal", "authority")
         if generator is None or (routed and router is None):
             anthropic_key = _key(app_settings.anthropic_api_key, "ANTHROPIC_API_KEY")
-            client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
+            client = anthropic.Anthropic(
+                api_key=anthropic_key.get_secret_value(),
+                max_retries=app_settings.anthropic_max_retries,
+            )
             if generator is None:
                 generator = AnthropicGenerator(client, app_settings)
             if routed and router is None:
@@ -68,7 +72,11 @@ def create_app(
         if embedder is None:
             voyage_key = _key(app_settings.voyage_api_key, "VOYAGE_API_KEY")
             embedder = VoyageEmbedder(
-                app_settings.voyage_api_url, voyage_key, app_settings.embedding_model
+                app_settings.voyage_api_url,
+                voyage_key,
+                app_settings.embedding_model,
+                timeout_s=app_settings.voyage_timeout_s,
+                max_retries=app_settings.voyage_max_retries,
             )
         if reranker is None:
             reranker = load_reranker(app_settings)
@@ -112,16 +120,16 @@ def create_app(
     def query(body: Query, request: Request) -> Answer:
         """The answer `orgknow ask` prints for the question, with its `trace_id` (null when
         tracing is off). An ask error is a 502 `upstream_failed` with its one-line message; a
-        database that can't be reached, a 503 `database_unavailable`. Any other error (e.g. a
-        missing table) is the middleware's 500 `internal`."""
+        database that can't be reached, or a statement past its timeout, a 503
+        `database_unavailable`. Any other error (e.g. a missing table) is the middleware's 500
+        `internal`."""
         # A plain `def`, as `/ready`: it runs in a worker thread, so the blocking calls can't
         # stall the event loop.
         assert embedder is not None and generator is not None  # built at startup
         try:
-            # One connection per request.
-            with psycopg.connect(
-                app_settings.database_url, connect_timeout=app_settings.db_connect_timeout_s
-            ) as conn:
+            # One autocommit connection per request: no transaction stays open during the
+            # answer call (db/connect.py).
+            with api_connection(app_settings) as conn:
                 result = answer_question(
                     body.question,
                     conn,
@@ -135,7 +143,8 @@ def create_app(
         except ASK_ERRORS as error:
             raise ApiError("upstream_failed", one_line(error)) from error
         except psycopg.OperationalError as error:
-            # Never the error's own message: it can name the database URL.
+            # Includes a statement cancelled by its timeout (`QueryCanceled`). Never the error's
+            # own message: it can name the database URL.
             raise ApiError("database_unavailable", "database unavailable") from error
         if result.trace_id is not None:
             # For the middleware's log line of this request (S14-R1 Claude's call f).
@@ -146,13 +155,11 @@ def create_app(
     def decision(canonical_id: str) -> Chain:
         """The stored decision chain of the seed KEP `canonical_id` (e.g. `kep:2572`): the model
         `orgknow chain` prints from (`load_chain`). Free, read-only, never builds (`make chains`
-        does). No stored chain: a 404 `not_found`; a database that can't be reached: a 503, as
-        `/query`."""
+        does). No stored chain: a 404 `not_found`; a database that can't be reached, or a
+        statement past its timeout: a 503, as `/query`."""
         repo_urls = load_repo_urls(app_settings.corpus_manifest_path)
         try:
-            with psycopg.connect(
-                app_settings.database_url, connect_timeout=app_settings.db_connect_timeout_s
-            ) as conn:
+            with api_connection(app_settings) as conn:
                 chain = load_chain(conn, canonical_id, repo_urls)
         except psycopg.OperationalError as error:
             # Never the error's own message: it can name the database URL.
