@@ -51,7 +51,6 @@ from orgknow.settings import Settings
 BOT_SUFFIXES = ("-robot", "-bot", "[bot]")
 HEADING_SUFFIX = {"comment": "", "reply": " · reply", "review": " · review"}
 PER_PAGE = 100  # the most GitHub returns per page, REST and GraphQL
-TIMEOUT_S = 30
 
 
 class Post(BaseModel):
@@ -257,15 +256,18 @@ query($id: ID!, $after: String) {
 """
 
 
-def github_client(token: SecretStr, transport: httpx2.BaseTransport | None = None) -> httpx2.Client:
-    """An HTTP client sending the token as a bearer header. Tests pass a MockTransport."""
+def github_client(
+    token: SecretStr, timeout_s: float, transport: httpx2.BaseTransport | None = None
+) -> httpx2.Client:
+    """An HTTP client sending the token as a bearer header, waiting at most `timeout_s` seconds
+    for each step of a request (GITHUB_TIMEOUT_S), with no retries. Tests pass a MockTransport."""
     return httpx2.Client(
         headers={
             "Authorization": f"Bearer {token.get_secret_value()}",
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         },
-        timeout=TIMEOUT_S,
+        timeout=timeout_s,
         transport=transport,
     )
 
@@ -481,7 +483,7 @@ def main() -> None:
     items = load_github_items(manifest, lock)
     repo_urls = load_repo_urls(manifest)
     snapshots = []
-    with github_client(settings.github_token) as client:
+    with github_client(settings.github_token, settings.github_timeout_s) as client:
         for item in items:
             repo_path = repo_urls[item.repo].removeprefix("https://github.com/")
             try:

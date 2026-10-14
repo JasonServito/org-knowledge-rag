@@ -128,9 +128,11 @@ class _FakeUrlopen:
     def __init__(self, outcomes: list[bytes | int]) -> None:
         self.outcomes = outcomes
         self.requests: list[urllib.request.Request] = []
+        self.timeouts: list[float] = []
 
     def __call__(self, request: urllib.request.Request, timeout: float) -> io.BytesIO:
         self.requests.append(request)
+        self.timeouts.append(timeout)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, int):
             body = io.BytesIO(b'{"detail": "error detail"}')
@@ -148,9 +150,15 @@ def _patch_http(
     return fake, sleeps
 
 
+def _embedder(max_retries: int, timeout_s: int = 60) -> VoyageEmbedder:
+    return VoyageEmbedder(
+        URL, SecretStr(KEY), "voyage-4-large", timeout_s=timeout_s, max_retries=max_retries
+    )
+
+
 def test_429_and_5xx_are_retried_with_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
     fake, sleeps = _patch_http(monkeypatch, [429, 503, _response([(0, [0.25] * 1024)])])
-    embedder = VoyageEmbedder(URL, SecretStr(KEY), "voyage-4-large")
+    embedder = _embedder(max_retries=3)
 
     result = embedder.embed(["hello"], "document")
 
@@ -171,7 +179,7 @@ def test_429_and_5xx_are_retried_with_backoff(monkeypatch: pytest.MonkeyPatch) -
 
 def test_retries_stop_after_three(monkeypatch: pytest.MonkeyPatch) -> None:
     fake, sleeps = _patch_http(monkeypatch, [500, 500, 500, 500])
-    embedder = VoyageEmbedder(URL, SecretStr(KEY), "voyage-4-large")
+    embedder = _embedder(max_retries=3)
 
     with pytest.raises(RuntimeError, match="HTTP 500"):
         embedder.embed(["hello"], "document")
@@ -180,11 +188,32 @@ def test_retries_stop_after_three(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sleeps == [1, 2, 4]
 
 
+# S14-T3: the retry count is VOYAGE_MAX_RETRIES, the waits double from 1 s, and every try waits
+# at most VOYAGE_TIMEOUT_S. Counted by hand: 1 try + n retries; the waits 1, 2, 4, 8 s.
+@pytest.mark.parametrize(
+    ("max_retries", "tries", "waits"),
+    [(0, 1, []), (1, 2, [1]), (4, 5, [1, 2, 4, 8])],
+    ids=["no-retry", "1-retry", "4-retries"],
+)
+def test_retries_stop_after_voyage_max_retries(
+    monkeypatch: pytest.MonkeyPatch, max_retries: int, tries: int, waits: list[int]
+) -> None:
+    fake, sleeps = _patch_http(monkeypatch, [503] * 10)  # always 503: more than any case uses
+    embedder = _embedder(max_retries=max_retries, timeout_s=7)
+
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        embedder.embed(["hello"], "document")
+
+    assert len(fake.requests) == tries
+    assert sleeps == waits
+    assert fake.timeouts == [7] * tries
+
+
 def test_a_client_error_is_not_retried_and_never_shows_the_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake, sleeps = _patch_http(monkeypatch, [401])
-    embedder = VoyageEmbedder(URL, SecretStr(KEY), "voyage-4-large")
+    embedder = _embedder(max_retries=3)
 
     with pytest.raises(RuntimeError, match="HTTP 401") as exc_info:
         embedder.embed(["hello"], "document")

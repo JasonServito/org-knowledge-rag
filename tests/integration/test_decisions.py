@@ -504,7 +504,7 @@ def test_get_decisions_returns_load_chains_model_then_404_after_the_reset(
     # can't see: the request gets this test's connection instead of opening its own.
     _corpus(conn)
     store_chain(conn, "kep:9001", chain_settings)
-    monkeypatch.setattr(api_app.psycopg, "connect", lambda *args, **kwargs: nullcontext(conn))
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(conn))
     client = TestClient(create_app(chain_settings))  # no startup: the route needs no paid client
 
     stored = client.get("/decisions/kep:9001")

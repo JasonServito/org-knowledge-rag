@@ -43,11 +43,11 @@ if TYPE_CHECKING:  # for the annotation only: importing the module loads torch
 # traceback (`orgknow ask`: on stderr, exit 1; `POST /query`: a 502):
 # - GenerationError: the model refused, was cut off, or returned output off the schema.
 # - RouterError: the router model gave no route (temporal and authority modes, S09-T4, S09-T7).
-# - anthropic.APIError: no connection, a timeout, or a 4xx/5xx after the SDK's 2 retries, for
-#   the answer or the router call.
-# - The Voyage client (embeddings/voyage.py): RuntimeError for an HTTP error after its retries,
-#   ValueError for a malformed response, and urllib's URLError or TimeoutError for no
-#   connection or a timeout (it lets those two through).
+# - anthropic.APIError: no connection, a timeout, or a 4xx/5xx after ANTHROPIC_MAX_RETRIES
+#   retries (the SDK's rule), for the answer or the router call.
+# - The Voyage client (embeddings/voyage.py): RuntimeError for an HTTP error after
+#   VOYAGE_MAX_RETRIES retries, ValueError for a malformed response, and urllib's URLError or
+#   TimeoutError for no connection or a timeout (it lets those two through).
 ASK_ERRORS = (
     GenerationError,
     RouterError,

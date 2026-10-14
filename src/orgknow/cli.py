@@ -111,8 +111,16 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         print(f"error: {one_line(error)}", file=sys.stderr)
         return 1
     langfuse = langfuse_client(settings)
-    embedder = VoyageEmbedder(settings.voyage_api_url, voyage_key, settings.embedding_model)
-    client = anthropic.Anthropic(api_key=anthropic_key.get_secret_value())
+    embedder = VoyageEmbedder(
+        settings.voyage_api_url,
+        voyage_key,
+        settings.embedding_model,
+        timeout_s=settings.voyage_timeout_s,
+        max_retries=settings.voyage_max_retries,
+    )
+    client = anthropic.Anthropic(
+        api_key=anthropic_key.get_secret_value(), max_retries=settings.anthropic_max_retries
+    )
     generator = AnthropicGenerator(client, settings)
     routed = settings.retrieval_mode in ("temporal", "authority")
     router = ClaudeRouter(client, settings) if routed else None

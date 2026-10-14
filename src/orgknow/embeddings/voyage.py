@@ -19,12 +19,6 @@ from orgknow.embeddings.embedder import DIMENSIONS, EmbedResult, InputType
 
 log = logging.getLogger(__name__)
 
-# Run contract, "Retries": up to 3 retries, after waiting 1 s, 2 s, then 4 s, on HTTP 429 (rate
-# limited) or 5xx (server error) only. Any other error is a problem with the request: retrying
-# can't fix it.
-RETRY_DELAYS_S = (1, 2, 4)
-TIMEOUT_S = 60
-
 
 class _Item(BaseModel):
     index: int  # the position of its text in the request's `input`
@@ -74,11 +68,22 @@ def parse_response(raw: bytes, count: int) -> EmbedResult:
 
 
 class VoyageEmbedder:
-    """The `Embedder` protocol on Voyage's embeddings API."""
+    """The `Embedder` protocol on Voyage's embeddings API.
 
-    def __init__(self, url: str, api_key: SecretStr, model: str) -> None:
+    Each try waits at most `timeout_s` seconds for each step (connect, each read): urllib's
+    socket timeout. An HTTP 429 (rate limited) or 5xx (server error) is retried up to
+    `max_retries` times, after 1 s, 2 s, 4 s, ... (doubling); any other error is a problem with
+    the request, which retrying can't fix (S04-R1 contract, "Retries"; the counts are settings
+    since S14-T3: VOYAGE_TIMEOUT_S, VOYAGE_MAX_RETRIES).
+    """
+
+    def __init__(
+        self, url: str, api_key: SecretStr, model: str, *, timeout_s: float, max_retries: int
+    ) -> None:
         self.url = url
         self.model = model
+        self.timeout_s = timeout_s
+        self.max_retries = max_retries
         # Kept as SecretStr until a request is built: printed or logged, it shows "**********".
         self._api_key = api_key
 
@@ -101,15 +106,15 @@ class VoyageEmbedder:
         retries = 0
         while True:
             try:
-                with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
+                with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
                     raw: bytes = response.read()
                     return raw
             except urllib.error.HTTPError as exc:
                 retryable = exc.code == 429 or exc.code >= 500
-                if not retryable or retries == len(RETRY_DELAYS_S):
+                if not retryable or retries == self.max_retries:
                     reason = exc.read().decode("utf-8", errors="replace")[:500]
                     raise RuntimeError(f"Voyage API returned HTTP {exc.code}: {reason}") from None
-                delay = RETRY_DELAYS_S[retries]
+                delay = 2**retries  # 1 s, 2 s, 4 s, ...
                 log.warning("Voyage API returned HTTP %d; retrying in %d s", exc.code, delay)
                 time.sleep(delay)
                 retries += 1

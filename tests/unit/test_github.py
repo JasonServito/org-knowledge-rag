@@ -44,6 +44,7 @@ from orgknow.ingestion.github import (
     update_lock,
 )
 from orgknow.ingestion.manifest import GithubItem, GithubPin, load_github_items, load_releases
+from orgknow.settings import Settings
 
 ROOT = Path(__file__).parents[2]
 RELEASES = load_releases(ROOT / "config" / "corpus_manifest.yaml")
@@ -404,7 +405,7 @@ def _rest(routes: dict[str, tuple[Any, str | None]], seen: list[httpx2.Request])
         headers = {} if next_url is None else {"Link": f'<{next_url}>; rel="next"'}
         return httpx2.Response(200, json=body, headers=headers)
 
-    return github_client(TOKEN, httpx2.MockTransport(handle))
+    return github_client(TOKEN, 30, httpx2.MockTransport(handle))
 
 
 def _comment(login: str, at: str, body: str) -> dict[str, Any]:
@@ -415,6 +416,14 @@ def _comment(login: str, at: str, body: str) -> dict[str, Any]:
         "id": 5,
         "author_association": "MEMBER",
     }
+
+
+def test_the_client_waits_at_most_github_timeout_s() -> None:
+    settings = Settings(_env_file=None, database_url="x")
+
+    with github_client(TOKEN, settings.github_timeout_s) as client:
+        # S14-R1 Claude's call c: 30 s for each wait on the network, and no retries.
+        assert client.timeout == httpx2.Timeout(30)
 
 
 def test_an_issues_comments_are_paged_over_2_pages() -> None:
@@ -609,7 +618,7 @@ def test_a_discussions_comments_and_replies_are_paged_over_graphql() -> None:
         )
         return httpx2.Response(200, json={"data": pages[variables["after"]]})
 
-    client = github_client(TOKEN, httpx2.MockTransport(handle))
+    client = github_client(TOKEN, 30, httpx2.MockTransport(handle))
 
     snapshot = fetch_item(client, API, "example/repo", GithubItem("repo", "discussions", 9))
 
@@ -631,7 +640,7 @@ def test_a_graphql_error_is_raised() -> None:
     def handle(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, json={"data": None, "errors": [{"message": "Bad credentials"}]})
 
-    client = github_client(TOKEN, httpx2.MockTransport(handle))
+    client = github_client(TOKEN, 30, httpx2.MockTransport(handle))
 
     with pytest.raises(ValueError, match="Bad credentials"):
         fetch_item(client, API, "example/repo", GithubItem("repo", "discussions", 9))

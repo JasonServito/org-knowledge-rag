@@ -157,8 +157,8 @@ class Offline:
 def offline(monkeypatch: pytest.MonkeyPatch) -> Offline:
     seen = Offline()
 
-    def connect(url: str, **kwargs: Any) -> nullcontext[object]:
-        seen.connections.append(url)
+    def connect(settings: Settings) -> nullcontext[object]:
+        seen.connections.append(settings.database_url)
         return nullcontext(CONNECTION)
 
     def retrieve(
@@ -174,7 +174,7 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> Offline:
         seen.rerankers.append(reranker)
         return [HIT]
 
-    monkeypatch.setattr(api_app.psycopg, "connect", connect)
+    monkeypatch.setattr(api_app, "api_connection", connect)
     monkeypatch.setattr(pipeline, "retrieve", retrieve)
     monkeypatch.setattr(pipeline, "rule_conflicts", lambda conn, hits, settings: [])
     return seen
@@ -308,11 +308,12 @@ def test_an_ask_error_is_502_with_the_clis_error_line(
 def test_an_unreachable_database_is_503(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = _settings()
 
-    def refuse(url: str, **kwargs: Any) -> None:
+    def refuse(settings: Settings) -> None:
         # The message names the URL, password included: the response must not repeat it.
+        url = settings.database_url
         raise psycopg.OperationalError(f"connection to {url} failed: Connection refused")
 
-    monkeypatch.setattr(api_app.psycopg, "connect", refuse)
+    monkeypatch.setattr(api_app, "api_connection", refuse)
     embedder, generator = FakeEmbedder(), _answered()
 
     with TestClient(create_app(settings, embedder=embedder, generator=generator)) as client:
@@ -547,7 +548,7 @@ def stored_rows(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     def observations(conn: object, gates: Sequence[str], until: int) -> list[Observation]:
         return []
 
-    monkeypatch.setattr(api_app.psycopg, "connect", lambda url, **kwargs: nullcontext(CONNECTION))
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(CONNECTION))
     monkeypatch.setattr(chain_module, "stored_decision", stored_decision)
     monkeypatch.setattr(chain_module, "list_releases", list_releases)
     monkeypatch.setattr(chain_module, "observations", observations)
@@ -589,11 +590,12 @@ def test_a_chain_that_is_not_stored_is_404_with_the_make_chains_hint(
 
 
 def test_decisions_is_503_when_the_database_is_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
-    def refuse(url: str, **kwargs: Any) -> None:
+    def refuse(settings: Settings) -> None:
         # The message names the URL, password included: the response must not repeat it.
+        url = settings.database_url
         raise psycopg.OperationalError(f"connection to {url} failed: Connection refused")
 
-    monkeypatch.setattr(api_app.psycopg, "connect", refuse)
+    monkeypatch.setattr(api_app, "api_connection", refuse)
     client = TestClient(create_app(_settings()))
 
     response = client.get("/decisions/kep:2572")

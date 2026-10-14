@@ -45,7 +45,8 @@ class Generator(Protocol):
 class AnthropicGenerator:
     """The `Generator` on the Anthropic API: `messages.parse` with the answer schema.
 
-    The SDK's defaults stay: a 10-minute timeout and 2 retries. No `fallbacks` parameter: a
+    Each try waits at most GENERATION_TIMEOUT_S seconds for each step (connect, each read); the
+    client's caller sets its retries (ANTHROPIC_MAX_RETRIES; S14-T3). No `fallbacks` parameter: a
     refusal is an error here, not a reroute to another model (ADR-006).
     """
 
@@ -54,6 +55,7 @@ class AnthropicGenerator:
         self._model = settings.generation_model
         self._effort = settings.generation_effort
         self._max_tokens = settings.generation_max_tokens
+        self._timeout_s = settings.generation_timeout_s
 
     def generate(self, system: str, prompt: str) -> Generation:
         try:
@@ -66,6 +68,7 @@ class AnthropicGenerator:
                 # The SDK merges the schema into output_config as its `format`. Opus 5.5 always
                 # reasons (no `thinking` parameter); effort sets how much.
                 output_config={"effort": self._effort},
+                timeout=self._timeout_s,
             )
         except pydantic.ValidationError as error:
             # The SDK parses the output before it returns: text that isn't the schema's JSON

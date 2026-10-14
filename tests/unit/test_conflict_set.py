@@ -767,7 +767,9 @@ def test_eval_routes_routes_and_embeds_the_conflict_set_s_new_questions(
         routers.append(_Router(client, settings))
         return routers[-1]
 
-    def embedder(url: str, key: str, model: str) -> FakeEmbedder:
+    def embedder(
+        url: str, key: str, model: str, *, timeout_s: int, max_retries: int
+    ) -> FakeEmbedder:
         embedders.append(FakeEmbedder())
         return embedders[-1]
 

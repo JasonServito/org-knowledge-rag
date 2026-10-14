@@ -232,6 +232,8 @@ Every data-access function takes a `psycopg.Connection` and leaves the transacti
 
 There are two entry points. The API server: `make serve` runs `uv run uvicorn --factory orgknow.api.app:create_app --host 127.0.0.1 --port 8000` (uvicorn, ADR-004's 2026-10-12 amendment), and FastAPI's built-in `/docs` page lists the endpoints. The command line: the `orgknow` console script (`[project.scripts]` in `pyproject.toml`). Both answer through `pipeline.answer_question`.
 
+The API's contract is `docs/interfaces.md` (S14-R1). Every response carries an `X-Request-ID` (the caller's when it is 1–64 characters of `A-Z a-z 0-9 . _ -`, else a new one), repeated in the error body and in each JSON log line of the request (`make serve` only). Every error is one envelope, `{"error": {"code", "message", "request_id"}}`, with 5 codes (`api/errors.py`). Every external call has a timeout and a retry limit from the settings: `GENERATION_TIMEOUT_S` 90, `ROUTER_TIMEOUT_S` 30, `ANTHROPIC_MAX_RETRIES` 2, `VOYAGE_TIMEOUT_S` 60, `VOYAGE_MAX_RETRIES` 3, `GITHUB_TIMEOUT_S` 30 (no retries). `/query` and `/decisions` open one connection per request with `db/connect.py`'s `api_connection`: autocommit, so no transaction stays open during the answer call, and any statement past `DB_STATEMENT_TIMEOUT_MS` (10,000) is cancelled, a 503. There is no pool (ADR-005's amendment 2026-10-13).
+
 Outside `src/`:
 
 | Path | What it does |

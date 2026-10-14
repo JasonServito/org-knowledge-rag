@@ -110,6 +110,17 @@ def test_the_request_carries_the_settings_and_the_prompt_and_the_route_comes_bac
     assert (router.input_tokens, router.output_tokens) == (1760, 80)
 
 
+def test_the_route_call_waits_at_most_router_timeout_s() -> None:
+    requests: list[httpx2.Request] = []
+    reply = _reply([{"type": "text", "text": ROUTE_JSON}], "end_turn")
+    settings = Settings(_env_file=None, database_url="x", router_timeout_s=12)
+
+    ClaudeRouter(_client(reply, requests), settings).route(QUESTION)
+
+    # S14-T3: 12 s for each wait on the network (the SDK's default read timeout is 600 s).
+    assert requests[0].extensions["timeout"] == {"connect": 12, "read": 12, "write": 12, "pool": 12}
+
+
 def test_a_refusal_is_a_router_error_and_its_tokens_still_count() -> None:
     reply = _reply([], "refusal")
     reply["stop_details"] = {"type": "refusal", "category": None, "explanation": None}

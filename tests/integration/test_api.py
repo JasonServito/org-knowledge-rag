@@ -1,24 +1,36 @@
 import json
 import re
 import socket
+import threading
 from contextlib import nullcontext
 
+import httpx2
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
-from tests.conftest import FakeEmbedder
+from tests.conftest import FakeEmbedder, FakeGenerator, FakeReranker, FakeRouter
 from tests.integration.test_cli import (
     FAKE_ANTHROPIC_KEY,
     FAKE_VOYAGE_KEY,
     MANIFEST,
     QUESTION,
+    TEXT,
     Conn,
+    RaisingRouter,
     _answered,
+    _route,
     _store_one_chunk,
 )
 
+from orgknow import pipeline
 from orgknow.api import app as api_app
 from orgknow.api.app import create_app
 from orgknow.cli import ask
+from orgknow.db.connect import api_connection
+from orgknow.db.models import Authority, Hit
+from orgknow.generation.schema import Generation
+from orgknow.provenance import chain as chain_module
+from orgknow.retrieval.router import RouterError
 from orgknow.settings import Settings
 
 NEW_ID = re.compile(r"[0-9a-f]{32}")  # a new random request ID (docs/interfaces.md)
@@ -92,7 +104,7 @@ def test_query_answers_from_postgres_with_the_json_ask_prints(
     # The chunk is stored inside this test's rolled-back transaction, which a new connection can't
     # see: the request gets this test's connection instead of opening its own.
     chunk_id = _store_one_chunk(conn)
-    monkeypatch.setattr(api_app.psycopg, "connect", lambda *args, **kwargs: nullcontext(conn))
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(conn))
     query_settings = _query_settings(settings)
     app = create_app(query_settings, embedder=FakeEmbedder(), generator=_answered(chunk_id))
 
@@ -154,3 +166,186 @@ def test_query_is_503_when_the_database_is_unreachable(
         }
     }
     assert embedder.calls == []
+
+
+# S14-T3: the API's own connections (`db/connect.py`), autocommit with a statement timeout
+# (S14-R1 decision 2; ADR-005's amendment 2026-10-13).
+
+
+def test_an_api_connection_is_autocommit_with_a_10_s_statement_timeout(settings: Settings) -> None:
+    with api_connection(settings) as conn:
+        assert conn.autocommit
+        # DB_STATEMENT_TIMEOUT_MS's default, 10000, as Postgres shows it.
+        assert conn.execute("SHOW statement_timeout").fetchone() == ("10s",)
+
+
+def _sleep_half_a_second(*args: object, **kwargs: object) -> None:
+    """Stands in for a data-access step: a statement of 0.5 s on the request's own connection."""
+    conn = next(arg for arg in args if isinstance(arg, psycopg.Connection))
+    conn.execute("SELECT pg_sleep(0.5)")
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "patch"),
+    [
+        ("POST", "/query", (pipeline, "retrieve")),
+        ("GET", "/decisions/kep:2572", (chain_module, "stored_decision")),
+    ],
+    ids=["query", "decisions"],
+)
+def test_a_statement_past_the_statement_timeout_is_503(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    path: str,
+    patch: tuple[object, str],
+) -> None:
+    # A cancelled statement is a database error, not an upstream one (S14-R1 Claude's call d).
+    monkeypatch.setattr(*patch, _sleep_half_a_second)
+    limited = _query_settings(settings, db_statement_timeout_ms=200)
+    app = create_app(limited, embedder=FakeEmbedder(), generator=_answered(0))
+
+    with TestClient(app) as client:
+        response = client.request(method, path, json={"question": QUESTION})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {
+            "code": "database_unavailable",
+            "message": "database unavailable",
+            "request_id": response.headers["X-Request-ID"],
+        }
+    }
+
+
+# A KEP hit at 1.37, so the real `rule_conflicts` reads the KEP's version, its gates' rows and the
+# releases on the request's connection: the plain SELECTs that left the S14-R1 sitting's probe
+# `idle in transaction`. Retrieval is replaced: the test database has no vectors a new connection
+# could see.
+KEP_HIT = Hit(
+    chunk_id=1,
+    content_hash="b" * 64,
+    distance=0.1,
+    text="Sidecar containers start before the app containers.",
+    canonical_id="kep:753",
+    source_type="kep",
+    heading_path=["Summary"],
+    release_windows=[(28, None)],
+    current=True,
+    claimed_status="implemented",
+    claimed_stage="stable",
+    snapshot_repo="enhancements",
+    snapshot_sha="0123456789abcdef0123456789abcdef01234567",
+    source_path="keps/sig-node/753-sidecar-containers/README.md",
+    metadata={"title": "Sidecar Containers"},
+    authority=Authority(target_release=37, tier=3, effective_stage=None, stage_confidence=None),
+)
+WAIT_S = 10  # the most any step of the next test waits, so a failure can't hang the suite
+
+
+class BlockingGenerator:
+    """A `Generator` that says it has started, then waits until the test lets it answer."""
+
+    def __init__(self, answer: FakeGenerator) -> None:
+        self.answer = answer
+        self.started = threading.Event()
+        self.released = threading.Event()
+
+    def generate(self, system: str, prompt: str) -> Generation:
+        self.started.set()
+        assert self.released.wait(WAIT_S), "the test never released the generator"
+        return self.answer.generate(system, prompt)
+
+
+def test_no_transaction_stays_open_while_the_answer_is_generated(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pipeline, "retrieve", lambda *args, **kwargs: [KEP_HIT])
+    generator = BlockingGenerator(_answered(KEP_HIT.chunk_id))
+    app = create_app(
+        _query_settings(settings, retrieval_mode="dense"),
+        embedder=FakeEmbedder(),
+        generator=generator,
+    )
+    responses: list[httpx2.Response] = []
+
+    with TestClient(app) as client:
+        request = threading.Thread(
+            target=lambda: responses.append(client.post("/query", json={"question": QUESTION}))
+        )
+        request.start()
+        try:
+            assert generator.started.wait(WAIT_S), "the request never reached the generator"
+            # While the answer is generated: every other client connection to the test database,
+            # read from a connection of the test's own.
+            with psycopg.connect(settings.database_url, autocommit=True) as observer:
+                states = observer.execute(
+                    "SELECT state FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND backend_type = 'client backend' AND pid <> pg_backend_pid()"
+                ).fetchall()
+        finally:
+            generator.released.set()
+            request.join(WAIT_S)
+
+    # The request's one connection, idle between statements: never `idle in transaction`.
+    assert states == [("idle",)]
+    assert [response.status_code for response in responses] == [200]
+
+
+# Temporal and authority modes over the API (S12-R1 input): the route, the reranker and a router
+# failure, on the test's rows (`_store_one_chunk`: the PSA page, current since 1.30).
+
+
+@pytest.mark.usefixtures("seeded_releases")
+@pytest.mark.parametrize("mode", ["temporal", "authority"])
+def test_a_routed_mode_routes_once_and_reranks_the_pool(
+    conn: Conn, settings: Settings, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    chunk_id = _store_one_chunk(conn)
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(conn))
+    router, reranker = FakeRouter({QUESTION: _route("CURRENT")}), FakeReranker({TEXT: 0.5})
+    app = create_app(
+        _query_settings(settings, retrieval_mode=mode),
+        embedder=FakeEmbedder(),
+        generator=_answered(chunk_id),
+        router=router,
+        reranker=reranker,
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/query", json={"question": QUESTION})
+
+    assert response.status_code == 200
+    assert router.calls == [QUESTION]
+    assert reranker.calls == [(QUESTION, [TEXT])]  # the filtered pool: the one current text
+    assert [evidence["chunk_id"] for evidence in response.json()["evidence"]] == [chunk_id]
+
+
+@pytest.mark.usefixtures("seeded_releases")
+def test_a_router_failure_is_502_upstream_failed(
+    conn: Conn, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(conn))
+    embedder, generator, reranker = FakeEmbedder(), _answered(0), FakeReranker({TEXT: 0.5})
+    router = RaisingRouter(RouterError("no route from the model (stop reason: refusal)"))
+    app = create_app(
+        _query_settings(settings, retrieval_mode="authority"),
+        embedder=embedder,
+        generator=generator,
+        router=router,
+        reranker=reranker,
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/query", json={"question": QUESTION})
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "error": {
+            "code": "upstream_failed",
+            "message": "no route from the model (stop reason: refusal)",
+            "request_id": response.headers["X-Request-ID"],
+        }
+    }
+    # It stops before the question is embedded, reranked or answered.
+    assert (embedder.calls, reranker.calls, generator.calls) == ([], [], [])

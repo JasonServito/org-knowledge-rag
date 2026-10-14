@@ -370,3 +370,52 @@ def test_a_history_date_tolerance_of_0_is_accepted_and_below_0_refused(
 
     with pytest.raises(ValidationError, match="history_date_tolerance_days"):
         Settings(_env_file=None, database_url="x")
+
+
+def test_timeout_and_retry_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    names = (
+        "GENERATION_TIMEOUT_S",
+        "ROUTER_TIMEOUT_S",
+        "ANTHROPIC_MAX_RETRIES",
+        "VOYAGE_TIMEOUT_S",
+        "VOYAGE_MAX_RETRIES",
+        "GITHUB_TIMEOUT_S",
+        "DB_STATEMENT_TIMEOUT_MS",
+    )
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None, database_url="x")
+
+    # S14-R1 Claude's call c: generation 90 s, router 30 s, Anthropic retries 2, Voyage 60 s and
+    # 3 retries, GitHub 30 s, a database statement 10 s.
+    assert (settings.generation_timeout_s, settings.router_timeout_s) == (90, 30)
+    assert settings.anthropic_max_retries == 2
+    assert (settings.voyage_timeout_s, settings.voyage_max_retries) == (60, 3)
+    assert settings.github_timeout_s == 30
+    assert settings.db_statement_timeout_ms == 10_000
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("generation_timeout_s", 0),
+        ("router_timeout_s", 0),
+        ("voyage_timeout_s", 0),
+        ("github_timeout_s", 0),
+        ("db_statement_timeout_ms", 0),  # 0 would turn Postgres's statement timeout off
+        ("anthropic_max_retries", -1),
+        ("voyage_max_retries", -1),
+    ],
+)
+def test_a_timeout_below_1_or_a_negative_retry_count_is_refused(field: str, value: int) -> None:
+    with pytest.raises(ValidationError, match=field):
+        Settings(_env_file=None, database_url="x", **{field: value})
+
+
+def test_no_retries_are_accepted() -> None:
+    settings = Settings(
+        _env_file=None, database_url="x", anthropic_max_retries=0, voyage_max_retries=0
+    )
+
+    assert (settings.anthropic_max_retries, settings.voyage_max_retries) == (0, 0)

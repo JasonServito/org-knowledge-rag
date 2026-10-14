@@ -113,7 +113,7 @@ def no_database(monkeypatch: pytest.MonkeyPatch) -> None:
         embedder.embed([question], "query")
         return []
 
-    monkeypatch.setattr(api_app.psycopg, "connect", lambda url, **kwargs: nullcontext(object()))
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(object()))
     monkeypatch.setattr(pipeline, "retrieve", retrieve)
     monkeypatch.setattr(pipeline, "rule_conflicts", lambda conn, hits, settings: [])
 
@@ -359,7 +359,7 @@ def test_a_database_error_that_is_not_a_connection_failure_is_a_500(
     patch: tuple[object, str],
 ) -> None:
     # K1 (S14-R1 step 0): a missing table is a database error but not a connection failure.
-    monkeypatch.setattr(api_app.psycopg, "connect", lambda url, **kwargs: nullcontext(object()))
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(object()))
     monkeypatch.setattr(*patch, _missing_table)
     app = create_app(_settings(), embedder=FakeEmbedder(), generator=FakeGenerator(None))
 
