@@ -158,6 +158,26 @@ sources:
       paths:
         - release-engineering/  # includes reference/versioning.md (gate Appendix A conflict case)
 
+# Phase 2 (ADR-012, S13-R1): each decision chain's seed KEP and the GitHub items it links to.
+# ADR-001: only items a traced chain links to. `repo` is a key of `repos`; `kind` is issues,
+# pull or discussions (the item URL's path segment). `make fetch-github` caches each item's
+# snapshot at <corpus cache>/github/<repo>/<kind>/<number>.json and pins its sha256 in the lock;
+# `make ingest` stores each as a `discussion` document, gh:<repo>/<kind>/<number>.
+decision_chains:
+  # Release cadence (built on): the Discussion Link (sig-release Discussion #1290), the tracking
+  # issue, and the KEP's PR.
+  - seed: kep:2572
+    items:
+      - {repo: sig-release, kind: discussions, number: 1290}
+      - {repo: enhancements, kind: issues, number: 2572}
+      - {repo: enhancements, kind: pull, number: 2567}
+  # The held-out chain (drawn in the S13-R1 sitting): the tracking issue, and the first URL of its
+  # "Discussion Link:" field. Its update PR (#5140) is a bare `#N`, not a link: not ingested.
+  - seed: kep:3015
+    items:
+      - {repo: enhancements, kind: issues, number: 3015}
+      - {repo: enhancements, kind: pull, number: 3010}
+
 # ADR-002 D2: front-matter keys removed before hashing, so they never create a new version.
 # They are still stored as metadata. Built from the front-matter key inventory in the
 # S02-T1 PR; keys not listed are kept. Match keys case-insensitively, as Hugo does.
@@ -207,3 +227,4 @@ scopes:
     kep: all  # every KEP in sources.kep.sig_dirs (T4)
     governance_doc: all  # T4
     blog_post: all  # T5; sources.blog_post.from_release and exclude_drafts apply
+    discussion: all  # S13-T1: every decision chain's GitHub items (decision_chains)

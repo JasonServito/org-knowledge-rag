@@ -3,6 +3,9 @@
 - `check`: validate the golden file (EVAL_GOLDEN_PATH), then print one line per label with the
   number of distinct chunk texts it matches in the database, then a total. Exits 1 if the file
   is invalid or a label matches nothing.
+- `check-chains`: print one line per `texts` label of the gold chains file (EVAL_CHAINS_PATH,
+  ADR-012 D4) with the number of distinct stored chunk texts it matches, then a total (S13-T1).
+  Exits 1 if a label matches nothing, naming it.
 - `sections CANONICAL_ID`: list a document's sections (canonical_id or alias) as labels write
   them, one line per distinct heading path in any version, first appearance first, each with
   its number of distinct texts.
@@ -61,6 +64,7 @@ from orgknow.db.models import Release
 from orgknow.db.releases import list_releases
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.eval import runner
+from orgknow.eval.chains import count_texts, label_line, text_labels
 from orgknow.eval.conflicts import (
     ConflictFile,
     ConflictSetError,
@@ -104,6 +108,21 @@ def check(settings: Settings) -> int:
         print(check_line(count))
     unmatched = sum(1 for count in counts if count.texts == 0)
     print(f"Labels: {len(counts)}. Unmatched: {unmatched}.")
+    return 1 if unmatched else 0
+
+
+def check_chains(settings: Settings) -> int:
+    """`make eval-check-chains`: print the chain label check; 0 if every label matches a stored
+    text, else 1, with an error line naming each label that matches none."""
+    labels = text_labels(settings.eval_chains_path)
+    with psycopg.connect(settings.database_url) as conn:
+        counts = count_texts(conn, labels)
+    for label, count in zip(labels, counts, strict=True):
+        print(label_line(label, count))
+    unmatched = [label for label, count in zip(labels, counts, strict=True) if count == 0]
+    for label in unmatched:
+        print(f"error: no stored text matches {label_line(label, 0)}", file=sys.stderr)
+    print(f"Labels: {len(labels)}. Unmatched: {len(unmatched)}.")
     return 1 if unmatched else 0
 
 
@@ -339,6 +358,9 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check", help="check the golden file's labels against the database")
+    commands.add_parser(
+        "check-chains", help="check the gold chains' text labels against the database"
+    )
     sections_parser = commands.add_parser(
         "sections", help="list a document's sections as labels write them"
     )
@@ -377,6 +399,8 @@ def main(argv: Sequence[str] | None = None, settings: Settings | None = None) ->
         settings = Settings()
     if args.command == "check":
         return check(settings)
+    if args.command == "check-chains":
+        return check_chains(settings)
     if args.command == "sections":
         return sections(settings, args.canonical_id)
     if args.command == "run":

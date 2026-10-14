@@ -117,9 +117,10 @@ def test_r3_canonical_id_cannot_equal_an_alias(conn: Conn) -> None:
 
 
 def test_r4_source_type_must_be_known(conn: Conn) -> None:
-    # `discussion` is an ADR-003 source type, but it arrives only with Phase 2.
+    # Not an ADR-003 source type: mailing lists are out of scope (S13). `discussion` is allowed
+    # since migration 0007 (S13-T1).
     with pytest.raises(errors.CheckViolation) as exc_info, conn.transaction():
-        create_document(conn, "web:/test/page/", "discussion")
+        create_document(conn, "web:/test/page/", "mailing_list")
 
     assert exc_info.value.diag.constraint_name == "documents_source_type_check"
 

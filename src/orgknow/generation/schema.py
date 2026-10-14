@@ -63,7 +63,7 @@ class Evidence(BaseModel):
     superseded_proposal: bool = False  # a KEP claiming withdrawn, rejected or replaced
     effective_stage: str | None = None  # a KEP's stage at the target release
     stage_confidence: Confidence | None = None  # high: observed; low: the claim
-    source_url: str  # the file on GitHub at the snapshot commit
+    source_url: str  # the file on GitHub at the snapshot commit; a GitHub item's own page
 
 
 class AnswerTrace(BaseModel):

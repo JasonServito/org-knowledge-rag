@@ -7,7 +7,7 @@ An ADR records **one decision**, why it was made, and what it costs. ADRs are th
 | ADR | Title | Status |
 |---|---|---|
 | [001](ADR-001-corpus-kubernetes.md) | Corpus is Kubernetes | Accepted |
-| [002](ADR-002-versioning-and-identity.md) | Versioning and document identity | Accepted; changed in S02 and S05-R2 |
+| [002](ADR-002-versioning-and-identity.md) | Versioning and document identity | Accepted; changed in S02, S05-R2 and S13-R1 |
 | [003](ADR-003-authority-and-status.md) | Source types, authority tiers, status taxonomy | Accepted; changed in S02, S09-R1, S09-R2 and S10-R1 |
 | [004](ADR-004-toolchain.md) | Development toolchain | Accepted; amended in S01 (×2), S02, S03-R1, S04-R2, S08-R1 and S12-R1 |
 | [005](ADR-005-data-access.md) | Data access approach | Accepted |
@@ -17,6 +17,7 @@ An ADR records **one decision**, why it was made, and what it costs. ADRs are th
 | [009](ADR-009-query-mode-routing.md) | Query-mode routing | Accepted |
 | [010](ADR-010-conflict-detection.md) | Conflict detection method | Accepted; changed in S10-R2 and after S10-T8's run 1; amended in S11-R1 and S12-R1 (D4's detector probed, not adopted) |
 | [011](ADR-011-corrective-retrieval.md) | Corrective retrieval: not adopted | Accepted; amended in S12-R1 |
+| [012](ADR-012-decision-provenance.md) | Decision provenance | Accepted |
 
 "Changed": a sub-decision updated in place and logged in a Changes table. "Amended": a dated Amendment section at the end. Both are described under Rules.
 

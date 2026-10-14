@@ -403,10 +403,23 @@ Tasks:
 |---|---|---|
 | 🟨 **S13 Phase 2 provenance MVP** | Stage 9 | One decision chain reconstructed end to end. Linked issues/PRs are ingested for that chain only; `decisions`/`decision_evidence` tables; decision-chain completeness metric. |
 | ⬜ **S14 Backend hardening + async ingestion** | Stage 10 | `docs/interfaces.md` (contracts, error shapes, idempotency); ingestion job model; a local queue abstraction shaped like SQS; idempotent worker; request IDs; structured logs; timeouts and retries. |
-| ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-012 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
+| ⬜ **S15 AWS deployment** | Stage 11 | **First task:** a risk/security/cost review (blueprint gap #6). Then ADR-013 (deployment topology) and Terraform for EC2, RDS, S3, SQS, ECR, IAM, CloudWatch, and SSM. Budget alarm, a teardown runbook, and cost of $50/month or less. |
 | ⬜ **S16 CI/CD** | Stage 12 | ECR build/push, deploy to EC2, smoke eval in CI. |
 | ⬜ **S17 Next.js UI** | Stage 13 | Answer with citations, authority/version badges, a conflict panel, a timeline, and provenance views. |
 | ⬜ **S18 Final evaluation + portfolio assets** | Stage 14 | Full benchmark, architecture docs, README, demo video, resume bullets backed by measured results. |
+
+### 🟨 S13 Phase 2 provenance MVP
+
+- **Outcome:** `orgknow chain kep:2572` prints the release-cadence decision as 6 dated steps, each citing a stored text, built by rules from recorded links and dates (ADR-012). Decision-chain completeness is scored on 2 gold chains (release cadence and a random held-out KEP), beside a like-for-like plain-search control.
+- **Metrics to move:** decision-chain completeness (new); Phase 1's retrieval metrics hold within ±0.03.
+- **Slice doc:** `docs/slices/S13-provenance-mvp.md` (run contract S13-R1)
+
+- [x] **S13-T1 `[core]` Ingest the chains' GitHub items.** `discussion` documents (tier 7), fetched into the cache and pinned by hash; migration; embeddings; the chain label check. Deps: none.
+- [x] **S13-T2 `[human]` Gold chains v0.** Both chains' steps and the held-out chain's WHY question, before any system output; drafted by Claude at the developer's request, signed off by the developer in the S13-R1 sitting. Deps: the contract.
+- [ ] **S13-T3 `[core]` Decision tables and the chain builder.** `decisions`, `decision_evidence`; `make chains`; `orgknow chain`. Deps: T1.
+- [ ] **S13-T4 `[core]` Decision-chain completeness.** `make eval-chain`: both numbers per chain, and the control. Deps: T2, T3.
+- [ ] **S13-T5 `[commodity]` `GET /decisions/{canonical_id}`.** Deps: T3.
+- [ ] **S13-T6 `[commodity]` Docs and the S13 retro.** Deps: T4, T5.
 
 ---
 
@@ -424,7 +437,8 @@ ADRs are decided when their slice starts, not earlier.
 | 009 | Query-mode routing | S09 (Accepted) |
 | 010 | Conflict detection method | S10 (Accepted) |
 | 011 | Corrective retrieval | S11 (Accepted) |
-| 012 | Deployment topology | S15 |
+| 012 | Decision provenance | S13 (Accepted) |
+| 013 | Deployment topology | S15 |
 
 ## Proposed additions (triage by the developer)
 
@@ -455,7 +469,7 @@ ADRs are decided when their slice starts, not earlier.
 - **Dated CHANGE questions: retrieve per window end, then merge (ADR-003 D4, deferred).** Reason: none of v0's 9 CHANGE questions names a release or year, so the plan can't be measured; CHANGE gets no filter until a golden question needs it. (S09-R1 sitting, decision 3.)
 - **Golden set v1: a router check set.** Reason: the S09-R1 sitting's blind rewording of v0's 36 answerable questions (Slack style, same meaning) exposed fitted router rules (36/36 → 12/36); it's in `eval/candidates/router-rewording-v0.yaml`. A reworded set, spot-checked by the developer, would test the router and retrieval on wording the system wasn't tuned on. (S09-R1 sitting, 2026-10-09.)
   - **S11-R1:** the developer spot-checked 5 of 36 (all match) and Claude read all 36; the set was the sitting's hard set.
-- **S09-R1 cleanup (PR #39 parked 2, 4, 16).** Reason: `Mode` is defined twice (`retrieval/router.py`, `eval/golden.py`); `golden_window` re-implements `golden._minor`; `route_line` uses an `assert` in production code. (Kept in the S09-R2 sitting.)
+- **S09-R1 cleanup (PR #39 parked 2, 4, 16).** Reason: `Mode` is defined twice (`retrieval/router.py`, `eval/golden.py`); `golden_window` re-implements `golden._minor`; `route_line` uses an `assert` in production code. (Kept in the S09-R2 sitting.) Also a third copy of the "1.N" → N parse (PR #45 parked 4; kept in the S13-R1 sitting).
 - **Test: pin "stale" to dates, not releases (PR #39 parked 6).** Reason: switching `current` to "open end release" breaks no test; only the real baselines catch it. (Kept in the S09-R2 sitting.)
 - **Golden set v1: count an unanswerable row the same way in `summarize` and `score_retrieval_only` (PR #39 parked 10).** Reason: `summarize` would count an unanswerable row with a mode or window; `score_retrieval_only` wouldn't. No effect on v0. (Kept in the S09-R2 sitting.)
 - **Trace coverage.** Reason: no test checks the `retrieve` span's route, window and filter (PR #39 parked 11), there is no router span, so a live ask's router latency isn't traced (parked 12), and the S07 (1) and S08 (3) trace gaps above. One task could cover them. (Kept in the S09-R2 sitting.)
@@ -468,3 +482,9 @@ ADRs are decided when their slice starts, not earlier.
 - **c01's search miss (S12-R1 sitting).** Reason: as routed (HISTORY, 1.30), none of seed k04's `versioning.md` texts is among c01's 20 candidates; only kep:1498 (a second side) is (`probe_ranks.log`). S11's "no window" lead matched the "every four months" versions, not the seed's text.
 - **Freeze the AC5 and AC6 rules for golden set v1 (S12-R1 sitting).** Reason: both rules were chosen on the runs they score (decisions 3 and 4), with a negative control as the only guard. Fix them, and v1's AC4 wording (product spec), before any v1 result.
 - **Streamlit dev UI: a note for S17's sitting (S12-R1 sitting).** Reason: S12 used FastAPI's `/docs` page, the CLI and Langfuse instead (0 lines, 0 dependencies); S17 builds the real UI, so decide there whether a Streamlit step is worth it.
+- **Phase 1 text corrections (S12-R1, PRs #45 and #46; kept in the S13-R1 sitting).** Reason: 12 factual errors in docs, docstrings and interview prep. Stale docstrings: "the CLI" (`generation/schema.py`, `generation/generator.py`), "only caller of Langfuse" (`pipeline.py`), `summarize`'s when only `latest` is given. `CLAUDE.md`'s Core list names "agent graph". `docs/evaluation.md` cites `graph.py:76` for a cast the committed spike doesn't have, and says "row 4 rescues only q02" (for dense it rescues q02 and q24). The S11 docs call k04 "reachable" with no pointer to S12's correction. The "every three months" text is in chunk 36369 too, not only 36362. The M1 report's `probe_ranks.py` command needs `HF_HUB_OFFLINE=1`. `docs/architecture.md` says "both routes" (there are 3). The S12 slice brief calls the reranker load "the slow step" (7.5 s of an 11–12 s request); the S12 retro says "the router call isn't in the trace" (the route is on the retrieve span; only its usage is missing). About 30 minutes as one interactive docs task.
+- **Eval: read the latest release before the paid question loop (PR #45 parked 1; kept in the S13-R1 sitting).** Reason: `run` reads it after the paid loop, so a bad database read at the end fails a run that has already been paid for.
+- **S14 inputs from S12-R1 (PR #45 parked 8, PR #46 parked 2; kept in the S13-R1 sitting).** Reason: no API test covers temporal or authority mode; `/query` opens 1 database connection per request with no pool, though ADR-005 expects one.
+- **S17: attach the stored chain to WHY answers (S13-R1 decision 6).** Reason: when a WHY answer cites a text from a stored chain, the reply could carry that chain's timeline without touching the LLM (~100–150 lines). Not built in S13 to keep the run inside one PR; S17's sitting decides how answers and chains meet.
+- **Chain rules: read bare `#N` references (S13-R1, the held-out draw).** Reason: KEP-3015's tracking issue names its merged KEP PR as a bare `#5140`, which GitHub renders as a link but the frozen rule (full URLs only) ignores, so the held-out chain's decision step is missing. Test the fix on a fresh held-out chain, never on KEP-3015.
+- **`CLAUDE.md`: the golden-set copy step in the desktop app (S13-R1 sitting).** Reason: "type it in the Claude Code prompt with a `!` prefix" doesn't run in the desktop app's Code tab (the message arrives as text); the developer used the Ubuntu terminal. Update "Getting a file in", step 2: an Ubuntu (WSL) terminal, or the app's Run button on a `bash` block.

@@ -1,0 +1,49 @@
+## kep:2572 (built-on): Why did Kubernetes move to three releases per year?
+- problem (2020-10-14):
+  -    1 posts (rendered from the sitting's JSON): gh:sig-release/discussions/1290 › Opening post · @justaugustus · 2020-10-14
+  -   12 stored chunks: kep:2572 › KEP-2572: Defining the Kubernetes Release Cadence > Motivation
+- discussion (2020-10-14):
+  -   88 posts (rendered from the sitting's JSON): gh:sig-release/discussions/1290 › Comments
+- proposal (2021-03-12):
+  -    1 stored chunks: kep:2572 › KEP-2572: Defining the Kubernetes Release Cadence > Summary
+  -   13 stored chunks: kep:2572 › KEP-2572: Defining the Kubernetes Release Cadence > Proposal
+- decision (2021-04-23):
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/pull/2567 › Comments > @dims · 2021-04-19
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/pull/2567 › Comments > @derekwaynecarr · 2021-04-20
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/pull/2567 › Comments > @johnbelamaric · 2021-04-20
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/pull/2567 › Comments > @dchen1107 · 2021-04-22
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/pull/2567 › Comments > @dims · 2021-04-22
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/pull/2567 › Comments > @spiffxp · 2021-04-23 · review
+  -    2 posts (rendered from the sitting's JSON): gh:enhancements/pull/2567 › Comments > @justaugustus · 2021-04-23
+- implementation (2021-08-04):
+  -   32 stored chunks: web:/blog/2021/07/20/new-kubernetes-release-cadence/ (whole document)
+  -    1 stored chunks: changelog:1.22 › v1.22.0 > What's New (Major Themes) > Kubernetes release cadence change
+  -    6 stored chunks: web:/blog/2021/08/04/kubernetes-1-22-release-announcement/ › 
+  -    6 stored chunks: web:/blog/2021/08/04/kubernetes-1-22-release-announcement/ › Project Velocity
+- current_docs (undated):
+  -    2 stored chunks: web:/releases/release/ › The Release Cycle
+  -    4 stored chunks: sig-release:release-engineering/versioning.md › Kubernetes Release Versioning > Release versioning > Supported releases and component skew
+  -    6 stored chunks: community:contributors/devel/sig-release/release.md › Targeting enhancements, Issues and PRs to Release Milestones > The Release Cycle
+## kep:3015 (held-out): Why did Kubernetes add the PreferSameZone and PreferSameNode traffic distribution options for Services?
+- problem (2021-10-14):
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/pull/3010 › Opening post · @danwinship · 2021-10-14
+  -    1 posts (rendered from the sitting's JSON): gh:enhancements/issues/3015 › Opening post · @danwinship · 2021-10-21
+  -    6 stored chunks: kep:3015 › KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution > Motivation
+- discussion (2021-10-14):
+  -    8 posts (rendered from the sitting's JSON): gh:enhancements/pull/3010 › Comments
+- proposal (2025-02-06):
+  -    3 stored chunks: kep:3015 › KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution > Summary
+  -    9 stored chunks: kep:3015 › KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution > Proposal
+- decision: not_stored: https://github.com/kubernetes/enhancements/pull/5140
+- implementation (2025-04-23):
+  -   12 stored chunks: changelog:1.33 › v1.33.0 > Changes by Kind > API Change
+  -    5 stored chunks: web:/docs/concepts/services-networking/service/ › Virtual IP addressing mechanism > Traffic distribution
+  -    1 stored chunks: web:/blog/2025/07/28/kubernetes-v1-34-sneak-peek/ › Featured enhancements of Kubernetes v1.34 > `PreferSameZone` and `PreferSameNode` traffic distribution for Services
+  -    6 stored chunks: web:/blog/2025/12/17/kubernetes-v1-35-release/ › Features graduating to Stable > PreferSameNode traffic distribution
+- current_docs (undated):
+  -    3 stored chunks: web:/docs/concepts/services-networking/service/ › Virtual IP addressing mechanism > Traffic distribution control
+  -    8 stored chunks: web:/docs/reference/networking/virtual-ips/ › Traffic distribution control
+  -    3 stored chunks: gate:PreferSameTrafficDistribution (whole document)
+
+sha256: 50323a244638dd154abf7839ab20b5894e27d4a56e6ce0da6f583d75df9e3068
+errors: 0

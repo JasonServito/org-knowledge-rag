@@ -14,6 +14,7 @@
     { "path": "docs/decisions/ADR-009-query-mode-routing.md", "description": "ADR-009: query-mode routing (LLM router, time scope to release window)" },
     { "path": "docs/decisions/ADR-010-conflict-detection.md", "description": "ADR-010: conflict detection (rules for stored facts, the answer model for texts, resolution by ADR-003 D6)" },
     { "path": "docs/decisions/ADR-011-corrective-retrieval.md", "description": "ADR-011: corrective retrieval not adopted (no grader, no second search, no LangGraph) and the rule a revisit must pass" },
+    { "path": "docs/decisions/ADR-012-decision-provenance.md", "description": "ADR-012: decision provenance (rule-built chains from recorded links, 2 tables, discussion documents, completeness vs. gold chains and a like-for-like control)" },
     { "path": "docs/domain-model.md", "description": "Domain model: tables, rules R1-R15 and data-access functions" },
     { "path": "docs/m1-report.md", "description": "M1 report: Phase 1 closeout, each acceptance criterion with its proof, the 3 stated exceptions and their causes" }
   ]

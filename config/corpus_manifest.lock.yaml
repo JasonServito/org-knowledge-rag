@@ -246,3 +246,19 @@ release_date_snapshots:
     '1.37':
       date: '2026-08-26'
       sha: 9ad626fddbec5fe4757dc9882b8b9815f37ae450
+github:
+  sig-release/discussions/1290:
+    sha256: 47bab65356188c0ef28285d6492093863db227831a0b45b8fc98f6a8b1f30472
+    fetched_at: '2026-10-13T21:01:30Z'
+  enhancements/issues/2572:
+    sha256: a83ad60537dc1991e3023bdab67b4425f0d9d5e64dcae12e01b9a9a5ed8370cb
+    fetched_at: '2026-10-13T21:01:30Z'
+  enhancements/pull/2567:
+    sha256: 8e239c85a4231d15f157634dc066a456d5b45ea849b543d7e6cd78f2128c98a4
+    fetched_at: '2026-10-13T21:01:30Z'
+  enhancements/issues/3015:
+    sha256: 69ec2272027c7677758dbc1abfa3ecaace5e1b5d9979c4e488ce27faac201471
+    fetched_at: '2026-10-13T21:01:30Z'
+  enhancements/pull/3010:
+    sha256: febe6e0e06f2e470d3e7d32923fb930912cd0a54058d928de4f8d89dc04d2bab
+    fetched_at: '2026-10-13T21:01:30Z'

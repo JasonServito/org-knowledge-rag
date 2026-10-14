@@ -7,6 +7,9 @@ with no chunks are chunked, so a re-run writes nothing.
 1. Check (DB, read-only): the `releases` table must hold every manifest release with the same
    dates, since windows are derived from them. Otherwise stop, before any git read or write,
    and ask for `make seed`. Ingest never writes `releases`; extra rows in it are fine.
+   Then read the decision chains' GitHub items (S13-T1) from their cached snapshots, never the
+   network: a missing snapshot, or one whose sha256 isn't the lock's, stops here too, naming
+   the item (`github.py`). Each is one `discussion` document, stored after the others.
 2. Read (git): every snapshot of the scope, the release-scoped groups first (docs pages,
    website release records, feature gates, with each release's redirect file), then the
    CHANGELOGs at the kubernetes lock head, with that commit's time, then the date-scoped groups
@@ -23,7 +26,8 @@ with no chunks are chunked, so a re-run writes nothing.
    is another document's alias) is reported, leaves that document untouched, and makes the
    exit code non-zero.
 5. Chunk: every stored version with no chunks is re-read from git at its snapshot and chunked
-   (`chunker.py`), one transaction per version.
+   (`chunker.py`), one transaction per version. A GitHub item's version is rendered again from
+   its cached snapshot, which must still be the one it was stored from.
 6. Lifecycle (`lifecycle.py`, S09-T5): rebuild `observed_lifecycle` from the stored versions, as
    `make lifecycle` does, in one transaction.
 7. Report (`report.py`, S05-T8): this run's counts and the lifecycle line, each skipped file once
@@ -69,6 +73,13 @@ from orgknow.ingestion.git_reader import (
     read_files,
     similar_renames,
 )
+from orgknow.ingestion.github import (
+    GithubSnapshotError,
+    item_version,
+    read_snapshot,
+    snapshot_text,
+)
+from orgknow.ingestion.github import canonical_id as github_canonical_id
 from orgknow.ingestion.history import (
     HistoryMismatch,
     Observed,
@@ -92,6 +103,7 @@ from orgknow.ingestion.manifest import (
     BlogGroup,
     ChangelogGroup,
     DateGroup,
+    GithubItem,
     ReleaseGroup,
     Scope,
     Snapshot,
@@ -751,6 +763,20 @@ def collect_blog(
     return without_duplicate_ids(documents, summary)
 
 
+def collect_github(
+    items: Sequence[GithubItem], cache_dir: Path, releases: Sequence[Release]
+) -> list[Document]:
+    """One `discussion` document per GitHub item, from its cached snapshot (S13-T1): one version,
+    no aliases. Raises GithubSnapshotError, naming the item, when a snapshot is missing or isn't
+    the one the lock pins. No network."""
+    documents = []
+    for item in items:
+        snapshot, pin = read_snapshot(cache_dir, item)
+        version = item_version(item, pin, snapshot, releases)
+        documents.append(Document(github_canonical_id(item), "discussion", [version], []))
+    return documents
+
+
 def store_document(
     conn: psycopg.Connection[TupleRow], document: Document, summary: Summary
 ) -> None:
@@ -800,16 +826,19 @@ def ingest(
     synonyms: Mapping[str, str],
     max_tokens: int,
 ) -> Summary:
-    """Check the `releases` table, then read, derive and store every document of `scope`, then
-    chunk every version with no chunks. Each document, and each version's chunks, commits on its
-    own. Raises ReleasesMismatch, before any git read or write, if the table lacks one of
-    `releases` or holds other dates for it."""
+    """Check the `releases` table and read the GitHub snapshots, then read, derive and store every
+    document of `scope`, then chunk every version with no chunks. Each document, and each
+    version's chunks, commits on its own. Raises ReleasesMismatch, before any git read or write,
+    if the table lacks one of `releases` or holds other dates for it, and GithubSnapshotError,
+    before any git read or write too, if a GitHub item's snapshot is missing or not the pinned
+    one."""
     problems = release_problems(releases, list_releases(conn))
     if problems:
         raise ReleasesMismatch(
             "run `make seed` first. The releases table doesn't match the manifest: "
             + "; ".join(problems)
         )
+    github = collect_github(scope.github, cache_dir, releases)
     summary = Summary()
     documents = collect_release_scoped(scope, cache_dir, strip, releases, summary)
     if scope.changelogs is not None:
@@ -823,6 +852,7 @@ def ingest(
             documents += collect_governance(group, cache_dir, releases, summary)
     if scope.blog is not None:
         documents += collect_blog(scope.blog, cache_dir, strip["blog_post"], releases, summary)
+    documents += github
     for document in documents:
         try:
             store_document(conn, document, summary)
@@ -840,15 +870,19 @@ def chunk_versions(
 ) -> None:
     """Chunk every stored version that has no chunks yet, one transaction per version.
 
-    Each version's raw file is re-read from git at its snapshot. A version with chunks is never
-    re-chunked, so a re-run adds none. A git failure stops here, like in step 2.
+    Each version's raw file is re-read from git at its snapshot; a GitHub item's text is rendered
+    again from its cached snapshot (`snapshot_text`). A version with chunks is never re-chunked,
+    so a re-run adds none. A git failure stops here, like in step 2.
     """
     for version in versions_without_chunks(conn):
         where = f"{version.canonical_id} (version {version.id})"
-        raw = read_file(
-            cache_dir / version.snapshot_repo, version.snapshot_sha, version.source_path
-        )
         try:
+            if version.source_type == "discussion":
+                raw = snapshot_text(cache_dir / version.source_path, version.snapshot_sha)
+            else:
+                raw = read_file(
+                    cache_dir / version.snapshot_repo, version.snapshot_sha, version.source_path
+                )
             chunks = chunk_version(
                 version.canonical_id, version.source_type, version.metadata, raw, max_tokens
             )
@@ -884,7 +918,7 @@ def main() -> None:
                 settings.claim_synonyms,
                 settings.chunk_max_tokens,
             )
-        except ReleasesMismatch as exc:
+        except (ReleasesMismatch, GithubSnapshotError) as exc:
             sys.exit(f"Nothing ingested: {exc}.")  # exit code 1, message on stderr
         lifecycle = rebuild_lifecycle(conn, cache_dir, settings.claim_synonyms)
         database = database_report(conn)

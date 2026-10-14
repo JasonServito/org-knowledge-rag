@@ -1,0 +1,37 @@
+seed: d6e7d9c5bcbfe2a787916294a30f87c8af3ddc46 (35 KEPs in the pool)
+  1435	v1.26	Different protocols in the same service definition with type=loadbalancer
+  1669	v1.28	Proxy Terminating Endpoints
+  1672	v1.26	Tracking Terminating Endpoints in EndpointSlice
+  1860	v1.32	Make Kubernetes aware of the load balancer behaviour
+  1880	v1.33	Multiple Service CIDRs
+  2079	v1.25	Allow a Network Policy to contemplate a set of ports in a single rule
+  2086	v1.26	Service Internal Traffic Policy
+  2595	v1.28	Expanded DNS Configuration
+  2681	v1.30	Field status.hostIPs added for Pod
+  3015	v1.35	PreferSameZone and PreferSameNode Traffic Distribution
+  3070	v1.26	Reserve Service IP Range For Dynamic and Static IP Allocation
+  3178	v1.28	Cleaning up IPTables Chain Ownership
+  3221	v1.32	Structured Authorization Configuration
+  3257	v1.37	Cluster Trust Bundles
+  3299	v1.29	KMS v2 Improvements
+  3325	v1.28	Review attibutes of a current user
+  3331	v1.35	Structured authentication config
+  3453	v1.28	Minimize iptables-restore input size
+  3458	v1.30	Remove transient node predicates from KCCM's service controller
+  3668	v1.29	Reserve Nodeport Ranges For Dynamic And Static Port Allocation
+  3685	v1.28	Move EndpointSlice Reconciler into Staging
+  3705	v1.30	Cloud Dual-Stack --node-ip Handling
+  3726	v1.27	standard-application-protocols
+  3836	v1.31	Kube-proxy improved ingress connectivity reliability
+  3866	v1.33	Add an nftables-based kube-proxy backend
+  4004	v1.33	Deprecate status.nodeInfo.kubeProxyVersion field
+  4193	v1.33	bound service account token improvements
+  4317	v1.37	Pod Certificates
+  4427	v1.34	Relaxed DNS search string validation
+  4444	v1.33	Traffic Distribution for Services
+  4601	v1.34	Authorize with Selectors
+  4633	v1.34	Only allow anonymous auth for configured endpoints
+  4940	v1.34	KEP Template
+  5018	v1.36	DRA Admin Access
+  5311	v1.37	Relaxed validation for Services names
+drawn: KEP-3015 (v1.35): PreferSameZone and PreferSameNode Traffic Distribution
