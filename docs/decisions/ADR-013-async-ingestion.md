@@ -81,3 +81,10 @@
 - A passing glitch (e.g. Postgres restarting) fails the job; the operator POSTs again.
 - S15 deploys the worker beside the API on one host, with no SQS.
 - **Revisit triggers:** D1's (a second worker host or no shared database); D5's (a logged error that a later attempt fixed); D6's (a planned report across jobs' steps).
+
+## Amendment 2026-10-14 (PR #51 review)
+
+Decided by the developer in PR #51's review (S14-R2). Both bullets record the code as built in S14-T5; `docs/interfaces.md` ("Worker") describes it.
+
+- **A lost database connection stops the worker; it doesn't fail the job.** Consequences says "a passing glitch (e.g. Postgres restarting) fails the job". The worker's one connection can't save the job after a restart, so the worker process exits and the job stays `running`. The next worker start resumes it (D5's crash path), using 1 attempt. Nothing restarts the worker yet: S15's deployment needs a supervisor. A passing glitch that leaves the connection up (e.g. Voyage failing after its own retries) still fails the job, and the operator POSTs again. Rejected: making a lost connection fail the job, which needs a second connection or a reconnect loop just to save the failure.
+- **Giving up also fails the step left running (D5's attempt limit).** A job found at `WORKER_MAX_ATTEMPTS` is marked `failed` with `gave up after <N> attempts`, and a step still `running` (the one the last worker died in) gets the same status and text. Why: a failed job never shows a running step. Rejected: leaving that step `running` under a failed job.

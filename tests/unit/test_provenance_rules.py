@@ -15,6 +15,7 @@ from orgknow.provenance.rules import (
     DISCUSSION_FIELD,
     KEP_FIELD,
     UPDATE_PR_FIELD,
+    ChainError,
     Link,
     current_docs_step,
     decision_step,
@@ -22,6 +23,7 @@ from orgknow.provenance.rules import (
     field_link,
     implementation_step,
     kep_number,
+    kep_section,
     links_kep,
     post_day,
     problem_step,
@@ -78,8 +80,14 @@ def test_a_kep_s_tracking_issue_is_the_enhancements_issue_with_its_number() -> N
 
 
 def test_a_seed_without_a_number_is_refused() -> None:
-    with pytest.raises(ValueError, match="kep:sig-auth/0014-dynamic-audit"):
+    with pytest.raises(ChainError, match="kep:sig-auth/0014-dynamic-audit"):
         kep_number("kep:sig-auth/0014-dynamic-audit")
+
+
+def test_a_kep_without_the_section_is_refused() -> None:
+    kep = _document("kep:2572", [_chunk(1, 0, ["KEP-2572: Made up", "Motivation"], "Why.")])
+    with pytest.raises(ChainError, match="kep:2572 has no Summary section"):
+        kep_section(kep, "Summary")
 
 
 def test_repo_keys_map_each_manifest_repo_s_github_path_to_its_key() -> None:
@@ -578,7 +586,7 @@ def test_current_docs_is_the_nearest_text_ties_by_content_hash() -> None:
 
 
 def test_no_near_text_is_an_error_not_a_missing_step() -> None:
-    with pytest.raises(ValueError, match="make embed"):
+    with pytest.raises(ChainError, match="make embed"):
         current_docs_step([])
 
 

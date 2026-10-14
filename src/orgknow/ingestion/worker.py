@@ -44,6 +44,7 @@ from orgknow.ingestion.manifest import load_normalization, load_releases, load_s
 from orgknow.ingestion.report import fingerprint
 from orgknow.logs import request_id
 from orgknow.provenance.build import chain_seeds, store_chain
+from orgknow.provenance.rules import ChainError
 from orgknow.settings import Settings
 
 # Named, not `__name__`: run with `python -m`, this module's `__name__` is `__main__`, outside
@@ -70,10 +71,11 @@ class IngestFailed(Exception):
     """Ingest reported failed documents or versions: any one fails the step (call d)."""
 
 
-# The errors whose text is shown in the job (call h): each is one line written for the person
-# running ingestion. Any other error's text could hold anything (a path, a server's reply), and
-# the job is readable over the API, so it stays in the worker log.
-KNOWN_ERRORS = (ReleasesMismatch, GithubSnapshotError, RunTooLarge, IngestFailed)
+# The errors whose text is shown in the job (call h; the chain builder's added in PR #51's
+# review): each is one line written for the person running ingestion. Any other
+# error's text could hold anything (a path, a server's reply), and the job is readable over the
+# API, so it stays in the worker log.
+KNOWN_ERRORS = (ReleasesMismatch, GithubSnapshotError, RunTooLarge, IngestFailed, ChainError)
 
 
 def ingest_step(conn: Conn, settings: Settings) -> StepCounts:

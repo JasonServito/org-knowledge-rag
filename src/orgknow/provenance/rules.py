@@ -41,6 +41,13 @@ from orgknow.db.models import (
     Step,
 )
 
+
+class ChainError(ValueError):
+    """A chain can't be built: a one-line message written for the operator, naming the seed or
+    the command to run. The worker's job shows it as written (PR #51's review; the S14 slice
+    doc's Retro)."""
+
+
 # Tracking issues live in kubernetes/enhancements, the manifest's `enhancements` repo (rule 1).
 ENHANCEMENTS = "enhancements"
 # The tracking-issue template's fields (rule 2).
@@ -119,11 +126,11 @@ def first_chunk(
 
 def kep_section(kep: ChainDocument, name: str) -> DocumentChunk:
     """The first chunk of the KEP's `name` section: the heading under its title is `name` (by
-    prefix: the section can start with a subheading). Raises ValueError when there is none
+    prefix: the section can start with a subheading). Raises ChainError when there is none
     (every KEP has a Summary and a Motivation by template)."""
     chunk = first_chunk(kep.chunks, lambda path: path[1:2] == [name])
     if chunk is None:
-        raise ValueError(f"{kep.canonical_id} has no {name} section")
+        raise ChainError(f"{kep.canonical_id} has no {name} section")
     return chunk
 
 
@@ -147,10 +154,10 @@ def creation_date(kep: ChainDocument) -> datetime | None:
 
 
 def kep_number(seed: str) -> int:
-    """`kep:2572` → 2572. Raises ValueError for a seed that isn't a numbered KEP."""
+    """`kep:2572` → 2572. Raises ChainError for a seed that isn't a numbered KEP."""
     number = seed.removeprefix("kep:")
     if not seed.startswith("kep:") or not number.isdigit():
-        raise ValueError(f"{seed} is not a numbered KEP (kep:<N>)")
+        raise ChainError(f"{seed} is not a numbered KEP (kep:<N>)")
     return int(number)
 
 
@@ -383,9 +390,9 @@ def implementation_step(
 
 def current_docs_step(nearest: Sequence[NearText]) -> NewEvidence:
     """Rule 8: the nearest text, ties by content hash, dated by its cited version's date-window
-    start. No link connects it, so no via. Raises ValueError with no text (no vectors)."""
+    start. No link connects it, so no via. Raises ChainError with no text (no vectors)."""
     if not nearest:
-        raise ValueError("no text valid at the latest release has a vector: run `make embed`")
+        raise ChainError("no text valid at the latest release has a vector: run `make embed`")
     cited = min(nearest, key=lambda text: (text.distance, text.content_hash))
     return NewEvidence(
         step="current_docs",

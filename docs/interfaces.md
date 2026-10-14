@@ -273,7 +273,8 @@ A resumed job's counts are those of the attempt that ran the step: e.g. `new_chu
   - the releases table doesn't match the manifest (`ReleasesMismatch`; its text starts "run `make seed` first.");
   - a GitHub snapshot is missing or isn't the one the lock pins (`GithubSnapshotError`; its text can name the cached file's path);
   - the embed cap (`RunTooLarge`: `<N> texts to embed come to <T> estimated tokens, above EMBED_MAX_TOKENS_PER_RUN (<cap>). …`);
-  - ingest failures (`<N> ingest failures; the first: <failure>`).
+  - ingest failures (`<N> ingest failures; the first: <failure>`);
+  - a chain that can't be built (`ChainError`): ``<seed> is not stored: run `make ingest` ``, `<seed> is not a numbered KEP (kep:<N>)`, `<canonical_id> has no <section> section`, or ``no text valid at the latest release has a vector: run `make embed` ``.
 - **Any other error:** `internal error; see the worker log (job <id>)`. The traceback is in the worker's log, on an ERROR line with `exc_info`. The job is readable over the API, so an unknown error's text stays out of it.
 
 **A lost database connection**
