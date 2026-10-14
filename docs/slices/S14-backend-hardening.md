@@ -1,9 +1,9 @@
 # S14: Backend hardening + async ingestion
 
-- **Status:** 🟨
+- **Status:** ✅
 - **Blueprint stage:** 10 (Backend hardening + async ingestion)
 - **Started:** 2026-10-13
-- **Finished:**
+- **Finished:** 2026-10-14
 
 ## Outcome
 
@@ -17,16 +17,16 @@ Every API response carries a request ID that also appears in one-line JSON logs,
 
 ## Exit checks
 
-- [ ] `docs/interfaces.md` gives each endpoint's input, output and errors, the one error shape, and each dependency's timeout, retry and failure policy.
-- [ ] A response to any endpoint carries `X-Request-ID`, and the API's log lines for that request are JSON carrying the same ID.
-- [ ] Anthropic, Voyage and GitHub calls use timeouts and retry counts from settings; tests show the retries are bounded.
-- [ ] API tests cover temporal and authority modes (S12-R1 input).
-- [ ] *(R2)* `POST /ingestion-jobs` → `make worker` → the job reaches `succeeded` with per-step progress in `GET /ingestion-jobs/{id}`.
-- [ ] *(R2)* The same job run twice and a worker killed mid-job each end with the same fingerprint (and the same embedding, lifecycle and chain-step counts) as a clean run.
-- [ ] *(R2)* Two writers can't store the same identifier (R3) or embed the same texts twice.
-- [ ] Phase 1 retrieval unchanged: `make eval-retrieval` (free) prints S13's numbers exactly.
-- [ ] `make check` and `make test-int` green.
-- [ ] Retro done; slice brief written; backlog updated.
+- [x] `docs/interfaces.md` gives each endpoint's input, output and errors, the one error shape, and each dependency's timeout, retry and failure policy.
+- [x] A response to any endpoint carries `X-Request-ID`, and the API's log lines for that request are JSON carrying the same ID.
+- [x] Anthropic, Voyage and GitHub calls use timeouts and retry counts from settings; tests show the retries are bounded.
+- [x] API tests cover temporal and authority modes (S12-R1 input).
+- [x] *(R2)* `POST /ingestion-jobs` → `make worker` → the job reaches `succeeded` with per-step progress in `GET /ingestion-jobs/{id}`.
+- [x] *(R2)* The same job run twice and a worker killed mid-job each end with the same fingerprint (and the same embedding, lifecycle and chain-step counts) as a clean run.
+- [x] *(R2)* Two writers can't store the same identifier (R3) or embed the same texts twice.
+- [x] Phase 1 retrieval unchanged: `make eval-retrieval` (free) prints S13's numbers exactly.
+- [x] `make check` and `make test-int` green.
+- [x] Retro done; slice brief written; backlog updated.
 
 ## Scope
 
@@ -268,7 +268,7 @@ None. Every test uses fakes; the demo calls free endpoints only. No Anthropic cr
 
 ### Run S14-R2: Async ingestion
 
-- **Status:** planned
+- **Status:** PR open
 - **Tasks:** T4, T5, T6, T7 (T7 ends with the S14 retro as the run's last commit).
 - **Goal (plain words):** a POST records a rebuild job; `make worker` runs it (ingest → lifecycle → embed → chains) with per-step progress in the job's row; only one corpus writer can run at a time; a killed worker's job is resumed, and a repeated or resumed job leaves the same data.
 
@@ -442,10 +442,33 @@ Expected (from the sitting's probe, not the code): both jobs `succeeded`; the in
 
 None. Every test uses fakes; the demo's embed sends 0 texts, capped at 1 estimated token. No Anthropic credit needed.
 
-## Retro (fill in at the end)
+## Retro
 
 - **Shipped (with numbers):**
+  - **S14-R1** (T1–T3; PRs #49 and #50, merged 2026-10-14, split after T2 on the size alarm): `docs/interfaces.md` (4 routes, 1 error envelope, 5 codes); a request ID on every response and in its JSON log lines; 7 timeout and retry settings; autocommit API connections (the sitting's `idle in transaction` now reads `idle`); temporal and authority modes tested over the API.
+  - **S14-R2** (T4–T7; 1 PR, the developer's call), ~1,980 reviewable lines in 30 files (1,033 of them tests), against an estimate of 1,400–1,800:
+    - **T4:** migration `0009` (`ingestion_jobs`, the one-active-job index); the corpus-writer lock in the 5 CLI writers (each exits 1 while it's held); `make ingest-report` and `stored_decision` each read in one snapshot.
+    - **T5:** `make worker`: 4 steps with progress in the job's row; an error fails the job; a killed worker's job resumes at its first unfinished step, at most 3 attempts.
+    - **T6:** `POST /ingestion-jobs` (202 new, 200 active) and `GET /ingestion-jobs/{job_id}` (200, 404, 422, 503); the "Worker" section of `docs/interfaces.md`.
+    - **T7:** `docs/architecture.md` (the jobs path, the lock, every module in the table), the README, S14-R1's 2 kept doc items.
+  - **The demo** (scratch database, corpus emptied): the worker killed 43.5 s into ingest (21,278 chunks stored) and restarted → the job `succeeded` at attempt 2 with fingerprint `sha256:0f0ee078…4165`; a repeated job: 0 new versions, 0 new chunks, 0 embed requests. Afterwards 21,762 embeddings, 3,295 lifecycle rows, 2 decisions and 12 chain-step rows: the sitting's clean run.
+  - **Guard:** `make eval-retrieval`'s 5 metric lines equal S14-R1's baseline exactly; the dev database's fingerprint is unchanged after migration `0009`.
+  - **Tests:** 1,130 unit (1,061 at S13's close), 251 integration (214).
+  - **Reviews (R2):** 0 must-fix in T4 and T5; 3 in T6 (2 false doc lines, the backlog tick) and 3 in T7 (3 false doc statements). All fixed.
+  - **Paid:** none in S14. Greptile 22/50 before R2's PR.
 - **Surprises:**
+  - **The worker's own log lines were dropped** in its first real run: under `python -m` a module's `__name__` is `__main__`, outside the `orgknow` logger the config sets to INFO. No test caught it; the logger is now named.
+  - **Job ids have gaps:** a refused `ON CONFLICT DO NOTHING` insert still uses an identity value (the demo's jobs are 3 and 5).
+  - **A 20-digit job id is a 404, not a 500:** psycopg sends an int beyond bigint as `numeric`, which matches no row. Path ids also accept `1.0`, `+1` and `1_000` (pydantic's lax mode).
+  - **`make` exits 2 when its recipe exits 1,** so the docs say a refused writer "stops", not "exits 1".
+  - **The worker's no-op ingest took ~19 s** in T5's run, against 45 s for `make ingest` in the sitting (cause not measured).
 - **What didn't work / negative results:**
+  - **5 of R2's 6 must-fix items were false doc statements** (T6, T7), all found by reviewers, none by tests.
+  - **ADR-013's Consequences don't match the code on a passing glitch:** they say a Postgres restart fails the job; the code exits the worker, and the next start resumes the job (1 attempt used). `docs/interfaces.md` describes the code; the ADR's wording is the developer's call.
+  - **Nothing restarts a stopped worker** (a lost connection ends it, idle or mid-job): S15's deployment needs a supervisor.
+  - **Not exercised:** a lost connection mid-job or while idle; Ctrl-C mid-job with the real steps; the once-per-60-s "waiting" line.
 - **Do differently next slice:**
-- **Slice brief:** `docs/learning/S14-*.md`
+  - In a docs task, have the builder list each new sentence beside the code line it rests on: R2's reviewers found 5 false statements, S13's T6 found 6.
+  - Run each new command's real entry point once before review: only the real `python -m` run found the dropped log lines.
+  - Keep estimating with tests included: R2's came to ~1,980 lines, ~10% above its estimate's top (1,400–1,800); S13's was 3× low.
+- **Slice brief:** `docs/learning/S14-backend-hardening.md`

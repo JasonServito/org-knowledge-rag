@@ -73,6 +73,8 @@ One line per term; alphabetical within each section. The agent appends a term on
 |---|---|
 | **ADR** | Architecture Decision Record: a short document capturing one decision, its context, and its consequences. |
 | **ADR amendment vs. superseding ADR** | An amendment is a dated section that clarifies an accepted ADR without changing its decision. If the decision itself changes, a new ADR replaces (supersedes) the old one. |
+| **Advisory lock** | A Postgres lock on a number the application picks, not on a row or table. A session lock is held until released or until its connection ends, so it can't outlive a crashed holder. S14's corpus-writer lock lets only 1 writer (ingest, lifecycle, embed, chains, seed or the worker) run at a time (ADR-013 D3). |
+| **Autocommit** | Each statement commits on its own, with no transaction left open between statements. S14's API connections use it, so none sits `idle in transaction` while the answer model runs (ADR-005 amendment 2026-10-13). |
 | **Database driver** | The library that speaks Postgres's network protocol (here psycopg 3). Alembic and SQLAlchemy sit on top of it. |
 | **Editable install** | Installing a package as a link to its source directory, so code edits take effect without reinstalling. `uv sync` does this for the project. |
 | **Exclusion constraint** | A Postgres constraint that rejects a row if it "collides" with an existing one under given operators. Here: same document (`=`) and overlapping date ranges (`&&`) means no two versions are live at once. Needs the `btree_gist` extension to compare plain columns with `=`. |
@@ -86,9 +88,11 @@ One line per term; alphabetical within each section. The agent appends a term on
 | **Named volume** | Docker-managed storage that outlives the container, so `make down` / `make up` keep the database's data. |
 | **p95 latency** | The time 95% of requests finish within: a tail measure, where a mean hides slow outliers. Here it's nearest rank: sort the times and take the ⌈0.95 n⌉-th (the 41st of 43). |
 | **Partial clone** | `git clone --filter=blob:none`: download commits and directory listings but no file contents, then fetch only the files you need. S02's corpus cache is built this way. |
+| **Partial unique index** | A unique index over only the rows a `WHERE` clause picks. S14's index on `((true))` where a job is queued or running lets at most 1 such job exist, so 2 POSTs at once make 1 job (ADR-013 D4). |
 | **Permissive license (MIT)** | Lets anyone use, modify and redistribute the code, even in closed-source products, as long as they keep the copyright notice. It covers this repo's code, not the corpus. |
 | **Pre-commit hook** | A script git runs before each commit. If it fails or modifies files, the commit stops so you can review. Here it runs ruff only. |
 | **pytest marker** | A label on a test (e.g. `integration`). `pytest -m <expr>` selects or excludes tests by label. |
+| **Request ID (correlation ID)** | A short label for one request, returned in a response header and written in every log line of that request, so one failing request can be followed through the logs (S14-T2). |
 | **Savepoint** | A checkpoint inside a transaction (a nested `conn.transaction()` in psycopg). Rolling back to it undoes only the failed statement, so a test can expect an error and keep going. |
 | **Service container** | A Docker container GitHub Actions starts next to a CI job (here Postgres) and waits on until healthy. CI's equivalent of `make up`. |
 | **Spike** | A time-boxed, throwaway experiment that answers a question with evidence before committing to a design. Its code is rewritten, not reused. |
