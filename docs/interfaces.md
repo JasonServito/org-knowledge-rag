@@ -1,8 +1,8 @@
 # Interfaces
 
-The API's contract: each endpoint's input, output and errors, the one error shape, request IDs, the log format, and each external dependency's timeout and retries.
+The API's contract: each endpoint's input, output and errors, the one error shape, request IDs, the log format, each external dependency's timeout and retries, and the ingestion worker that runs the jobs the API queues.
 
-- It describes the API as run S14-R1 leaves it. S14-R2 adds the ingestion job endpoints.
+- It describes the API and the worker as run S14-R2 leaves them.
 - Every statement matches the code or a test. `tests/unit/test_interfaces_doc.py` checks that each route has a `###` heading below, each `###` heading is a route, and the error-code table equals the code's list.
 - `make serve` runs the API on `http://127.0.0.1:8000`. There is no auth and no rate limit (S15's security review).
 
@@ -12,6 +12,8 @@ The API's contract: each endpoint's input, output and errors, the one error shap
 | `GET /ready` | Readiness: Postgres is reachable | Free | 200, 503 |
 | `POST /query` | Answers a question with citations | Paid | 200, 422, 502, 503, 500 |
 | `GET /decisions/{canonical_id}` | A seed KEP's stored decision chain | Free | 200, 404, 503, 500 |
+| `POST /ingestion-jobs` | Queues a rebuild of the corpus for the worker, or returns the job already queued or running | Free (the job's embed step pays only for new texts, capped) | 202, 200, 503, 500 |
+| `GET /ingestion-jobs/{job_id}` | One ingestion job, with each step's progress | Free | 200, 404, 422, 503, 500 |
 
 ## Endpoints
 
@@ -73,6 +75,38 @@ Every response carries an `X-Request-ID` header (see Request IDs). Any endpoint 
 - **Cost:** free.
 - **Retry:** safe (writes nothing).
 
+### POST /ingestion-jobs
+
+- **Purpose:** queue a rebuild of the corpus: one job that the worker (`make worker`, see Worker) runs: ingest → lifecycle → embed → chains, at the corpus lock and manifest the worker is configured with (ADR-013 D2). The API only records the job: it never runs a step or takes the corpus-writer lock.
+- **Request:** no parameters and no body. A body sent anyway is never read, so it is ignored, whatever it holds.
+- **202:** a new job: the `IngestionJob` model (`db/models.py`):
+  - `id`: the job's id, an integer, for `GET /ingestion-jobs/{job_id}`. Ids grow but can skip numbers: each refused insert uses one up (e.g. a POST answered 200).
+  - `status`: `queued`, `running`, `succeeded` or `failed` (see Worker). A new job is `queued`.
+  - `created_at`, `started_at`, `finished_at`: ISO 8601 times in UTC, or `null` until set. `started_at` is the first attempt's start, kept when the job is resumed.
+  - `attempts`: the runs and resumes started; 0 for a new job.
+  - `error`: a failed job's one-line reason, else `null` (see Worker, "The job's error text").
+  - `request_id`: the `X-Request-ID` of the POST that created the job.
+  - `steps`: the 4 steps in order (`ingest`, `lifecycle`, `embed`, `chains`), each a `JobStep`: `name`; `status`, one of `pending`, `running`, `succeeded`, `failed`; `started_at`; `finished_at`; `counts`, an object of numbers and strings, `{}` until the step succeeds (see Worker, "Steps"); `error`.
+- **200:** a job is already queued or running: that job, the same body as its `GET`. No job is created, and the job's `request_id` stays its creating POST's.
+- **Other statuses:**
+  - **503 `database_unavailable`:** as `POST /query`.
+  - **500 `internal`:** anything else (e.g. a missing table). Also, practically never: the insert was refused because a job was active, that job ended before it could be read, and the same happened on the second try (at most 2 tries). POST again.
+- **Cost:** free for the request (one short database connection). The job is free at the current corpus lock: its embed step sends only texts that have no vector yet (0 at the current lock), and `EMBED_MAX_TOKENS_PER_RUN` (2,000,000 estimated tokens) caps it: above the cap the step fails before any request.
+- **Retry:** safe to repeat: while a job is queued or running, a POST returns it (200) and creates nothing, and 2 POSTs at the same instant make 1 job (the database allows one active job). Once the job has finished, a POST creates a new one: a whole rebuild again (a no-op ingest takes ~45 s).
+
+### GET /ingestion-jobs/{job_id}
+
+- **Purpose:** read one ingestion job and its steps' progress. The worker saves the job's row when each step starts and ends, so a running job shows the step it is on. Read-only.
+- **Request:** the path parameter `job_id`, an integer, e.g. `/ingestion-jobs/1`. Pydantic's lax parsing also reads `1.0`, `+1` and `1_000` as integers.
+- **200:** the `IngestionJob` model, as in `POST /ingestion-jobs`. The ingest step's `counts` include the stored corpus's `fingerprint`, as `make ingest-report` prints it.
+- **Other statuses:**
+  - **404 `not_found`:** no job has this id, including a negative id or one beyond Postgres's bigint range (e.g. 20 digits). The message doesn't repeat the id.
+  - **422 `invalid_request`:** `job_id` isn't an integer (e.g. `abc`, `1.5`) or is too long to parse. No connection is opened.
+  - **503 `database_unavailable`:** as `POST /query`.
+  - **500 `internal`:** anything else (e.g. a missing table).
+- **Cost:** free.
+- **Retry:** safe (writes nothing).
+
 ## Errors
 
 Every error response from the API uses one envelope, with 2 exceptions:
@@ -92,8 +126,8 @@ The codes (`ERROR_CODES` in `src/orgknow/api/errors.py`). Each code has exactly 
 
 | Code | Status | When | Example `message` |
 |---|---|---|---|
-| `invalid_request` | 422 | The request fails validation (`POST /query`'s body) | `body.question: Field required` |
-| `not_found` | 404 | No stored chain for the id, or no route for the path | `no stored decision chain for this canonical_id; chains are built by make chains` |
+| `invalid_request` | 422 | The request fails validation (`POST /query`'s body, `GET /ingestion-jobs/{job_id}`'s id) | `body.question: Field required` |
+| `not_found` | 404 | No stored chain for the id, no ingestion job with the id, or no route for the path | `no stored decision chain for this canonical_id; chains are built by make chains` |
 | `upstream_failed` | 502 | Voyage or Anthropic failed after its retries, or the model gave no usable answer or route | `no usable answer from the model (stop reason: refusal)` |
 | `database_unavailable` | 503 | Postgres can't be reached in time, the connection fails, or a statement runs past its timeout | `database unavailable` |
 | `internal` | 500 | Anything unexpected, including a database error that isn't a connection failure | `internal error` |
@@ -102,7 +136,7 @@ The codes (`ERROR_CODES` in `src/orgknow/api/errors.py`). Each code has exactly 
 
 - `message` never carries a traceback, a secret, a database URL or the caller's input. The traceback goes to the log, under the same request ID.
 - `invalid_request`: `"<location joined by .>: <problem>"` of the first validation error only, e.g. `body.question: String should match pattern '\S'`. The value sent is never echoed.
-- `not_found`: for a missing chain, the text in the table (no id); for an unknown path, `Not Found`.
+- `not_found`: for a missing chain, the text in the table; for a missing job, `no ingestion job with this id` (neither repeats the id); for an unknown path, `Not Found`.
 - `upstream_failed`: the failure's one line, the same text `orgknow ask` prints after `error: ` (`pipeline.one_line`). For an HTTP error it includes the provider's own reason (Voyage's: its first 500 characters).
 - `database_unavailable` and `internal`: the fixed texts in the table.
 
@@ -113,11 +147,12 @@ The codes (`ERROR_CODES` in `src/orgknow/api/errors.py`). Each code has exactly 
 - **Where the ID appears:**
   - the response's `X-Request-ID` header, on every response: every status, every endpoint, unknown paths, and a 500;
   - the error body's `request_id`;
+  - for a `POST /ingestion-jobs` that creates a job (202): the job's `request_id`, and the worker's log lines while it runs that job (see Worker);
   - every log line written while the request runs: its per-request line, warnings (e.g. a Voyage retry), and the error line of an unexpected failure.
 
 ## Logs
 
-- **Only `make serve`** sets this up, through uvicorn's log config (`--log-config config/logging.json --no-access-log`). Library code never configures logging. The CLI and the other make targets are unchanged: their stderr lines stay plain text.
+- **`make serve` and `make worker`** set this up: `make serve` through uvicorn's log config (`--log-config config/logging.json --no-access-log`), the worker from the same file (see Worker). Library code never configures logging. The CLI and the other make targets are unchanged: their stderr lines stay plain text.
 - **Format:** the app's and uvicorn's log lines are JSON, one object per line.
 - **One line per request**, at INFO, after its response is sent:
 
@@ -150,7 +185,8 @@ Each external call has a timeout and a retry limit from the settings (environmen
 
 | Dependency | Called by | Timeout | Retries | Retried on | The API caller sees |
 |---|---|---|---|---|---|
-| Postgres | `/ready`, `/query`, `/decisions` | Connect: `DB_CONNECT_TIMEOUT_S=2` (s). Each statement: `DB_STATEMENT_TIMEOUT_MS=10000` (`/query`, `/decisions`; not `/ready`) | 0 | — | 503 `database_unavailable` (`/ready`: 503 `{"status": "unavailable"}`). Another database error: 500 `internal` |
+| Postgres | `/ready`, `/query`, `/decisions`, `/ingestion-jobs` | Connect: `DB_CONNECT_TIMEOUT_S=2` (s). Each statement: `DB_STATEMENT_TIMEOUT_MS=10000` (all but `/ready`) | 0 | — | 503 `database_unavailable` (`/ready`: 503 `{"status": "unavailable"}`). Another database error: 500 `internal` |
+| Postgres, the worker's connection | `make worker`, not the API | Connect: `DB_CONNECT_TIMEOUT_S=2`. No statement timeout: a step's statements may run long | 0 | — | Never an API error. A connection that fails at start, or is lost later, stops the worker (see Worker) |
 | Voyage (question embedding) | `/query` | `VOYAGE_TIMEOUT_S=60` | `VOYAGE_MAX_RETRIES=3`, after 1 s, 2 s, 4 s (doubling) | HTTP 429 and 5xx only. Not a timeout or a failed connection | 502 `upstream_failed` |
 | Anthropic, answer | `/query` | `GENERATION_TIMEOUT_S=90` | `ANTHROPIC_MAX_RETRIES=2`, after ~0.5 s, then ~1 s | The SDK's rule: no connection, a timeout, HTTP 408, 409, 429, 5xx | 502 `upstream_failed` |
 | Anthropic, router | `/query` in temporal and authority modes | `ROUTER_TIMEOUT_S=30` | `ANTHROPIC_MAX_RETRIES=2`, as above | As above | 502 `upstream_failed` |
@@ -162,6 +198,7 @@ Notes:
 - `DB_CONNECT_TIMEOUT_S`: libpq treats values below 2 as 2.
 - Anthropic: not retried are other 4xx errors (e.g. a wrong key: 401) and a refusal or cut-off answer, which is a normal reply. The SDK waits ~0.5 s then ~1 s between tries (with jitter), or as long as a `retry-after` header says.
 - Voyage: any other HTTP error fails at once. A Voyage retry writes one WARNING log line.
+- The worker's embed step calls Voyage with the same timeout and retries. A Voyage failure there fails the step and the job (see Worker, "The job's error text"); the API never sees it.
 - Startup checks only that `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` are set. A wrong key shows up as a 502 on `/query`.
 - At shutdown, the API waits for Langfuse's queued traces (`flush`).
 - The reranker isn't a network call: it runs in-process on CPU (loaded once at startup), with no timeout.
@@ -185,3 +222,71 @@ Why it isn't a hard bound:
 - A timeout bounds each wait on the network (connecting, or the gap between bytes received), not a whole try. A reply that trickles in can take longer.
 - When Anthropic sends a `retry-after` header (e.g. with a 429), the SDK waits that long instead; SDK 1.11.0 sets no upper cap.
 - The SQL statements and the reranker add to the 612 s.
+
+## Worker
+
+`make worker` (`python -m orgknow.ingestion.worker`, ADR-013) runs the jobs `POST /ingestion-jobs` creates. The `ingestion_jobs` table is its queue: at most one job is queued or running at a time.
+
+- **Start-up checks**, before connecting: `INGEST_SCOPE` must be `full`, and `VOYAGE_API_KEY` must be set. Otherwise it exits 1 with a one-line message.
+- **Its connection:** one autocommit connection (connect timeout `DB_CONNECT_TIMEOUT_S`, no statement timeout). The lock and every step use it.
+
+**The corpus-writer lock**
+
+- One Postgres session advisory lock with one fixed key (`db/writer_lock.py`), taken by every corpus writer before it reads or writes: `make ingest`, `make lifecycle`, `make embed`, `make chains`, `make seed` and the worker.
+- It is per database: writers on 2 different databases don't exclude each other.
+- A CLI writer that can't get it exits 1 with `Another corpus writer is running (make ingest, lifecycle, embed, chains, seed or make worker); try again when it finishes.` Run through `make`, `make` then reports the failure with its own exit code, 2.
+- Postgres frees the lock when its holder's connection ends, however the process dies.
+- `make reset-corpus` runs raw `psql`, outside the lock: nothing stops it while a job runs.
+
+**The loop**
+
+- Each poll, the worker tries the lock, without waiting:
+  - **got it, a job is queued or running:** it runs that job to its end, releases the lock, and polls again at once;
+  - **got it, no job:** it releases the lock and sleeps `WORKER_POLL_S` (5 s);
+  - **another writer holds it:** it sleeps `WORKER_POLL_S` and tries again, logging `Another corpus writer holds the lock; waiting for it` at most once per 60 s.
+- So between jobs the worker holds nothing, and a hand-run writer can run; while a job runs, a hand-run writer exits 1.
+
+**Steps**
+
+Each step calls the function its `make` target calls (not the target's whole command). Its status, times and counts are saved in the job's row when it starts and when it ends.
+
+| Step | Does | `counts` when it succeeds |
+|---|---|---|
+| `ingest` | `make ingest`'s store and chunk, without its lifecycle rebuild; then the stored corpus's fingerprint | `documents_stored`, `new_documents`, `new_versions`, `closed_versions`, `new_chunks`, `failures` (always 0: any failure fails the step), `fingerprint` (`sha256:…`, as `make ingest-report` prints it) |
+| `lifecycle` | `make lifecycle`: rebuild the observed lifecycle | `rows` |
+| `embed` | `make embed`: delete vectors no chunk uses, then embed every text with no vector. Above `EMBED_MAX_TOKENS_PER_RUN` (estimated) it fails first, deleting and sending nothing | `texts`, `requests`, `embedded`, `tokens` (Voyage's count: what was billed), `orphans_deleted` |
+| `chains` | `make chains`: rebuild each manifest seed's decision chain | per seed, `<seed>_found` and `<seed>_missing`, e.g. `kep:2572_found` |
+
+A resumed job's counts are those of the attempt that ran the step: e.g. `new_chunks` counts only the chunks the resumed ingest added.
+
+**Statuses and attempts**
+
+- **A job:** `queued` (created) → `running` (an attempt started) → `succeeded` (all 4 steps succeeded) or `failed`.
+- **A step:** `pending` → `running` → `succeeded` or `failed`.
+- **An error fails the job at once:** the step and the job become `failed`, with the same one-line `error` and a `finished_at`. Later steps stay `pending` and never run, so embed never runs after a failed ingest. Nothing retries it: POST again.
+- **A crash is resumed:** a worker that dies mid-job (killed, stopped with Ctrl-C, or its connection lost) leaves the job `running`. The next worker to hold the lock resumes it at its first step that hasn't succeeded; a step left `running` starts again from its beginning (each step is safe to re-run).
+- **Attempts:** `attempts` goes up by 1 each time a run or resume starts. A job found with `attempts` already at `WORKER_MAX_ATTEMPTS` (3) or more is marked `failed` without running, with the error `gave up after <attempts> attempts`; a step left `running` is marked `failed` with the same text.
+
+**The job's error text**
+
+- **Known errors** give their own one line:
+  - the releases table doesn't match the manifest (`ReleasesMismatch`; its text starts "run `make seed` first.");
+  - a GitHub snapshot is missing or isn't the one the lock pins (`GithubSnapshotError`; its text can name the cached file's path);
+  - the embed cap (`RunTooLarge`: `<N> texts to embed come to <T> estimated tokens, above EMBED_MAX_TOKENS_PER_RUN (<cap>). …`);
+  - ingest failures (`<N> ingest failures; the first: <failure>`).
+- **Any other error:** `internal error; see the worker log (job <id>)`. The traceback is in the worker's log, on an ERROR line with `exc_info`. The job is readable over the API, so an unknown error's text stays out of it.
+
+**A lost database connection**
+
+- **At start:** a connection that fails stops the worker (Python's traceback on stderr, exit code 1).
+- **Mid-job:** saving the job fails, and the worker process exits (an uncaught `psycopg.OperationalError`: Python's traceback on stderr, exit code 1). The job stays `running`; the next worker start resumes it, using 1 attempt.
+- **While idle:** the next poll fails the same way, and the worker exits.
+- Nothing restarts it: in deployment the worker needs a supervisor that restarts it (S15).
+- **Ctrl-C:** the worker logs `Worker stopped (Ctrl-C)` and exits 0, holding nothing. A job it was running stays `running`, resumed at the next start.
+
+**The worker's logs**
+
+- It sets up logging from `config/logging.json`, the same JSON formatter as `make serve` (see Logs): one JSON object per line on stderr, with `ts`, `level`, `logger` and `message`.
+- While a job runs, every line carries the job's `request_id`: the `X-Request-ID` of the POST that created it. So one ID follows a job from its POST to its last step.
+- The worker's own lines (logger `orgknow.ingestion.worker`) about a job also carry `job_id`; a step's success line also carries its `counts`. Lines from the steps' own code carry `request_id` but no `job_id`.
+- Its lines: `Worker started: polling every 5 s`; `Job <id>: attempt <n> started`; `Job <id>: step <name> started`; `Job <id>: step <name> succeeded`; `Job <id> succeeded`; at ERROR, `Job <id>: step <name> failed: <text>` for a known error, `Job <id>: step <name> failed` with `exc_info` for any other, and `Job <id>: gave up after <n> attempts`; the busy line above; `Worker stopped (Ctrl-C)`.

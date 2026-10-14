@@ -59,3 +59,14 @@ def seeded_releases(conn: psycopg.Connection[TupleRow]) -> None:
     hold the releases: an upsert works either way.
     """
     upsert_releases(conn, load_releases(_MANIFEST))
+
+
+@pytest.fixture
+def committed(settings: Settings) -> Iterator[psycopg.Connection[TupleRow]]:
+    """An autocommit connection, for jobs another connection must see (a subprocess worker, an
+    API request); every job left in the table at the end is deleted."""
+    with psycopg.connect(settings.database_url, autocommit=True) as conn:
+        try:
+            yield conn
+        finally:
+            conn.execute("DELETE FROM ingestion_jobs")

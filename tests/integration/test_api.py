@@ -349,3 +349,77 @@ def test_a_router_failure_is_502_upstream_failed(
     }
     # It stops before the question is embedded, reranked or answered.
     assert (embedder.calls, reranker.calls, generator.calls) == ([], [], [])
+
+
+# S14-T6: the job routes on the test database. Each request opens its own connection, so the jobs
+# it creates are committed; `committed` deletes them at the end. Expected values: ADR-013 D4
+# (202 for a new job, 200 with the active one, one job from 2 POSTs at once) and the contract's
+# "Pinned: T6".
+
+
+def test_a_post_creates_a_job_a_second_post_returns_it_and_get_reads_it(
+    committed: Conn, settings: Settings
+) -> None:
+    client = TestClient(create_app(settings))  # no startup: the routes need no paid client
+
+    first = client.post("/ingestion-jobs")
+    second = client.post("/ingestion-jobs", headers={"X-Request-ID": "req-second"})
+    job_id = first.json()["id"]
+    read = client.get(f"/ingestion-jobs/{job_id}")
+
+    assert (first.status_code, second.status_code, read.status_code) == (202, 200, 200)
+    job = first.json()
+    assert (job["status"], job["attempts"], job["error"]) == ("queued", 0, None)
+    # The job's request_id is the creating POST's X-Request-ID (here a new random one).
+    assert NEW_ID.fullmatch(first.headers["X-Request-ID"])
+    assert job["request_id"] == first.headers["X-Request-ID"]
+    assert [(step["name"], step["status"]) for step in job["steps"]] == [
+        ("ingest", "pending"),
+        ("lifecycle", "pending"),
+        ("embed", "pending"),
+        ("chains", "pending"),
+    ]
+    # The second POST gets the same job, still with the first request's ID; GET reads the same.
+    assert second.json() == job
+    assert read.json() == job
+    assert committed.execute("SELECT count(*) FROM ingestion_jobs").fetchone() == (1,)
+
+
+def test_two_posts_at_once_make_one_job(committed: Conn, settings: Settings) -> None:
+    # Both threads leave the barrier together and POST at once. The test can't force the exact
+    # interleaving of the 2 inserts; the one-active-job index makes every interleaving 1 job.
+    app = create_app(settings)
+    barrier = threading.Barrier(2)
+    responses: list[httpx2.Response] = []
+
+    def post() -> None:
+        client = TestClient(app)
+        barrier.wait(WAIT_S)
+        responses.append(client.post("/ingestion-jobs"))
+
+    threads = [threading.Thread(target=post) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(WAIT_S)
+
+    assert sorted(response.status_code for response in responses) == [200, 202]
+    assert responses[0].json() == responses[1].json()
+    assert committed.execute("SELECT count(*) FROM ingestion_jobs").fetchone() == (1,)
+
+
+@pytest.mark.parametrize("job_id", ["123456789", "99999999999999999999", "-99999999999999999999"])
+def test_get_of_an_unknown_id_is_404_even_beyond_the_bigint_range(
+    settings: Settings, job_id: str
+) -> None:
+    # 20 digits is past bigint's 19: it must still be a 404, never the `internal` 500.
+    response = TestClient(create_app(settings)).get(f"/ingestion-jobs/{job_id}")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "not_found",
+            "message": "no ingestion job with this id",
+            "request_id": response.headers["X-Request-ID"],
+        }
+    }

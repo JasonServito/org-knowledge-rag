@@ -1,5 +1,5 @@
-"""`POST /query` (S12-T2) and `GET /decisions/{canonical_id}` (S13-T5) offline: `TestClient`,
-fakes for every paid client and for Langfuse, and no database.
+"""`POST /query` (S12-T2), `GET /decisions/{canonical_id}` (S13-T5) and the ingestion job routes
+(S14-T6) offline: `TestClient`, fakes for every paid client and for Langfuse, and no database.
 
 The steps that read the database are replaced: the per-request connection is a placeholder,
 `retrieve` returns one hand-built hit (after embedding the question, as the real one does first)
@@ -7,12 +7,13 @@ and `rule_conflicts` returns hand-built conflicts. The rest of the shared pipeli
 the answer, its citations and the trace. Expected outputs are the CLI's pinned output and error
 lines for the same fakes (tests/integration/test_cli.py), written by hand. For a decision chain,
 the data-access functions `load_chain` calls return hand-built rows; `load_chain` runs for real.
+For a job, the job reads and writes (`db/jobs.py`) return a hand-built job.
 """
 
 import json
 from collections.abc import Sequence
 from contextlib import nullcontext
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +33,16 @@ from tests.conftest import (
 from orgknow import cli, pipeline
 from orgknow.api import app as api_app
 from orgknow.api.app import create_app
-from orgknow.db.models import Authority, Hit, Observation, Release, StoredDecision, StoredEvidence
+from orgknow.db.models import (
+    Authority,
+    Hit,
+    IngestionJob,
+    JobStep,
+    Observation,
+    Release,
+    StoredDecision,
+    StoredEvidence,
+)
 from orgknow.embeddings.embedder import EmbedResult, InputType
 from orgknow.generation.conflicts import Conflict
 from orgknow.generation.schema import Generation, ModelAnswer
@@ -599,6 +609,191 @@ def test_decisions_is_503_when_the_database_is_unreachable(monkeypatch: pytest.M
     client = TestClient(create_app(_settings()))
 
     response = client.get("/decisions/kep:2572")
+
+    assert response.status_code == 503
+    assert response.json() == _envelope(response, "database_unavailable", "database unavailable")
+    _no_secret(response.text)
+
+
+# --- POST /ingestion-jobs and GET /ingestion-jobs/{job_id} (S14-T6) -----------------------------
+
+NO_JOB = "no ingestion job with this id"  # the S14-R2 contract's "Pinned: T6"
+JOB = IngestionJob(
+    id=7,
+    status="queued",
+    created_at=datetime(2026, 10, 14, 9, 0, tzinfo=UTC),
+    started_at=None,
+    finished_at=None,
+    attempts=0,
+    error=None,
+    request_id="req-first",
+    steps=[JobStep(name=name) for name in ("ingest", "lifecycle", "embed", "chains")],
+)
+# JOB as the API sends it, typed by hand.
+PENDING = {
+    "status": "pending",
+    "started_at": None,
+    "finished_at": None,
+    "counts": {},
+    "error": None,
+}
+JOB_JSON = {
+    "id": 7,
+    "status": "queued",
+    "created_at": "2026-10-14T09:00:00Z",
+    "started_at": None,
+    "finished_at": None,
+    "attempts": 0,
+    "error": None,
+    "request_id": "req-first",
+    "steps": [
+        {"name": "ingest", **PENDING},
+        {"name": "lifecycle", **PENDING},
+        {"name": "embed", **PENDING},
+        {"name": "chains", **PENDING},
+    ],
+}
+
+
+def _fake_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+    created: list[IngestionJob | None],
+    active: list[IngestionJob | None],
+) -> list[str | None]:
+    """`create_job` and `active_job` answer from `created` and `active`, in order, on the
+    placeholder connection. Returns the request IDs `create_job` is given."""
+    given: list[str | None] = []
+
+    def create_job(conn: object, request_id: str | None) -> IngestionJob | None:
+        assert conn is CONNECTION
+        given.append(request_id)
+        return created.pop(0)
+
+    def active_job(conn: object) -> IngestionJob | None:
+        assert conn is CONNECTION
+        return active.pop(0)
+
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(CONNECTION))
+    monkeypatch.setattr(api_app, "create_job", create_job)
+    monkeypatch.setattr(api_app, "active_job", active_job)
+    return given
+
+
+@pytest.mark.parametrize(
+    ("created", "active", "status"),
+    [
+        ([JOB], [], 202),
+        ([None], [JOB], 200),
+        # The active job ended between the refused insert and the read: the 2nd insert creates.
+        ([None, JOB], [None], 202),
+    ],
+    ids=["created", "active-job", "created-on-the-2nd-try"],
+)
+def test_post_creates_a_job_or_returns_the_active_one(
+    monkeypatch: pytest.MonkeyPatch,
+    created: list[IngestionJob | None],
+    active: list[IngestionJob | None],
+    status: int,
+) -> None:
+    created, active = list(created), list(active)  # popped below: copies, not the parameters
+    tries = len(created)
+    given = _fake_jobs(monkeypatch, created, active)
+    client = TestClient(create_app(_settings()))  # no startup: the route needs no paid client
+
+    # An unexpected body is ignored (no body is read).
+    response = client.post(
+        "/ingestion-jobs", json={"steps": ["embed"]}, headers={"X-Request-ID": "req-t6"}
+    )
+
+    assert response.status_code == status
+    assert response.json() == JOB_JSON
+    # Each insert is given this request's ID; every answer was used.
+    assert given == ["req-t6"] * tries
+    assert (created, active) == ([], [])
+
+
+def test_post_is_a_500_when_no_job_is_created_or_active_after_2_tries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Practically unreachable: an active job ending between each refused insert and its read.
+    given = _fake_jobs(monkeypatch, [None, None], [None, None])
+    client = TestClient(create_app(_settings()))
+
+    response = client.post("/ingestion-jobs")
+
+    assert response.status_code == 500
+    assert response.json() == _envelope(response, "internal", "internal error")
+    assert len(given) == 2  # at most 2 tries (call i)
+
+
+def test_get_returns_the_job_with_its_steps(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[int] = []
+
+    def get_job(conn: object, job_id: int) -> IngestionJob | None:
+        assert conn is CONNECTION
+        asked.append(job_id)
+        return JOB
+
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(CONNECTION))
+    monkeypatch.setattr(api_app, "get_job", get_job)
+    client = TestClient(create_app(_settings()))
+
+    response = client.get("/ingestion-jobs/7")
+
+    assert response.status_code == 200
+    assert response.json() == JOB_JSON
+    assert asked == [7]  # an int, not the path's text
+
+
+def test_get_of_a_job_that_does_not_exist_is_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(CONNECTION))
+    monkeypatch.setattr(api_app, "get_job", lambda conn, job_id: None)
+    client = TestClient(create_app(_settings()))
+
+    response = client.get("/ingestion-jobs/8")
+
+    assert response.status_code == 404
+    assert response.json() == _envelope(response, "not_found", NO_JOB)
+
+
+@pytest.mark.parametrize("job_id", ["abc", "1.5", "7x"])
+def test_get_of_a_non_integer_id_is_422_without_a_connection(
+    monkeypatch: pytest.MonkeyPatch, job_id: str
+) -> None:
+    connections: list[str] = []
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: connections.append("opened"))
+    client = TestClient(create_app(_settings()))
+
+    response = client.get(f"/ingestion-jobs/{job_id}")
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert (error["code"], error["request_id"]) == (
+        "invalid_request",
+        response.headers["X-Request-ID"],
+    )
+    assert error["message"].startswith("path.job_id: ")
+    assert job_id not in error["message"]  # never the value sent
+    assert connections == []
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("POST", "/ingestion-jobs"), ("GET", "/ingestion-jobs/7")],
+    ids=["post", "get"],
+)
+def test_the_job_routes_are_503_when_the_database_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch, method: str, path: str
+) -> None:
+    def refuse(settings: Settings) -> None:
+        # The message names the URL, password included: the response must not repeat it.
+        url = settings.database_url
+        raise psycopg.OperationalError(f"connection to {url} failed: Connection refused")
+
+    monkeypatch.setattr(api_app, "api_connection", refuse)
+    client = TestClient(create_app(_settings()))
+
+    response = client.request(method, path)
 
     assert response.status_code == 503
     assert response.json() == _envelope(response, "database_unavailable", "database unavailable")

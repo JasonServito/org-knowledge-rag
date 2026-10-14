@@ -10,7 +10,6 @@ end. Expected texts are typed by hand from the contract (calls c and h).
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -261,16 +260,6 @@ def block(conn):
 conn = psycopg.connect(sys.argv[1], autocommit=True)
 run_once(conn, [("ingest", ingest), ("lifecycle", block), ("embed", block), ("chains", block)], 3)
 """
-
-
-@pytest.fixture
-def committed(settings: Settings) -> Iterator[Conn]:
-    """An autocommit connection; every job left in the table at the end is deleted."""
-    with psycopg.connect(settings.database_url, autocommit=True) as conn:
-        try:
-            yield conn
-        finally:
-            conn.execute("DELETE FROM ingestion_jobs")
 
 
 def test_a_killed_workers_job_is_resumed_at_its_first_unfinished_step(
