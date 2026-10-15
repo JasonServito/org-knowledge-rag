@@ -325,7 +325,8 @@ On the dev database. A no-op job adds 1 row to `ingestion_jobs` and nothing else
 ```bash
 make up && make image && make image-check
 NET=orgknow_default; DB=postgresql://orgknow:orgknow@db:5432/orgknow
-docker run -d --name orgknow-api --network $NET -p 127.0.0.1:8000:8000 -e DATABASE_URL=$DB orgknow:dev
+docker run -d --name orgknow-api --network $NET -p 127.0.0.1:8000:8000 -e DATABASE_URL=$DB \
+  -e ANTHROPIC_API_KEY=unused -e VOYAGE_API_KEY=unused orgknow:dev   # the API refuses to start without both keys (T3)
 docker run -d --name orgknow-worker --network $NET --restart unless-stopped \
   -e DATABASE_URL=$DB -e VOYAGE_API_KEY=unused -e EMBED_MAX_TOKENS_PER_RUN=1 \
   -v ~/corpus_cache/org-knowledge-rag:/corpus_cache:ro orgknow:dev python -m orgknow.ingestion.worker
