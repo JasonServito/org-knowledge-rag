@@ -1,0 +1,357 @@
+# S15: AWS deployment
+
+- **Status:** 🟨
+- **Blueprint stage:** 11 (AWS portfolio deployment); gap #6 (risk/security/cost review)
+- **Started:** 2026-10-14
+- **Finished:**
+
+## Outcome
+
+One `terraform apply` from the laptop creates the AWS environment (EC2, RDS, S3, ECR, IAM, CloudWatch, SSM, a budget alarm). The API and the worker run there from one container image and restart after a crash. The deployed API answers a live question with citations, the RDS database's ingestion fingerprint equals the laptop's, the forecast cost is ≤ US$50/month, and one runbook command removes everything.
+
+## Why now
+
+- M2 needs a deployed system (blueprint §23, stage 11). S16 (CI/CD) deploys to it; S17 (Next.js UI) serves from it.
+- Blueprint gap #6 (risk, security, cost) is "before public deployment": it comes first.
+- It retires 4 open triggers: ADR-004's pgvector and `btree_gist` recheck on RDS, ADR-005's connection-count trigger, ADR-008's instance choice, and ADR-013's missing worker supervisor.
+
+## Exit checks
+
+- [ ] The review covers gap #6's 6 topics (model-API abuse and cost, secrets, prompt/data injection, public exposure, dependencies, AWS cost guardrails), each with a rating, a mitigation and where it lives.
+- [ ] ADR-014 (deployment topology) is Accepted.
+- [ ] `make image` builds one image; on the laptop, its API answers `/ready` 200, and its worker runs a job to `succeeded` with the fingerprint unchanged.
+- [ ] `make tf-check` (format, validate, offline tests) is green.
+- [ ] *(T6)* On AWS: `/ready` 200; RDS reports pgvector 0.8.1 and `btree_gist`; the RDS fingerprint equals `sha256:0f0ee078…4165`; one live ask answers with citations and a Langfuse trace; latency, RDS `max_connections` and peak connections are recorded (ADR-005's trigger); the cost forecast is ≤ US$50/month.
+- [ ] *(T6)* The teardown runbook was run once and left no billable resource.
+- [ ] Guard: `make eval-retrieval`'s metric lines and the dev fingerprint are unchanged.
+- [ ] Retro done; slice brief written; backlog updated.
+
+## Scope
+
+| In | Out (explicitly) |
+|---|---|
+| Risk/security/cost review (gap #6) | SQS (ADR-013 D1) |
+| ADR-014: deployment topology | ECS/Fargate, ALB, NAT gateway, Secrets Manager, Route 53/CloudFront (blueprint §23.2) |
+| One container image (API and worker) | CI/CD: building and deploying on merge (S16) |
+| Terraform: EC2, RDS, S3, ECR, IAM, CloudWatch, SSM, a budget alarm | The Next.js UI and its public exposure (S17) |
+| A deploy and teardown runbook | Multi-AZ, autoscaling, a staging environment |
+| The first real deploy and its measurements (T6) | Re-embedding the corpus in the cloud |
+
+## Metric to move
+
+n/a (deployment). Guards: Phase 1 retrieval metrics and the ingestion fingerprint stay exactly the same; monthly cost ≤ US$50 (forecast). Recorded, not moved: live answer latency on the deployed instance, against the spec's 23 s p95 ceiling.
+
+## Tasks
+
+These mirror `docs/backlog.md`; details live here.
+
+### S15-T1: Risk, security and cost review `[core]`
+
+- **Goal:** blueprint gap #6 as one doc, written from the sitting's decisions.
+- **Done when:** each of the 6 topics has its risks, a rating, the mitigation and where it lives (ADR-014, Terraform, runbook, or parked); S14's security inputs and PR #51's parked 2–3 each have a disposition; the cost table sums to ≤ US$50/month with each price's source.
+- **Notes / pointers:** blueprint §20, §23, §26.2, §27, §32 gap #6; the Proposed addition "S15 security review inputs from S14-R1".
+- **Deps:** the contract.
+
+### S15-T2: ADR-014, deployment topology `[core]`
+
+- **Goal:** the topology decided in the sitting, committed as Accepted in the contract commit.
+- **Done when:** the ADR is in `docs/decisions/` with its index row and `.greptile/files.json` entry.
+- **Deps:** none.
+- **Done:** decided in the S15-R1 sitting (2026-10-15); committed with the run contract.
+
+### S15-T3: Container image `[commodity]`
+
+- **Goal:** one image that runs the API or the worker, with the reranker's weights inside.
+- **Done when:** `make image` builds it; on the laptop, the API container answers `/health` and `/ready` 200 and `GET /decisions/kep:2572`; the worker container runs a job to `succeeded` against the local database with the fingerprint unchanged; a killed worker container is restarted by its restart policy.
+- **Notes / pointers:** `git` is needed in the image (`ingestion/git_reader.py`); the corpus cache is mounted; `make serve` binds 127.0.0.1.
+- **Deps:** the contract.
+
+### S15-T4: Terraform `[commodity]`
+
+- **Goal:** the AWS environment as code, checked offline.
+- **Done when:** `make tf-check` runs `terraform fmt -check`, `validate` and `terraform test` (mock providers, no AWS account) and is green; the tests pin the contract's security and cost rules.
+- **Deps:** the contract.
+
+### S15-T5: Deploy and teardown runbook `[commodity]`
+
+- **Goal:** the exact commands for the first deploy, an update, and teardown.
+- **Done when:** the runbook covers credentials, `apply`, pushing the image, uploading the corpus, loading the database, starting, checking, and `destroy`; each command matches a T3/T4 target or resource.
+- **Deps:** T3, T4.
+
+### S15-T6: First deploy and measurements `[human]`
+
+- **Goal:** the real environment, created with the developer, and the numbers that close the ADR triggers.
+- **Done when:** the T6 exit checks above hold, with each number in the slice doc.
+- **Notes / pointers:** paid (AWS hours, a few Anthropic asks); needs the developer's AWS login. ADR-004 (pgvector recheck), ADR-005 (connection trigger), ADR-008 (instance).
+- **Deps:** T5.
+
+### S15-T7: Docs and the S15 retro `[commodity]`
+
+- **Deps:** T6.
+
+## Risks & unknowns
+
+- **Cost:** an always-on instance and database sit near the US$50 line; a forgotten resource bills every hour.
+- **Latency on 2 CPUs:** the projected answer p95 is 22–24 s against the 23 s ceiling (`docs/evaluation.md`, "Reranker timing and S15 sizing").
+- **A new account's limits:** on-demand vCPU quotas may be low.
+- **RDS:** Postgres 18 and the chosen class must exist in the region; the HNSW index rebuild on a 1 GiB instance is unmeasured.
+- **Secrets:** Terraform's state file holds the generated database password.
+
+## Decisions expected (ADRs)
+
+- ADR-014: deployment topology (S15-R1 sitting).
+
+## Run contracts
+
+### Run S15-R1: Review, image and Terraform
+
+- **Status:** planned
+- **Tasks:** T1, T3, T4, T5 (T2, ADR-014, is in this contract's commit). T6 is `[human]`, needs the developer's AWS login and is paid: never in a run.
+- **Goal (plain words):** write down every risk of the deployment and where its fix lives; build one container image and prove it on the laptop (the API answers, the worker rebuilds the real corpus with the same fingerprint, the retrieval eval prints the laptop's numbers); describe the whole AWS environment in Terraform, checked offline by tests that pin the security and cost rules; and write the runbook T6 will follow. Nothing in AWS is created.
+
+#### Sitting evidence (2026-10-14/15)
+
+Each result is copied from its output.
+
+- **Tools on the laptop:** `Terraform v1.14.8 on linux_amd64`; `aws: command not found` (no AWS CLI, no credentials); Docker on `x86_64`.
+- **Database size:** `431 MB` (`embeddings` 292 MB, `chunks` 126 MB); a compressed dump: `pg_dump -Fc | wc -c` → `118992254` bytes (119 MB). Extensions: `vector 0.8.1`, `btree_gist 1.8`. Local `max_connections`: `100`.
+- **Corpus cache:** `396M ~/corpus_cache/org-knowledge-rag`; `community`, `enhancements`, `kubernetes`, `sig-release`, `website` are partial clones (`promisor=true`, `filter=blob:none`); `gh/` and `github/` are plain files.
+- **No network needed for a no-op ingest:** `GIT_ALLOW_PROTOCOL=file` blocks lazy fetches (`fatal: transport 'https' not allowed` / `fatal: could not fetch 0080fd68… from promisor remote`); with it, `make ingest` took `real 0m21.603s` and printed `Fingerprint: sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165`. (A first attempt overriding `remote.origin.url` through the environment did not block git: `ls-remote` still reached GitHub. Don't use it as a proof.)
+- **Git refuses a cache owned by another user:** `docker run -u 10001 -v <cache>:/c:ro alpine/git:v2.47.2 -C /c/sig-release log -1` → `To add an exception for this directory, call: git config --global --add safe.directory /c/sig-release`, exit 128.
+- **torch for ARM exists** in `uv.lock` (`torch-2.14.1+cpu-cp312-cp312-manylinux_2_28_aarch64.whl`); not used (decision 2).
+- **Prices** (us-east-1, on demand, 730 h/month), each checked in the sitting:
+
+| Item | Price | Per month | Source |
+|---|---|---|---|
+| EC2 t3a.medium (2 vCPU, 4 GiB) | US$0.0376/h | 27.45 | instances.vantage.sh/aws/ec2/t3a.medium |
+| EBS gp3, 20 GB | US$0.08/GB-month | 1.60 | EBS pricing (secondary sources) |
+| Public IPv4, 1 | US$0.005/h | 3.65 | AWS public IPv4 charge (since 2024-02-01) |
+| RDS db.t4g.micro, single-AZ | US$0.016/h | 11.68 | instances.vantage.sh/aws/rds/db.t4g.micro |
+| RDS gp3, 20 GB | US$0.115/GB-month | 2.30 | RDS pricing (secondary sources) |
+| ECR, ~3 GB | US$0.10/GB-month | 0.30 | estimate |
+| CloudWatch Logs | US$0.50/GB ingested | ~0.50 | estimate |
+| S3, ~0.6 GB | US$0.023/GB-month | 0.01 | estimate |
+| SSM standard parameters, Budgets (first 2), SNS email, VPC, IAM | — | 0 | — |
+| **Total** | | **47.49** | |
+
+  For comparison: t3.medium (US$0.0416/h) → 50.40 in total; t4g.medium (US$0.0336/h) → 44.56.
+- **The AWS account:** created 2026-10-14 on the **Paid Plan** (no Free Plan instance restrictions). Only the root login exists so far.
+- **Devil's advocates** (one per decision 1–3): none changed a decision. Decision 1's added the condition that T1 designs the S17 exposure controls (never "n/a"); decision 2's made the instance type a variable, the credit mode explicit (standard), and the T6 measurement with its 15 s rule; decision 3's added the tests that pin "no public address" and "no internet route".
+
+#### Decisions (made in the sitting, 2026-10-15)
+
+| # | Decision | Rejected | Why |
+|---|---|---|---|
+| Step 0 | Triage: PR #51 parked 2 (no worker supervisor) → T3; PR #51 parked 3 (a file path in a job's error), the "misleading step failed line" and the 4 "S15 security review inputs" → T1 rates each; "S15: the reranker's 2-CPU numbers" → decision 2; PR #52 parked 1 (ADR index rows) → fixed in this commit; PR #51's 9 and PR #52's 3 doc nits → folded into "Phase 1 text corrections"; PR #51's 7 test nits and "untested" list dropped | — | — |
+| Scope | Slice tasks T1–T7; bundle T1, T3, T4, T5; T6 `[human]` with the developer; latency recorded, not gated; the teardown proof in T6 | AWS calls in the run | No credentials; creating resources costs money |
+| 1 | **No inbound ports; Session Manager tunnel** (ADR-014 D1). T1 designs S17's public controls (HTTPS, API key, per-key spending cap, rate limits on the 2 POST routes), marked Proposed | HTTP + key + IP allowlist; HTTPS proxy now | Only the developer needs access before S17; abuse risk 0; adding a door later is cheap |
+| 2 | **t3a.medium, local reranker, standard credits; measured in T6** (ADR-014 D2); > 15 s retrieve p95 → next sitting | t4g.medium (ARM); Voyage rerank + t3a.small; t3.medium | Same x86 image as the laptop; US$47.49; ARM can't be tested here; Voyage changes every metric |
+| 3 | **Own VPC: public subnet for the server, 2 private subnets for RDS**, with tests pinning no public address and no internet route (ADR-014 D3) | The default VPC | Two locks instead of one; no dependency on the default VPC; US$0 |
+| PRs | **2 PRs, split after T3:** PR 1 = T1 + T3 (`s15-r1a-review-image`, cut at T3's commit); PR 2 = T4 + T5 (this branch, based on PR 1) | 1 PR | Size alarm (~1,100–1,300 lines); one purpose per PR; the Terraform gets its own review |
+| Paid | **None** | — | — |
+
+**Claude's calls** (reversible; confirmed at the read-back):
+- m1. Region `us-east-1`.
+- m2. RDS is loaded from a dump of the laptop's database through S3, never re-embedded (ADR-014 D5).
+- m3. The reranker's weights are downloaded at build (`RERANK_MODEL` at `RERANK_REVISION`) into the image; `HF_HUB_OFFLINE=1` at runtime.
+- m4. One image, 2 containers via `docker run`, `--restart unless-stopped`; the API published on `127.0.0.1:8000` only.
+- m5. A non-root user; `git config --system --add safe.directory '*'`; `GIT_ALLOW_PROTOCOL=file`.
+- m6. The corpus cache as one archive in S3, unpacked by the deploy script, mounted read-only into the worker.
+- m7. Secrets in SSM `SecureString` under `/orgknow/<ENV_VAR>`; the developer sets the API keys; Terraform writes `DATABASE_URL`; the password has letters and digits only.
+- m8. Local Terraform state, gitignored; providers pinned in the committed lock file.
+- m9. Docker's `awslogs` driver → log group `/orgknow`, 14-day retention; 2 alarms → SNS email.
+- m10. Budget US$50/month: email at 80% actual, 100% forecast; the email address in a gitignored `terraform.tfvars`.
+- m11. RDS: Postgres major 18, `db.t4g.micro`, 20 GB gp3, single-AZ, encrypted, 1-day backups, no final snapshot, no deletion protection, `sslmode=require`.
+- m12. Amazon Linux 2023 (latest AMI from AWS's public SSM parameter), 20 GB gp3 encrypted, IMDSv2 required, a least-privilege role.
+- m13. 1 ECR repository (scan on push, keep the last 3 images); 1 S3 bucket (all public access blocked, encrypted, `force_destroy`).
+- m14. `make image`, `make image-check`, `make tf-check`; `make tf-check` is not part of `make check` (CI gets Terraform in S16).
+- m15. The image holds the files `make eval-retrieval` reads (the golden set v0, the conflict set, the stored question vectors and routes).
+- m16. T1 rates each S14 input; code is fixed only if rated must-fix for a deployment with no inbound ports (none expected); the rest → Proposed additions for S17.
+- m17. Files: `Dockerfile`, `.dockerignore`, `infra/`, `docs/security-review.md`, `docs/deployment.md`; `CLAUDE.md`'s repo map gains `infra/` and the `Dockerfile`.
+- m18. One names table (below) that T3, T4 and T5 copy from.
+
+**Details set while writing the contract** (Claude's calls; listed at the hand-off for the developer to see):
+- c1. The boot script installs Docker and writes the deploy script, but starts nothing: the first start is the runbook's `orgknow-deploy <tag>`, after the image is pushed, the secrets are set and the database is loaded. On a reboot, Docker's restart policy brings both containers back.
+- c2. The app connects as the RDS master user (one database user); T1 rates it.
+- c3. The server's security group allows all outbound traffic (Anthropic, Voyage, Langfuse, ECR, SSM, S3, the Amazon Linux repos, RDS); T1 rates it.
+- c4. Terraform creates the 4 API-key parameters with the placeholder value `set-me` and ignores later value changes, so the names (and the role's scope) are in code and the real values never are.
+
+#### Names table (T3, T4 and T5 copy from here)
+
+| Thing | Value |
+|---|---|
+| Local image | `orgknow:dev` (`make image`) |
+| ECR repository | `orgknow`; tags are the git short SHA |
+| Container names | `orgknow-api`, `orgknow-worker` |
+| API command | `uvicorn --factory orgknow.api.app:create_app --host 0.0.0.0 --port 8000 --log-config config/logging.json --no-access-log` |
+| API port | container 8000 → server `127.0.0.1:8000` |
+| Worker command | `python -m orgknow.ingestion.worker` |
+| Image workdir | `/app` |
+| Container user | `orgknow`, uid 10001 |
+| Model cache in the image | `HF_HOME=/opt/hf`, `HF_HUB_OFFLINE=1` |
+| Corpus cache in the container | `/corpus_cache` (`CORPUS_CACHE_DIR=/corpus_cache`), read-only |
+| Corpus cache on the server | `/srv/orgknow/corpus_cache` |
+| Env file on the server | `/etc/orgknow/env` (root, mode 0600) |
+| Deploy script on the server | `/usr/local/bin/orgknow-deploy <image-tag>` |
+| SSM parameters (SecureString) | `/orgknow/DATABASE_URL` (Terraform), `/orgknow/ANTHROPIC_API_KEY`, `/orgknow/VOYAGE_API_KEY`, `/orgknow/LANGFUSE_PUBLIC_KEY`, `/orgknow/LANGFUSE_SECRET_KEY` (developer) |
+| S3 bucket | `orgknow-<account id>-us-east-1` |
+| S3 objects | `corpus_cache.tar.gz`, `orgknow.dump` |
+| Log group / streams | `/orgknow`; `api`, `worker` |
+| RDS | identifier `orgknow`, database `orgknow`, user `orgknow`, port 5432 |
+| SNS topic | `orgknow-alerts` |
+| Budget | `orgknow-monthly`, US$50 |
+| Terraform variables | `region` (`us-east-1`), `instance_type` (`t3a.medium`), `alert_email` (no default), `budget_usd` (50) |
+| Terraform outputs | `ecr_repository_url`, `bucket_name`, `instance_id`, `rds_endpoint` |
+
+#### Pinned: T1 (the risk, security and cost review)
+
+- **`docs/security-review.md`**, with one table per topic of blueprint gap #6: model-API abuse and cost; secret handling; prompt and data injection; public endpoint exposure; dependency risk; AWS cost guardrails. Each row: the risk, a rating (high/medium/low, with its reason in one line), the mitigation, and where it lives (an ADR-014 D-number, a Terraform resource, the runbook, or "Proposed (S17)").
+- **Must include:**
+  - Decision 1's S17 exposure design (HTTPS, an API key, a per-key spending cap, rate limits on `POST /query` and `POST /ingestion-jobs`), marked Proposed; abuse and exposure are never "n/a".
+  - Injection: GitHub comments (tier 7) are user-written text that reaches the answer prompt; what limits the damage (structured output, citation validation, no tools the model can call), and what doesn't.
+  - Secrets: SSM, the env file, the state file holding the database password, root vs. an admin user with MFA (the account has only root today), the Anthropic prepaid balance as a hard spending ceiling.
+  - Dependencies: `uv.lock` pins every Python package with hashes; base images pinned by digest; ECR scan on push; the providers' lock file.
+  - The cost table above, with each price's source, and the guardrails (ADR-014 D7).
+  - c2 and c3, rated.
+- **A disposition for each** of: the 4 "S15 security review inputs from S14-R1" (plain-text library log lines and missing `trace_id`/causes; Anthropic's uncapped `retry-after`; provider text in a 502; unbounded `VOYAGE_MAX_RETRIES` and the replaced `options`), PR #51 parked 3 (a file path in a job's error) and the "misleading step failed line": fixed in this run only if rated must-fix for a deployment with no inbound ports; otherwise a Proposed addition (S17) named in the review.
+- **Every claim beside its source** (a contract line, an ADR, a Terraform resource, a price link, a code line); the builder lists them for the reviewer (S14's retro).
+
+#### Pinned: T3 (the container image)
+
+- **`Dockerfile`:** `python:3.12-slim` pinned by digest; uv copied from `ghcr.io/astral-sh/uv` pinned by digest; `git` installed; `uv sync --frozen --no-dev` (the CPU torch index, as in `pyproject.toml`); the reranker's weights fetched at build (m3); the names table's user, workdir, `HF_HOME`, `HF_HUB_OFFLINE=1`, `GIT_ALLOW_PROTOCOL=file`, `CORPUS_CACHE_DIR=/corpus_cache`; `git config --system --add safe.directory '*'`; the default command is the API's. A multi-stage build only if it's needed to keep build tools out.
+- **`.dockerignore`:** an allowlist (`*`, then `!` the paths the image needs: `pyproject.toml`, `uv.lock`, `src/`, `config/`, and m15's eval files). `.env` and `.venv` are never sent.
+- **Make targets:** `image` (`docker build -t orgknow:dev .`); `image-check` (one `docker run --rm orgknow:dev` that fails unless: no `/app/.env`, `id -u` is not 0, `GIT_ALLOW_PROTOCOL` is `file`, and git's system config lists `safe.directory`).
+- **No change under `src/`** is expected. If one is needed (e.g. a path the container can't see), it's the smallest one, named in the brief; anything touching retrieval, generation or ingestion logic → park.
+
+#### Pinned: T4 (Terraform)
+
+- **`infra/`** (one root module; no sub-modules): `versions.tf` (Terraform ≥ 1.14; `hashicorp/aws` and `hashicorp/random` pinned to minor versions), `variables.tf`, `network.tf`, `compute.tf` (the instance, its role and profile, the boot script from a template file), `database.tf`, `storage.tf` (S3, ECR), `observability.tf` (logs, alarms, SNS, the budget), `ssm.tf`, `outputs.tf`, `terraform.tfvars.example`, `tests/*.tftest.hcl`. `.terraform.lock.hcl` committed.
+- **`.gitignore`** (in the same commit, before any `apply` can happen): `infra/.terraform/`, `*.tfstate`, `*.tfstate.*`, `infra/terraform.tfvars`.
+- **Network:** a VPC `10.0.0.0/16`; public subnet `10.0.1.0/24` (zone a, route `0.0.0.0/0` → internet gateway); private subnets `10.0.11.0/24` (zone a) and `10.0.12.0/24` (zone b) on their own route table with no routes beyond the local one; a DB subnet group of the 2 private subnets.
+- **Security groups:** the server's: no ingress, all egress (c3); the database's: ingress TCP 5432 from the server's group only.
+- **The instance:** m12; `instance_type` variable; `credit_specification { cpu_credits = "standard" }`; `associate_public_ip_address = true`; `metadata_options { http_tokens = "required" }`; root volume 20 GB gp3 encrypted; the boot script (c1) installs Docker (`dnf`), enables it, writes `/usr/local/bin/orgknow-deploy`.
+- **The deploy script** (`orgknow-deploy <tag>`): fetch `/orgknow/*` with decryption into `/etc/orgknow/env` (0600); if `/srv/orgknow/corpus_cache` is missing, download and unpack `corpus_cache.tar.gz`; log in to ECR; pull the tag; remove and re-run both containers with the names table's commands, `--restart unless-stopped`, `--env-file`, `--log-driver awslogs` (group `/orgknow`, streams `api` and `worker`, region), the corpus mount read-only on the worker, the API on `127.0.0.1:8000:8000`.
+- **IAM:** the managed `AmazonSSMManagedInstanceCore`; an inline policy: `ssm:GetParametersByPath`/`GetParameters`/`GetParameter` on `parameter/orgknow/*`; `ecr:GetAuthorizationToken` (`*`), `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`, `ecr:BatchCheckLayerAvailability` on the repository; `s3:GetObject` on the bucket's objects and `s3:ListBucket` on the bucket; `logs:CreateLogStream`, `logs:PutLogEvents` on the log group.
+- **RDS, S3, ECR, logs, alarms, budget, SSM:** m9–m11, m13, c4, the names table. `DATABASE_URL` = `postgresql://orgknow:<password>@<endpoint>:5432/orgknow?sslmode=require`; `random_password` length 32, `special = false`.
+- **`make tf-check`:** `terraform -chdir=infra fmt -check -recursive`, `terraform -chdir=infra init -backend=false -input=false` (downloads the pinned providers), `validate`, `test`. Tests use `mock_provider` (offline, no AWS account) with `command = apply` where computed values are needed, and `override_data` for the AMI lookup and the account ID.
+
+#### Pinned: T5 (the runbook)
+
+- **`docs/deployment.md`**, in order:
+  1. **Account set-up (once):** MFA on root; an IAM Identity Center admin user; the AWS CLI and the Session Manager plugin on the laptop; `aws configure sso`, `aws sso login`.
+  2. **Create:** `cp infra/terraform.tfvars.example infra/terraform.tfvars` (the alert email); `terraform -chdir=infra init`, `plan`, `apply`; confirm the SNS subscription email.
+  3. **Secrets:** `aws ssm put-parameter --overwrite --type SecureString` for each developer-set name.
+  4. **Image:** `make image`; tag with the git short SHA; ECR login; push.
+  5. **Data:** `pg_dump -Fc` of the laptop database and `tar czf` of the corpus cache; `aws s3 cp` both; on the server (Session Manager shell), `pg_restore` into RDS from the `pgvector/pgvector:0.8.1-pg18` image.
+  6. **Start:** `sudo orgknow-deploy <tag>`.
+  7. **Check:** the Session Manager port-forward to `127.0.0.1:8000`; `curl` `/health`, `/ready`; the fingerprint on RDS; T6's measurements.
+  8. **Update:** push a new tag, `sudo orgknow-deploy <tag>`.
+  9. **Teardown:** `terraform -chdir=infra destroy`; what to check after (no running instance, no RDS instance, no bucket, no unattached address, the next day's cost).
+- **Every command names its source:** a make target, a Terraform output or resource, or the names table; nothing invented.
+
+#### Handoffs between tasks
+
+- T1 → T3/T4/T5: each mitigation T1 places in T3, T4 or T5 must be in that task's pinned text above; T1 places nothing new in them (a new control → Proposed).
+- T3 → T4: the image's commands, user, paths and env names (the names table); T4's deploy script runs exactly the names table's commands.
+- T3 + T4 → T5: `make image`, the Terraform outputs and the deploy script.
+
+#### Edge cases
+
+- The container's user doesn't own the mounted cache → git refuses it (sitting probe); the safe-directory line prevents it (break-it 2).
+- A file missing from the cache → the ingest step fails with git's error (`GIT_ALLOW_PROTOCOL=file`), never a fetch from GitHub.
+- `docker stop`/`docker kill` count as manual stops: the restart policy ignores them. The restart proof uses a lost database connection (below).
+- An idle worker may not exit on a lost connection (S14's retro: "not exercised"). If T3's restart proof finds it hanging or not exiting, that's a worker bug: park it (no `src/` change in this run), and record the restart policy as proven only by `docker inspect`'s configured policy.
+- The worker's start-up check needs `VOYAGE_API_KEY` set: the local demo uses a dummy value with `EMBED_MAX_TOKENS_PER_RUN=1`, so any paid request refuses.
+- The image build downloads ~1.1 GB of model weights and ~800 MB of wheels: slow, but free. A failed download → retry (no-progress rule after 3).
+- `terraform init` downloads the AWS provider (~600–700 MB) into `infra/.terraform/` (gitignored).
+- Mock providers fill computed attributes with made-up values; a format check on a fake ARN can fail. Use `override_resource`/`override_data` with realistic values; 3 failed attempts → park that test.
+- The RDS password must stay URL-safe (`special = false`).
+- `.env` exists in the repo root (the developer's real keys): the allowlist `.dockerignore` must never send it.
+
+#### Files in scope
+
+`docs/security-review.md` (T1); `Dockerfile`, `.dockerignore`, `Makefile` (`image`, `image-check`, `tf-check`) (T3, T4); `infra/**` and `.gitignore` (T4); `docs/deployment.md` (T5); `CLAUDE.md`'s repo map (m17); `docs/backlog.md` (ticks, Proposed additions from T1); this slice doc. Nothing under `src/` or `tests/` unless T3's rule above allows it.
+
+#### Proof map
+
+| Task | "Done when" | Proof | Expected values from |
+|---|---|---|---|
+| T1 | 6 topics, each risk with a rating, mitigation and location | The reviewer reads it; each location exists in this contract's pinned text or ADR-014 | Blueprint gap #6; this contract |
+| T1 | S17 exposure controls designed, marked Proposed | Present; abuse and exposure not "n/a" | Decision 1 |
+| T1 | Cost ≤ US$50 with sources | The table | This contract: US$47.49 |
+| T1 | A disposition for each of the 6 carried items | One row each | Step 0's list |
+| T3 | The image builds | `make image` exits 0; `docker image ls orgknow:dev` size | ~2.5 GB (estimate; recorded, not gated) |
+| T3 | No secrets, non-root, git settings | `make image-check` exits 0 | m5, the names table |
+| T3 | The API runs | `curl` `/health` → 200; `/ready` → 200; `GET /decisions/kep:2572` → 200 with 6 steps | S13: 6 steps |
+| T3 | The worker runs a job | POST `/ingestion-jobs` → the job `succeeded`; ingest counts: 0 new versions, 0 new chunks; embed: 0 requests | S14-R2's demo |
+| T3 | The fingerprint is unchanged | The job's ingest step's `fingerprint` | `sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165` (sitting) |
+| T3 | Retrieval is unchanged in the container | `python -m orgknow.eval retrieval` in the container → its first 5 lines | PR #51's laptop lines (below) |
+| T3 | The worker restarts itself | `docker compose restart db` → the worker exits on the lost connection → `docker inspect -f '{{.RestartCount}}' orgknow-worker` ≥ 1, then a job still runs to `succeeded` | ADR-013's amendment; ADR-014 D4 |
+| T4 | Format, validate, tests | `make tf-check` green | — |
+| T4 | RDS has no public address | test: `publicly_accessible == false` | Decision 3 |
+| T4 | The private subnets have no internet route | test: the private route table has 0 routes to `0.0.0.0/0`, and both private subnets use it | Decision 3 |
+| T4 | The server has no inbound rule | test: 0 ingress rules on its group | Decision 1 |
+| T4 | The database admits only the server | test: 1 ingress rule, TCP 5432, source = the server's group | Decision 3 |
+| T4 | Instance and credits | test: `instance_type == "t3a.medium"` by default; `cpu_credits == "standard"`; `http_tokens == "required"` | Decision 2, m12 |
+| T4 | Budget | test: limit 50 USD monthly; notifications ACTUAL > 80% and FORECASTED > 100% to `alert_email` | m10 |
+| T4 | Storage locked down | test: S3 public access block all 4 true; RDS `storage_encrypted`; root volume encrypted; log retention 14 | m9, m11–m13 |
+| T4 | SSM names | test: the set of parameter names equals the names table's 5 | m18 |
+| T5 | Every step has a command, and every command a source | The reviewer checks each against T3's targets, T4's outputs/resources and the names table | This contract |
+
+PR #51's laptop lines (T3's expected values; the 6th line, the retrieve time, differs by machine and is recorded, not compared):
+
+```
+Recall@10 0.522  Hit@10 0.972  MRR 0.781  nDCG@10 0.508
+Stale rate 0.000 (0 of 100 CURRENT hits)  Temporal accuracy 0.522 (47 of 90 dated HISTORY hits)
+Authority selection 0.889 (8 of 9 CURRENT questions)  CURRENT MRR 0.733
+Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-only, 7 windowed, 19 unfiltered
+Rule conflicts: 5 claim_mismatch (q16 q17 q18 q19 q32), 0 history_date
+```
+
+#### Break-it rules
+
+- T3: add `!.env` to `.dockerignore`'s allowlist, rebuild → `make image-check` fails. Restore.
+- T3: remove the `safe.directory` line, rebuild → the worker's job fails in its ingest step with "dubious ownership". Restore.
+- T4: set RDS `publicly_accessible = true` → a test fails. Restore.
+- T4: add an ingress rule (e.g. TCP 22 from `0.0.0.0/0`) to the server's group → a test fails. Restore.
+- T4: add a `0.0.0.0/0` route to the private route table → a test fails. Restore.
+- Each restore is confirmed with `git diff` (empty for that file).
+
+#### Real-data demo (T3; free, laptop)
+
+On the dev database. A no-op job adds 1 row to `ingestion_jobs` and nothing else; `EMBED_MAX_TOKENS_PER_RUN=1` makes any paid request refuse; the Voyage key is a dummy.
+
+```bash
+make up && make image && make image-check
+NET=orgknow_default; DB=postgresql://orgknow:orgknow@db:5432/orgknow
+docker run -d --name orgknow-api --network $NET -p 127.0.0.1:8000:8000 -e DATABASE_URL=$DB orgknow:dev
+docker run -d --name orgknow-worker --network $NET --restart unless-stopped \
+  -e DATABASE_URL=$DB -e VOYAGE_API_KEY=unused -e EMBED_MAX_TOKENS_PER_RUN=1 \
+  -v ~/corpus_cache/org-knowledge-rag:/corpus_cache:ro orgknow:dev python -m orgknow.ingestion.worker
+curl -s localhost:8000/health; curl -s localhost:8000/ready; curl -s localhost:8000/decisions/kep:2572
+curl -s -X POST localhost:8000/ingestion-jobs           # then GET /ingestion-jobs/<id> until succeeded
+docker compose restart db; sleep 20; docker inspect -f '{{.RestartCount}}' orgknow-worker
+docker run --rm --network $NET -e DATABASE_URL=$DB orgknow:dev python -m orgknow.eval retrieval
+docker rm -f orgknow-api orgknow-worker
+```
+
+#### Bundle-level check (end of run; free, ~10 min)
+
+- `make check`; `make test-int`; `make tf-check`.
+- The T3 demo above, from a fresh `make image`.
+- `git diff main --stat -- src/ tests/` is empty (or lists only T3's allowed change).
+- `make ingest-report | grep Fingerprint` on the dev database: unchanged.
+
+#### PR plan
+
+- **2 PRs, split after T3.** PR 1 (`s15-r1a-review-image`, cut at T3's commit): the contract, ADR-014, T1, T3. PR 2 (this branch, base PR 1's branch): T4, T5.
+- Greptile on both (23/50 → 25/50). No re-review unless must-fix changes behavior.
+- **Paid calls allowed:** none. Free downloads only (the base images, the model, the Python wheels, the Terraform providers).
+
+## Retro (fill in at the end)
+
+- **Shipped (with numbers):**
+- **Surprises:**
+- **What didn't work / negative results:**
+- **Do differently next slice:**
+- **Slice brief:** `docs/learning/S15-aws-deployment.md`
