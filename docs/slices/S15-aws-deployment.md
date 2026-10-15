@@ -105,7 +105,7 @@ These mirror `docs/backlog.md`; details live here.
 
 ### Run S15-R1: Review, image and Terraform
 
-- **Status:** planned
+- **Status:** PR open (2 PRs, split after T3)
 - **Tasks:** T1, T3, T4, T5 (T2, ADR-014, is in this contract's commit). T6 is `[human]`, needs the developer's AWS login and is paid: never in a run.
 - **Goal (plain words):** write down every risk of the deployment and where its fix lives; build one container image and prove it on the laptop (the API answers, the worker rebuilds the real corpus with the same fingerprint, the retrieval eval prints the laptop's numbers); describe the whole AWS environment in Terraform, checked offline by tests that pin the security and cost rules; and write the runbook T6 will follow. Nothing in AWS is created.
 
