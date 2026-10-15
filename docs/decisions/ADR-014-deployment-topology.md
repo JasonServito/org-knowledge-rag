@@ -52,7 +52,7 @@
 
 - Each secret is an encrypted (`SecureString`) SSM parameter named `/orgknow/<ENV_VAR>`. Terraform creates each name; the developer sets the API keys' values with the CLI; Terraform writes `DATABASE_URL` from a generated password (letters and digits; `sslmode=require`).
 - The deploy script writes them to a root-only env file that `docker run` reads. No secret is in the image, the Terraform code or git.
-- The server's IAM role reads only `/orgknow/*`, pulls only its ECR repository, reads only its bucket, and writes only its log group.
+- The server's IAM role reads `/orgknow/*` (the deploy script fetches by that path), pulls only its ECR repository, reads only its bucket, and writes only its log group. The AWS-managed Session Manager policy it also holds (`AmazonSSMManagedInstanceCore`) can read any parameter by name; this account holds no other parameters of its own (reworded at the PR review, 2026-10-15).
 - Terraform state stays on the laptop, gitignored (it holds the database password). Providers are pinned in the committed lock file.
 
 ### D7. Cost guardrails

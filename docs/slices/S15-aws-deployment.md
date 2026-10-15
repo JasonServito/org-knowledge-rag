@@ -21,7 +21,7 @@ One `terraform apply` from the laptop creates the AWS environment (EC2, RDS, S3,
 - [ ] ADR-014 (deployment topology) is Accepted.
 - [ ] `make image` builds one image; on the laptop, its API answers `/ready` 200, and its worker runs a job to `succeeded` with the fingerprint unchanged.
 - [ ] `make tf-check` (format, validate, offline tests) is green.
-- [ ] *(T6)* On AWS: `/ready` 200; RDS reports pgvector 0.8.1 and `btree_gist`; the RDS fingerprint equals `sha256:0f0ee078…4165`; one live ask answers with citations and a Langfuse trace; latency, RDS `max_connections` and peak connections are recorded (ADR-005's trigger); the cost forecast is ≤ US$50/month.
+- [ ] *(T6)* On AWS: `/ready` 200; RDS reports pgvector 0.8.1 and `btree_gist`; the RDS fingerprint equals `sha256:0f0ee078…4165`; one live ask answers with citations and a Langfuse trace; latency, RDS `max_connections` and peak connections are recorded (ADR-005's trigger); the cost forecast is ≤ US$50/month (with no forecast for the new account: one full day's cost × 30.4; PR review, 2026-10-15).
 - [ ] *(T6)* The teardown runbook was run once and left no billable resource.
 - [ ] Guard: `make eval-retrieval`'s metric lines and the dev fingerprint are unchanged.
 - [ ] Retro done; slice brief written; backlog updated.
@@ -175,7 +175,16 @@ Each result is copied from its output.
 - c2. The app connects as the RDS master user (one database user); T1 rates it.
 - c3. The server's security group allows all outbound traffic (Anthropic, Voyage, Langfuse, ECR, SSM, S3, the Amazon Linux repos, RDS); T1 rates it.
 - c4. Terraform creates the 4 API-key parameters with the placeholder value `set-me` and ignores later value changes, so the names (and the role's scope) are in code and the real values never are.
-- c5. *(Set in the run, from T1's finding 6.6.)* The ECR repository has `force_delete = true`, as the bucket has `force_destroy` (m13): the provider's default (`false`) makes `terraform destroy` stop on a repository that holds images, against D7 and the slice outcome ("one runbook command removes everything").
+- c5. *(Set in the run, from T1's finding 6.6.)* The ECR repository has `force_delete = true`, as the bucket has `force_destroy` (m13): the provider's default (`false`) makes `terraform destroy` stop on a repository that holds images, against D7 and the slice outcome ("one runbook command removes everything"). Confirmed by the developer at the PR review (2026-10-15).
+
+#### Developer's answers at the PR review (2026-10-15, PRs #53 and #54)
+
+| # | Question | Answer | Where |
+|---|---|---|---|
+| 1 | ADR-014 D6 and review row 2.8 said the server "reads only `/orgknow/*`", but the managed Session Manager policy can read any parameter by name | **Reword** both (rejected: a narrower Session Manager policy); this account holds no other parameters | PR #53 |
+| 2 | c5: the registry is deleted with `destroy` even when it holds images | **Keep** | c5 |
+| 3 | The laptop's Langfuse region (US) isn't the app's default (EU), and the server's env had no setting for it | **A 6th Terraform parameter** `/orgknow/LANGFUSE_BASE_URL`, a plain String (not a secret), from the variable `langfuse_base_url` with no default (rejected: setting it by hand at T6) | Names table; PR #54 |
+| 4 | A new account may get no cost forecast in T6 | **Accept** one full day's cost × 30.4 for the ≤ US$50 check | Exit checks |
 
 #### Names table (T3, T4 and T5 copy from here)
 
@@ -195,13 +204,14 @@ Each result is copied from its output.
 | Env file on the server | `/etc/orgknow/env` (root, mode 0600) |
 | Deploy script on the server | `/usr/local/bin/orgknow-deploy <image-tag>` |
 | SSM parameters (SecureString) | `/orgknow/DATABASE_URL` (Terraform), `/orgknow/ANTHROPIC_API_KEY`, `/orgknow/VOYAGE_API_KEY`, `/orgknow/LANGFUSE_PUBLIC_KEY`, `/orgknow/LANGFUSE_SECRET_KEY` (developer) |
+| SSM parameter (String) | `/orgknow/LANGFUSE_BASE_URL` (Terraform, from `langfuse_base_url`; added at the PR review, 2026-10-15) |
 | S3 bucket | `orgknow-<account id>-us-east-1` |
 | S3 objects | `corpus_cache.tar.gz`, `orgknow.dump` |
 | Log group / streams | `/orgknow`; `api`, `worker` |
 | RDS | identifier `orgknow`, database `orgknow`, user `orgknow`, port 5432 |
 | SNS topic | `orgknow-alerts` |
 | Budget | `orgknow-monthly`, US$50 |
-| Terraform variables | `region` (`us-east-1`), `instance_type` (`t3a.medium`), `alert_email` (no default), `budget_usd` (50) |
+| Terraform variables | `region` (`us-east-1`), `instance_type` (`t3a.medium`), `alert_email` (no default), `budget_usd` (50), `langfuse_base_url` (no default; PR review) |
 | Terraform outputs | `ecr_repository_url`, `bucket_name`, `instance_id`, `rds_endpoint` |
 
 #### Pinned: T1 (the risk, security and cost review)
@@ -296,7 +306,7 @@ Each result is copied from its output.
 | T4 | Instance and credits | test: `instance_type == "t3a.medium"` by default; `cpu_credits == "standard"`; `http_tokens == "required"` | Decision 2, m12 |
 | T4 | Budget | test: limit 50 USD monthly; notifications ACTUAL > 80% and FORECASTED > 100% to `alert_email` | m10 |
 | T4 | Storage locked down | test: S3 public access block all 4 true; RDS `storage_encrypted`; root volume encrypted; log retention 14 | m9, m11–m13 |
-| T4 | SSM names | test: the set of parameter names equals the names table's 5 | m18 |
+| T4 | SSM names | test: the set of parameter names equals the names table's 6 (5 before the PR review) | m18 |
 | T5 | Every step has a command, and every command a source | The reviewer checks each against T3's targets, T4's outputs/resources and the names table | This contract |
 
 PR #51's laptop lines (T3's expected values; the 6th line, the retrieve time, differs by machine and is recorded, not compared):
