@@ -1,0 +1,65 @@
+#!/bin/bash
+# The server's boot script (S15-T4, contract c1): EC2 runs it once, as root, at the first boot.
+# It installs Docker and writes the deploy script, and starts no container: the first start is the
+# runbook's `sudo orgknow-deploy <tag>`, after the image, the secrets and the database are in place.
+# Terraform fills in the $${...} values when it renders this template.
+set -euo pipefail
+
+dnf install -y docker
+# Docker starts at every boot, so its restart policy brings both containers back after a reboot.
+systemctl enable --now docker
+
+cat > /usr/local/bin/orgknow-deploy <<'DEPLOY'
+#!/bin/bash
+# orgknow-deploy <image-tag>: (re)start the API and the worker from one image tag (ADR-014 D4).
+# Run it as root. The runbook's first start, its updates and S16's deploys all call it.
+set -euo pipefail
+if [ $# -ne 1 ]; then
+  echo "usage: orgknow-deploy <image-tag>" >&2
+  exit 2
+fi
+IMAGE="${repository_url}:$1"
+REGION="${region}"
+
+# 1. Settings and secrets: every /orgknow/* parameter, decrypted, as NAME=value lines with no
+#    quotes (what `docker run --env-file` reads), in a file only root can read (D6). The file is
+#    made root-only (0600) while still empty, so the secrets are never in a readable file.
+mkdir -p /etc/orgknow
+install -m 600 /dev/null /etc/orgknow/env
+aws ssm get-parameters-by-path --region "$REGION" --path /orgknow --with-decryption \
+  --query 'Parameters[*].[Name,Value]' --output text \
+  | sed -e 's|^/orgknow/||' -e 's|\t|=|' > /etc/orgknow/env
+
+# 2. The corpus cache (m6): unpacked from the bucket on the first deploy only. It is unpacked
+#    into a temporary directory and renamed at the end, so a failed download leaves no partial
+#    cache that a later deploy would take as complete.
+if [ ! -d /srv/orgknow/corpus_cache ]; then
+  rm -rf /srv/orgknow/corpus_cache.tmp
+  mkdir -p /srv/orgknow/corpus_cache.tmp
+  aws s3 cp --region "$REGION" "s3://${bucket}/corpus_cache.tar.gz" - \
+    | tar -xz -C /srv/orgknow/corpus_cache.tmp
+  mv /srv/orgknow/corpus_cache.tmp /srv/orgknow/corpus_cache
+fi
+
+# 3. The image: log in to the registry (the role may pull this one repository) and pull the tag.
+aws ecr get-login-password --region "$REGION" \
+  | docker login --username AWS --password-stdin "${registry}"
+docker pull "$IMAGE"
+
+# 4. Both containers, removed and re-run from the new image (the names table's commands).
+#    `unless-stopped`: Docker restarts each one after a crash or a reboot (ADR-014 D4).
+#    Logs go to CloudWatch, group ${log_group}, one stream each (m9).
+docker rm -f orgknow-api orgknow-worker 2>/dev/null || true
+docker run -d --name orgknow-api --restart unless-stopped --env-file /etc/orgknow/env \
+  --log-driver awslogs --log-opt awslogs-region="$REGION" \
+  --log-opt awslogs-group=${log_group} --log-opt awslogs-stream=api \
+  -p 127.0.0.1:8000:8000 \
+  "$IMAGE"
+docker run -d --name orgknow-worker --restart unless-stopped --env-file /etc/orgknow/env \
+  --log-driver awslogs --log-opt awslogs-region="$REGION" \
+  --log-opt awslogs-group=${log_group} --log-opt awslogs-stream=worker \
+  -v /srv/orgknow/corpus_cache:/corpus_cache:ro \
+  "$IMAGE" python -m orgknow.ingestion.worker
+docker ps --filter name=orgknow-
+DEPLOY
+chmod 0755 /usr/local/bin/orgknow-deploy

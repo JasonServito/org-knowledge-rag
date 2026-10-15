@@ -18,3 +18,10 @@ dist/
 
 # Corpus cache: CORPUS_CACHE_DIR should live outside the repo; this guards against pointing it here.
 /corpus_cache/
+
+# Terraform (S15-T4): downloaded providers, local state (it holds the database password; ADR-014
+# D6) and the variables file with the alert email. The lock file (.terraform.lock.hcl) is committed.
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+infra/terraform.tfvars

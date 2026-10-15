@@ -2,7 +2,7 @@
 .PHONY: fmt check test-int up down migrate seed fetch-github ingest lifecycle ingest-report \
 	reset-corpus embed chains worker eval-check eval-check-chains eval-chain eval-sections \
 	eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table eval-resummarize serve \
-	image image-check
+	image image-check tf-check
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -247,3 +247,13 @@ image-check:
 		git config --system --get-all safe.directory | grep -qxF "*" \
 			|| { echo "image-check: git system config has no safe.directory *"; exit 1; }; \
 		echo "image-check: ok (uid $$(id -u), GIT_ALLOW_PROTOCOL=$$GIT_ALLOW_PROTOCOL, safe.directory *)"'
+
+# Check the Terraform code in infra/ offline (S15-T4, ADR-014): the format, then init (downloads
+# the providers pinned in infra/.terraform.lock.hcl, ~800 MB the first time; no backend), validate,
+# and the tests in infra/tests with mocked providers. No AWS account or login: nothing is planned
+# against AWS or created. Free. Not part of `make check` (CI gets Terraform in S16).
+tf-check:
+	terraform -chdir=infra fmt -check -recursive
+	terraform -chdir=infra init -backend=false -input=false
+	terraform -chdir=infra validate
+	terraform -chdir=infra test
