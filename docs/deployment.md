@@ -620,16 +620,7 @@ sudo /usr/local/bin/orgknow-deploy <new tag>
 
 - It re-reads the parameters, pulls the tag and replaces both containers; the corpus is already unpacked.
 - Then 7.2–7.3 (the tunnel, `/health`, `/ready`).
-- **A new database migration** (a new file under `src/orgknow/db/migrations/`): after the deploy, run it from the new image, then check that `alembic current` ends with `(head)`:
-
-```bash
-sudo docker exec orgknow-api alembic upgrade head
-```
-
-```bash
-sudo docker exec orgknow-api alembic current
-```
-
+- **A release with a new database migration** isn't covered here: its migration must run before the new containers start, and S16 (CI/CD) designs that step. Until then, don't deploy one.
 - **Roll back:** run the deploy script with the previous tag. ECR keeps the last 3 images (m13).
 - **A change to the boot script** (`infra/boot.sh.tftpl`, which writes the deploy script): it runs only at the first boot, so the change reaches the server only with a new server. A plain `apply` would only stop and restart the old server ([the provider's docs, `user_data`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance#user_data); not verified).
 
@@ -645,7 +636,6 @@ terraform -chdir=infra apply -replace=aws_instance.server
 Source:
 
 - `infra/boot.sh.tftpl`; `infra/compute.tf` (`lifecycle { ignore_changes = [ami] }` and its comment on `-replace`).
-- `Makefile` (`migrate` runs `alembic upgrade head`); the image holds `pyproject.toml`'s `[tool.alembic]` and the migrations.
 - `infra/storage.tf` (`aws_ecr_lifecycle_policy.app`).
 
 ## 9. Teardown
