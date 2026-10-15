@@ -175,6 +175,7 @@ Each result is copied from its output.
 - c2. The app connects as the RDS master user (one database user); T1 rates it.
 - c3. The server's security group allows all outbound traffic (Anthropic, Voyage, Langfuse, ECR, SSM, S3, the Amazon Linux repos, RDS); T1 rates it.
 - c4. Terraform creates the 4 API-key parameters with the placeholder value `set-me` and ignores later value changes, so the names (and the role's scope) are in code and the real values never are.
+- c5. *(Set in the run, from T1's finding 6.6.)* The ECR repository has `force_delete = true`, as the bucket has `force_destroy` (m13): the provider's default (`false`) makes `terraform destroy` stop on a repository that holds images, against D7 and the slice outcome ("one runbook command removes everything").
 
 #### Names table (T3, T4 and T5 copy from here)
 
@@ -232,7 +233,7 @@ Each result is copied from its output.
 - **The instance:** m12; `instance_type` variable; `credit_specification { cpu_credits = "standard" }`; `associate_public_ip_address = true`; `metadata_options { http_tokens = "required" }`; root volume 20 GB gp3 encrypted; the boot script (c1) installs Docker (`dnf`), enables it, writes `/usr/local/bin/orgknow-deploy`.
 - **The deploy script** (`orgknow-deploy <tag>`): fetch `/orgknow/*` with decryption into `/etc/orgknow/env` (0600); if `/srv/orgknow/corpus_cache` is missing, download and unpack `corpus_cache.tar.gz`; log in to ECR; pull the tag; remove and re-run both containers with the names table's commands, `--restart unless-stopped`, `--env-file`, `--log-driver awslogs` (group `/orgknow`, streams `api` and `worker`, region), the corpus mount read-only on the worker, the API on `127.0.0.1:8000:8000`.
 - **IAM:** the managed `AmazonSSMManagedInstanceCore`; an inline policy: `ssm:GetParametersByPath`/`GetParameters`/`GetParameter` on `parameter/orgknow/*`; `ecr:GetAuthorizationToken` (`*`), `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`, `ecr:BatchCheckLayerAvailability` on the repository; `s3:GetObject` on the bucket's objects and `s3:ListBucket` on the bucket; `logs:CreateLogStream`, `logs:PutLogEvents` on the log group.
-- **RDS, S3, ECR, logs, alarms, budget, SSM:** m9–m11, m13, c4, the names table. `DATABASE_URL` = `postgresql://orgknow:<password>@<endpoint>:5432/orgknow?sslmode=require`; `random_password` length 32, `special = false`.
+- **RDS, S3, ECR, logs, alarms, budget, SSM:** m9–m11, m13, c4, c5, the names table. `DATABASE_URL` = `postgresql://orgknow:<password>@<endpoint>:5432/orgknow?sslmode=require`; `random_password` length 32, `special = false`.
 - **`make tf-check`:** `terraform -chdir=infra fmt -check -recursive`, `terraform -chdir=infra init -backend=false -input=false` (downloads the pinned providers), `validate`, `test`. Tests use `mock_provider` (offline, no AWS account) with `command = apply` where computed values are needed, and `override_data` for the AMI lookup and the account ID.
 
 #### Pinned: T5 (the runbook)
