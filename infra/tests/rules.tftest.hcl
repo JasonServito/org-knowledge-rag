@@ -33,7 +33,8 @@ mock_provider "aws" {
 mock_provider "random" {}
 
 variables {
-  alert_email = "alerts@example.com"
+  alert_email       = "alerts@example.com"
+  langfuse_base_url = "https://us.cloud.langfuse.com"
 }
 
 # Decision 3: the database has no public address.
@@ -208,20 +209,26 @@ run "ssm_names" {
     condition = toset(concat(
       [aws_ssm_parameter.database_url.name],
       [for p in aws_ssm_parameter.api_key : p.name],
+      [aws_ssm_parameter.langfuse_base_url.name],
       )) == toset([
       "/orgknow/DATABASE_URL",
       "/orgknow/ANTHROPIC_API_KEY",
       "/orgknow/VOYAGE_API_KEY",
       "/orgknow/LANGFUSE_PUBLIC_KEY",
       "/orgknow/LANGFUSE_SECRET_KEY",
+      "/orgknow/LANGFUSE_BASE_URL",
     ])
-    error_message = "The SSM parameter names must be the names table's 5."
+    error_message = "The SSM parameter names must be the names table's 6."
   }
   assert {
     condition = alltrue(concat(
       [aws_ssm_parameter.database_url.type == "SecureString"],
       [for p in aws_ssm_parameter.api_key : p.type == "SecureString"],
     ))
-    error_message = "Every parameter must be a SecureString (m7)."
+    error_message = "Every secret must be a SecureString (m7)."
+  }
+  assert {
+    condition     = aws_ssm_parameter.langfuse_base_url.type == "String"
+    error_message = "The Langfuse host is a plain setting, not a secret (PR review, 2026-10-15)."
   }
 }

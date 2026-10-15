@@ -1,5 +1,5 @@
-# The inputs (the S15 contract's names table). Only alert_email has no default: set it in
-# terraform.tfvars (gitignored; copy terraform.tfvars.example).
+# The inputs (the S15 contract's names table). alert_email and langfuse_base_url have no default:
+# set them in terraform.tfvars (gitignored; copy terraform.tfvars.example).
 
 variable "region" {
   description = "The AWS region for every resource (m1)."
@@ -15,6 +15,11 @@ variable "instance_type" {
 
 variable "alert_email" {
   description = "Where the budget and the alarms send email (m9, m10)."
+  type        = string
+}
+
+variable "langfuse_base_url" {
+  description = "The Langfuse host the server's traces go to: the same LANGFUSE_BASE_URL as the laptop's .env (the app's default is the EU host)."
   type        = string
 }
 

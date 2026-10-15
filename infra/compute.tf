@@ -55,8 +55,8 @@ resource "aws_instance" "server" {
 }
 
 # The server's role (D6): Session Manager (shell and tunnel, no SSH) plus one inline policy that
-# reads only /orgknow/*, pulls only the one repository, reads only the one bucket, and writes only
-# the one log group.
+# reads /orgknow/*, pulls only the one repository, reads only the one bucket, and writes only the
+# one log group. The managed Session Manager policy can also read any parameter by name (D6).
 resource "aws_iam_role" "server" {
   name = "orgknow-server"
   assume_role_policy = jsonencode({

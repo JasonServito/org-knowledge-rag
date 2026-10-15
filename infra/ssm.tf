@@ -23,3 +23,11 @@ resource "aws_ssm_parameter" "api_key" {
     ignore_changes = [value]
   }
 }
+
+# The one setting the server needs beyond the defaults (PR review, 2026-10-15): the Langfuse
+# region. Not a secret, so a plain String; the deploy script reads it with the others.
+resource "aws_ssm_parameter" "langfuse_base_url" {
+  name  = "/orgknow/LANGFUSE_BASE_URL"
+  type  = "String"
+  value = var.langfuse_base_url
+}

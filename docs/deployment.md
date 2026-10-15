@@ -14,7 +14,6 @@ Written in S15-T5 from the `Makefile`, the `Dockerfile`, `infra/` and the names 
 - **Shell variables** (`REPO`, `TAG`, `OUT`, `BUCKET`, `INSTANCE_ID`, `DATABASE_URL`, `JOB`) last only in their terminal. Each step sets the ones it uses.
 - **One-time order:** steps 1–7 in order. Later deploys: step 8. The end: step 9.
 - **Nothing here has run against AWS yet.** Step 5's data path was rehearsed on the laptop (see "Local rehearsal"); the rest is checked against the code only (see "Not verified").
-- **Open item, parked for T6:** the laptop's Langfuse is the US region, but the server gets no `LANGFUSE_BASE_URL` (see step 7.6c).
 
 **AWS words used below:**
 
@@ -134,13 +133,13 @@ Source: [configure SSO for the CLI](https://docs.aws.amazon.com/cli/latest/userg
 
 ## 2. Create
 
-**Laptop:** set the alert email (`alert_email`, the one variable with no default).
+**Laptop:** set the 2 variables with no default: the alert email (`alert_email`) and the Langfuse host (`langfuse_base_url`).
 
 ```bash
 cp infra/terraform.tfvars.example infra/terraform.tfvars
 ```
 
-Edit `infra/terraform.tfvars`: replace `you@example.com` with your email. The file is gitignored.
+Edit `infra/terraform.tfvars`: replace `you@example.com` with your email, and check that `langfuse_base_url` equals your `.env`'s `LANGFUSE_BASE_URL` (the example holds the US host). The file is gitignored.
 
 ```bash
 terraform -chdir=infra init
@@ -150,14 +149,14 @@ terraform -chdir=infra init
 terraform -chdir=infra plan
 ```
 
-- Expected last line: `Plan: 36 to add, 0 to change, 0 to destroy.` (counted from `infra/*.tf`: 33 resource blocks, one of them the 4 key parameters).
+- Expected last line: `Plan: 37 to add, 0 to change, 0 to destroy.` (counted from `infra/*.tf`: 34 resource blocks, one of them the 4 key parameters).
 
 ```bash
 terraform -chdir=infra apply
 ```
 
 - Read the plan again and type `yes`. RDS is the slowest part (not measured).
-- Expected: `Apply complete! Resources: 36 added, 0 changed, 0 destroyed.`, then the 4 outputs.
+- Expected: `Apply complete! Resources: 37 added, 0 changed, 0 destroyed.`, then the 4 outputs.
 - **If `apply` fails partway** (e.g. a new account's limit, or Postgres 18 missing in the region: the slice's risks), what it created bills: run [step 9](#9-teardown), and take the error to the next sitting.
 
 ```bash
@@ -185,7 +184,7 @@ aws ssm describe-instance-information --query 'InstanceInformationList[].[Instan
 
 Source:
 
-- `infra/terraform.tfvars.example`, `infra/variables.tf` (`alert_email`); `infra/outputs.tf`.
+- `infra/terraform.tfvars.example`, `infra/variables.tf` (`alert_email`, `langfuse_base_url`); `infra/outputs.tf`.
 - `infra/observability.tf` (`aws_sns_topic.alerts`, `aws_sns_topic_subscription.email`); the names table's SNS topic `orgknow-alerts`.
 - `infra/compute.tf` (`AmazonSSMManagedInstanceCore`: what lets Session Manager reach the server).
 - Terraform state stays in `infra/` on the laptop, gitignored (ADR-014 D6).
@@ -549,7 +548,7 @@ python3 -c "import json; a = json.load(open('/tmp/ask.json')); print(a['answer_s
 
 - Expected: `200 in … s`, then `answered`, at least 1 citation, and a `trace_id`. Record the time (the spec's ceiling: 23 s p95).
 - **The trace:** open it in Langfuse (search the `trace_id`). A `trace_id` in the reply alone doesn't prove the trace arrived: the ID is made on the server before the trace is sent (inferred from `pipeline.py`).
-- **Known gap (parked):** the laptop's `.env` sets `LANGFUSE_BASE_URL` to the US region; `settings.py`'s default is the EU region; the server's env file gets only the 5 names-table parameters. So the server's traces likely go to the EU region, where the US keys don't work: decide the fix in T6.
+- The server's traces go to the host `langfuse_base_url` set in step 2 (the parameter `/orgknow/LANGFUSE_BASE_URL`).
 
 Source: `docs/interfaces.md` (`POST /query`: the request body is its example); ADR-006 (tracing).
 
@@ -598,7 +597,7 @@ aws ce get-cost-forecast --metric UNBLENDED_COST --granularity MONTHLY --time-pe
 - The figure to compare with US$50 is a per-day cost × 30.4: the CLI's total ÷ the days left × 30.4, or the daily cost below × 30.4.
 
 - **No forecast?** AWS often gives none to an account with under 1 full billing cycle (this one started 2026-10-14).
-- Then use 1 full day's cost × 30.4. The command reads yesterday's cost: run it the day after a whole day with the environment.
+- Then use 1 full day's cost × 30.4 (accepted for T6's cost check at the PR review, 2026-10-15). The command reads yesterday's cost: run it the day after a whole day with the environment.
 
 ```bash
 aws ce get-cost-and-usage --time-period Start=$(date -u -d yesterday +%F),End=$(date -u +%F) --granularity DAILY --metrics UnblendedCost --query 'ResultsByTime[0].Total.UnblendedCost.Amount' --output text
@@ -646,8 +645,8 @@ Source:
 terraform -chdir=infra destroy
 ```
 
-- Read the plan (`36 to destroy`) and type `yes`.
-- Expected: `Destroy complete! Resources: 36 destroyed.`
+- Read the plan (`37 to destroy`) and type `yes`.
+- Expected: `Destroy complete! Resources: 37 destroyed.`
 
 **Laptop** (the same terminal): check that nothing billable is left. Each command should print nothing, unless noted.
 
@@ -723,4 +722,3 @@ Nothing here has run against AWS. In particular:
 - That `sudo` on Amazon Linux 2023 lacks `/usr/local/bin` (step 6), that Session Manager's shell starts outside `ssm-user`'s home (step 5), and that the AWS CLI is preinstalled on the server (the deploy script relies on it).
 - That a plain `apply` after a boot-script change only stops and starts the server (step 8).
 - That Budgets and Cost Explorer show a forecast for this new account (7.6e).
-- The Langfuse region gap (7.6c): inferred from `.env`, `settings.py` and the names table.
