@@ -42,6 +42,7 @@ Create directories only when a task needs them. Don't pre-scaffold empty modules
 Dockerfile                    the one image: the API by default, or the worker (ADR-014 D4)
 config/corpus_manifest.yaml   corpus scope; the manifest defines the subset, not code
 docs/                         spec, ADRs, backlog, slices, slice briefs, research
+infra/                        Terraform: the AWS environment (ADR-014); make tf-check tests it offline
 src/orgknow/
   settings.py                 env-based config (pydantic-settings)
   db/                         migrations + data access; the ONLY place with SQL

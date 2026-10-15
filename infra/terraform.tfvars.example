@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars (gitignored) and set your email: the budget and the alarms write to it.
+# The other variables have defaults (variables.tf).
+alert_email = "you@example.com"

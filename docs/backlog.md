@@ -417,7 +417,7 @@ Tasks:
 - [x] **S15-T1 `[core]` Risk, security and cost review (`docs/security-review.md`).** Blueprint gap #6's 6 topics; S17's exposure controls designed, marked Proposed; the cost table; a disposition for each carried item. Deps: the contract.
 - [x] **S15-T2 `[core]` ADR-014: deployment topology.** Decided in the S15-R1 sitting (2026-10-15): no inbound ports (Session Manager), t3a.medium with the local reranker, an own VPC with private database subnets; committed as Accepted with the run contract.
 - [x] **S15-T3 `[commodity]` Container image (`make image`).** One image, API and worker; proven on the laptop (a job, the fingerprint, the retrieval eval's lines, a restart). Deps: the contract.
-- [ ] **S15-T4 `[commodity]` Terraform (`infra/`, `make tf-check`).** Offline tests pin no public database, no internet route from its subnets, no inbound ports, the budget. Deps: the contract.
+- [x] **S15-T4 `[commodity]` Terraform (`infra/`, `make tf-check`).** Offline tests pin no public database, no internet route from its subnets, no inbound ports, the budget. Deps: the contract.
 - [ ] **S15-T5 `[commodity]` Deploy and teardown runbook (`docs/deployment.md`).** Deps: T3, T4.
 - [ ] **S15-T6 `[human]` First deploy and measurements.** With the developer (paid AWS): apply, load, RDS checks, the retrieval eval in the cloud, a live ask, connections, cost, teardown proof. Deps: T5.
 - [ ] **S15-T7 `[commodity]` Docs and the S15 retro.** Deps: T6.
