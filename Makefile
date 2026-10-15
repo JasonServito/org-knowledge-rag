@@ -1,7 +1,8 @@
 # Single entry point for local work and CI. CI calls these targets instead of copying commands.
 .PHONY: fmt check test-int up down migrate seed fetch-github ingest lifecycle ingest-report \
 	reset-corpus embed chains worker eval-check eval-check-chains eval-chain eval-sections \
-	eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table eval-resummarize serve
+	eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table eval-resummarize serve \
+	image image-check
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -226,3 +227,23 @@ eval-resummarize:
 serve:
 	uv run uvicorn --factory orgknow.api.app:create_app --host 127.0.0.1 --port 8000 \
 		--log-config config/logging.json --no-access-log
+
+# Build the one container image (S15-T3, ADR-014 D4) as orgknow:dev: the API by default (the
+# command `make serve` runs, on 0.0.0.0 inside the container), the worker with
+# `python -m orgknow.ingestion.worker`. The reranker's weights are downloaded at build and read
+# offline at runtime; the corpus cache is mounted at /corpus_cache. Only the files .dockerignore
+# allows are sent (never .env). Free, but the first build downloads ~2 GB.
+image:
+	docker build -t orgknow:dev .
+
+# Check the built image (S15 run contract m5): fails, naming the check, unless there is no
+# /app/.env, the user isn't root, git may use only local transports (GIT_ALLOW_PROTOCOL=file) and
+# git's system config trusts every directory (safe.directory '*', for the mounted cache).
+image-check:
+	docker run --rm orgknow:dev sh -c '\
+		test ! -e /app/.env || { echo "image-check: /app/.env is in the image"; exit 1; }; \
+		test "$$(id -u)" != 0 || { echo "image-check: the user is root"; exit 1; }; \
+		test "$$GIT_ALLOW_PROTOCOL" = file || { echo "image-check: GIT_ALLOW_PROTOCOL is not file"; exit 1; }; \
+		git config --system --get-all safe.directory | grep -qxF "*" \
+			|| { echo "image-check: git system config has no safe.directory *"; exit 1; }; \
+		echo "image-check: ok (uid $$(id -u), GIT_ALLOW_PROTOCOL=$$GIT_ALLOW_PROTOCOL, safe.directory *)"'

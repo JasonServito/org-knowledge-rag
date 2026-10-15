@@ -39,6 +39,7 @@ These targets are created in S01. Until a target exists, say so; never pretend i
 Create directories only when a task needs them. Don't pre-scaffold empty modules.
 
 ```
+Dockerfile                    the one image: the API by default, or the worker (ADR-014 D4)
 config/corpus_manifest.yaml   corpus scope; the manifest defines the subset, not code
 docs/                         spec, ADRs, backlog, slices, slice briefs, research
 src/orgknow/

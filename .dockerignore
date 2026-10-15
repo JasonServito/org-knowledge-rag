@@ -1,0 +1,16 @@
+# An allowlist (S15 run contract, T3): nothing is sent to `docker build` but the lines below.
+# So .env (the real API keys), .venv and the caches never reach the image.
+*
+!pyproject.toml
+!uv.lock
+# uv_build reads the README named in pyproject.toml when it installs the project.
+!README.md
+!src/
+!config/
+# What `make eval-retrieval` reads (contract m15): the golden set v0, the conflict set, and the
+# stored question vectors and routes. Not the rest of eval/golden_set/.
+!eval/golden_set/v0.yaml
+!eval/golden_set/conflicts-v0.yaml
+!eval/question_vectors/
+!eval/question_routes/
+**/__pycache__

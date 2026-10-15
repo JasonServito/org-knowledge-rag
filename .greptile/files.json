@@ -16,6 +16,7 @@
     { "path": "docs/decisions/ADR-011-corrective-retrieval.md", "description": "ADR-011: corrective retrieval not adopted (no grader, no second search, no LangGraph) and the rule a revisit must pass" },
     { "path": "docs/decisions/ADR-012-decision-provenance.md", "description": "ADR-012: decision provenance (rule-built chains from recorded links, 2 tables, discussion documents, completeness vs. gold chains and a like-for-like control)" },
     { "path": "docs/decisions/ADR-013-async-ingestion.md", "description": "ADR-013: async ingestion (the jobs table is the queue, no SQS; a fixed 4-step job; one corpus-writer lock; one active job; errors fail, crashes resume; steps as a JSON list in the job's row)" },
+    { "path": "docs/decisions/ADR-014-deployment-topology.md", "description": "ADR-014: deployment topology (no inbound ports, Session Manager; one t3a.medium with the local reranker; own VPC, RDS in private subnets; one image, two containers, Docker restarts them; RDS loaded from a dump; secrets in SSM; a US$50 budget)" },
     { "path": "docs/domain-model.md", "description": "Domain model: tables, rules R1-R15 and data-access functions" },
     { "path": "docs/m1-report.md", "description": "M1 report: Phase 1 closeout, each acceptance criterion with its proof, the 3 stated exceptions and their causes" }
   ]
