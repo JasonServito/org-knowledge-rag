@@ -5,6 +5,8 @@ Written in S15-T5 from the `Makefile`, the `Dockerfile`, `infra/` and the names 
 
 > **Cost: about US$1.56 a day while the environment exists** (US$47.49 a month ÷ 30.4 days; S15 run contract, `docs/security-review.md` 6.1).
 > Billing starts with step 2's `apply` and stops only with [step 9's teardown](#9-teardown).
+>
+> **The environment exists only in windows** (ADR-014's 2026-10-16 amendment): each is created for a task (S15-T6, maybe a few hours in S16, a week in S18) and ends with step 9. Each sets its own budget in step 2.
 
 ## Before you start
 
@@ -133,13 +135,16 @@ Source: [configure SSO for the CLI](https://docs.aws.amazon.com/cli/latest/userg
 
 ## 2. Create
 
-**Laptop:** set the 2 variables with no default: the alert email (`alert_email`) and the Langfuse host (`langfuse_base_url`).
+**Laptop:** set the 2 variables with no default, the alert email (`alert_email`) and the Langfuse host (`langfuse_base_url`), and this window's budget (`budget_usd`).
 
 ```bash
 cp infra/terraform.tfvars.example infra/terraform.tfvars
 ```
 
 Edit `infra/terraform.tfvars`: replace `you@example.com` with your email, and check that `langfuse_base_url` equals your `.env`'s `LANGFUSE_BASE_URL` (the example holds the US host). The file is gitignored.
+
+- **Add the window's budget**, e.g. `budget_usd = 5` for S15-T6 (ADR-014's amendment). It emails at 80% of it, so a forgotten stack is noticed within days. The code's default (50) is the always-on size.
+- **Console:** Billing and Cost Management → **Credits**: note any credits, their amount and expiry. They can hide the cost (7.6e).
 
 ```bash
 terraform -chdir=infra init
@@ -161,6 +166,12 @@ terraform -chdir=infra apply
 
 ```bash
 terraform -chdir=infra output
+```
+
+**Laptop:** does the budget count credits? `true` means it counts the cost after credits, so it stays silent while credits pay.
+
+```bash
+aws budgets describe-budget --account-id "$(aws sts get-caller-identity --query Account --output text)" --budget-name orgknow-monthly --query 'Budget.CostTypes.IncludeCredit'
 ```
 
 **Email:** AWS sends "AWS Notification - Subscription Confirmation" to the alert email.
@@ -319,7 +330,23 @@ aws s3 cp "$OUT/corpus_cache.tar.gz" "s3://$BUCKET/corpus_cache.tar.gz"
 aws s3 ls "s3://$BUCKET/"
 ```
 
-- Expected: the 2 objects with the sizes above. Then the local copies can go: `rm -r ~/orgknow-upload`.
+- Expected: the 2 objects with the sizes above.
+
+**Laptop:** keep both files as a dated backup on the Windows side, where a WSL reset can't take them (S15-R2 sitting, P5). The embeddings cost money to recreate, and the GitHub snapshots are pinned by hash. **The backup is never loaded:** every window makes fresh files in this step, so the cloud matches the current local database.
+
+```bash
+BACKUP="/mnt/c/Users/<your Windows user>/orgknow-backups/$(date -u +%F)"
+```
+
+```bash
+mkdir -p "$BACKUP" && mv "$OUT/orgknow.dump" "$OUT/corpus_cache.tar.gz" "$BACKUP/" && rmdir "$OUT"
+```
+
+```bash
+(cd "$BACKUP" && sha256sum orgknow.dump corpus_cache.tar.gz | tee SHA256SUMS)
+```
+
+- Expected: 2 lines, each a 64-character hash and a file name. Keep the dump's line with the evidence.
 
 **Laptop:** open a shell on the server.
 
@@ -539,7 +566,7 @@ Source: `Makefile` (`eval-retrieval` runs `python -m orgknow.eval retrieval`); c
 **c. One live ask (laptop, terminal B). Paid: ~US$0.03** (Anthropic answer and router, Voyage). Check the Anthropic credit first (`CLAUDE.md`, "Anthropic credit").
 
 ```bash
-curl -s -o /tmp/ask.json -w '%{http_code} in %{time_total} s\n' -X POST localhost:8001/query -H 'Content-Type: application/json' -d '{"question": "What enforces pod security standards in-tree?"}'
+curl -s -D /tmp/ask.headers -o /tmp/ask.json -w '%{http_code} in %{time_total} s\n' -X POST localhost:8001/query -H 'Content-Type: application/json' -d '{"question": "What enforces pod security standards in-tree?"}'
 ```
 
 ```bash
@@ -547,6 +574,18 @@ python3 -c "import json; a = json.load(open('/tmp/ask.json')); print(a['answer_s
 ```
 
 - Expected: `200 in … s`, then `answered`, at least 1 citation, and a `trace_id`. Record the time (the spec's ceiling: 23 s p95).
+
+**The request ID, traced into AWS's own logs** (the proof it ran on AWS). The response's `X-Request-ID` header names it (`docs/interfaces.md`, "Request IDs"):
+
+```bash
+RID=$(grep -i '^x-request-id:' /tmp/ask.headers | awk '{print $2}' | tr -d '\r'); echo "$RID"
+```
+
+```bash
+aws logs filter-log-events --log-group-name /orgknow --log-stream-names api --filter-pattern "\"$RID\"" --query 'events[].message' --output text
+```
+
+- Expected: the API's JSON log line for `POST /query 200` with `"request_id"` equal to `$RID`. A line can take a few seconds to arrive: run it again if it prints nothing.
 - **The trace:** open it in Langfuse (search the `trace_id`). A `trace_id` in the reply alone doesn't prove the trace arrived: the ID is made on the server before the trace is sent (inferred from `pipeline.py`).
 - The server's traces go to the host `langfuse_base_url` set in step 2 (the parameter `/orgknow/LANGFUSE_BASE_URL`).
 
@@ -597,11 +636,36 @@ aws ce get-cost-forecast --metric UNBLENDED_COST --granularity MONTHLY --time-pe
 - The figure to compare with US$50 is a per-day cost × 30.4: the CLI's total ÷ the days left × 30.4, or the daily cost below × 30.4.
 
 - **No forecast?** AWS often gives none to an account with under 1 full billing cycle (this one started 2026-10-14).
-- Then use 1 full day's cost × 30.4 (accepted for T6's cost check at the PR review, 2026-10-15). The command reads yesterday's cost: run it the day after a whole day with the environment.
+- Then use 1 full day's cost × 30.4 (accepted for T6's cost check at the PR review, 2026-10-15).
+
+**The full day's cost: gross, net and tax** (S15-R2 sitting, P4). Read it at least a day after that UTC day ends, even after teardown: a finished day's cost stays readable.
+
+- **Gross** (credits and tax left out): what the design costs. **This is the number × 30.4 that is compared with US$50.**
+- **Net:** what you pay after credits. **Tax:** GST/HST, kept apart, as the cost table has no tax either.
 
 ```bash
-aws ce get-cost-and-usage --time-period Start=$(date -u -d yesterday +%F),End=$(date -u +%F) --granularity DAILY --metrics UnblendedCost --query 'ResultsByTime[0].Total.UnblendedCost.Amount' --output text
+DAY=YYYY-MM-DD
 ```
+
+- Set it to the whole UTC day the stack ran (S15-T6: day 2).
+
+```bash
+aws ce get-cost-and-usage --time-period Start=$DAY,End=$(date -u -d "$DAY +1 day" +%F) --granularity DAILY --metrics UnblendedCost --filter '{"Not": {"Dimensions": {"Key": "RECORD_TYPE", "Values": ["Credit", "Tax"]}}}' --group-by Type=DIMENSION,Key=SERVICE --query 'ResultsByTime[0].Groups[].[Keys[0],Metrics.UnblendedCost.Amount]' --output text
+```
+
+- Gross, by service: add the lines up for the day's gross cost.
+
+```bash
+aws ce get-cost-and-usage --time-period Start=$DAY,End=$(date -u -d "$DAY +1 day" +%F) --granularity DAILY --metrics UnblendedCost --query 'ResultsByTime[0].Total.UnblendedCost.Amount' --output text
+```
+
+- Net: every charge, credits included.
+
+```bash
+aws ce get-cost-and-usage --time-period Start=$DAY,End=$(date -u -d "$DAY +1 day" +%F) --granularity DAILY --metrics UnblendedCost --filter '{"Dimensions": {"Key": "RECORD_TYPE", "Values": ["Tax"]}}' --query 'ResultsByTime[0].Total.UnblendedCost.Amount' --output text
+```
+
+- Tax alone (it may appear only once the month is billed).
 
 Source: [enable Cost Explorer](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-enable.html), [forecasts](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-forecast.html), [pricing](https://aws.amazon.com/aws-cost-management/aws-cost-explorer/pricing/); the names table (budget `orgknow-monthly`); ADR-014 D7.
 
@@ -722,3 +786,4 @@ Nothing here has run against AWS. In particular:
 - That `sudo` on Amazon Linux 2023 lacks `/usr/local/bin` (step 6), that Session Manager's shell starts outside `ssm-user`'s home (step 5), and that the AWS CLI is preinstalled on the server (the deploy script relies on it).
 - That a plain `apply` after a boot-script change only stops and starts the server (step 8).
 - That Budgets and Cost Explorer show a forecast for this new account (7.6e).
+- The Cost Explorer record types `Credit` and `Tax` (7.6e's filters), and the budget's `CostTypes.IncludeCredit` field (step 2).
