@@ -84,3 +84,14 @@
 - The first deploy (S15-T6) must close 3 open checks: ADR-004's pgvector 0.8.1 and `btree_gist` on RDS; ADR-005's trigger (RDS `max_connections` against 2× the peak, and the connect time); ADR-008's instance revisit (D2's 15 s rule).
 - The app connects as the RDS master user (one database user). The S15 security review rates it.
 - **Revisit triggers:** a public UI (S17: D1); D2's 15 s rule; a second worker host (ADR-013 D1: SQS returns); a second operator or CI applying Terraform (remote state).
+
+## Amendment 2026-10-16 (S15-R2 sitting): the deployment exists only in windows
+
+Decided by the developer in the S15-R2 sitting, after a devil's advocate. Context: the developer budgets in CAD (US$47.49/month is ~CA$68–74 with tax), and with no inbound ports (D1) nobody else can reach the deployment before S17.
+
+- **Windows, not always on.** The environment is created only when a task needs it: S15-T6 (one full UTC day, for the measured cost), possibly a few hours in S16 to prove its deploy step, and ~7 days in S18. Each window ends with `terraform destroy` and the runbook's step-9 checks; nothing runs between windows.
+- **The sizing rule stays.** "≤ US$50/month always on" (Context) is how the design is sized, not how long it runs.
+- **A budget per window.** Each window sets `budget_usd` in the local `terraform.tfvars` to fit it (S15-T6: US$5), so a forgotten stack emails within days, not after ~26 days at 80% of US$50 (D7). The code's default stays 50.
+- **S16 inherits it.** With no standing server, S16's sitting decides how its deploy step works (a backlog Proposed addition).
+- **Revisit trigger.** A window that takes over 2 hands-on hours (S15-T6 logs them) or fails in a new way: the next sitting reconsiders keeping the stack and stopping the server and database between uses.
+- **Rejected:** always on through the job search (~US$47/month for a system only the developer can reach); keeping the stack but stopping it between uses (~US$5/month, but a stopped RDS instance restarts itself after 7 days and bills until noticed); keeping T6's stack up through S16–S17.

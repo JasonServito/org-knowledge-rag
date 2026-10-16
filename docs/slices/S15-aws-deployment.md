@@ -21,7 +21,7 @@ One `terraform apply` from the laptop creates the AWS environment (EC2, RDS, S3,
 - [ ] ADR-014 (deployment topology) is Accepted.
 - [ ] `make image` builds one image; on the laptop, its API answers `/ready` 200, and its worker runs a job to `succeeded` with the fingerprint unchanged.
 - [ ] `make tf-check` (format, validate, offline tests) is green.
-- [ ] *(T6)* On AWS: `/ready` 200; RDS reports pgvector 0.8.1 and `btree_gist`; the RDS fingerprint equals `sha256:0f0ee078…4165`; one live ask answers with citations and a Langfuse trace; latency, RDS `max_connections` and peak connections are recorded (ADR-005's trigger); the cost forecast is ≤ US$50/month (with no forecast for the new account: one full day's cost × 30.4; PR review, 2026-10-15).
+- [ ] *(T6)* On AWS: `/ready` 200; RDS reports pgvector 0.8.1 and `btree_gist`; the RDS fingerprint equals `sha256:0f0ee078…4165`; one live ask answers with citations and a Langfuse trace; latency, RDS `max_connections` and peak connections are recorded (ADR-005's trigger); the cost forecast is ≤ US$50/month (with no forecast for the new account: one full day's cost × 30.4; PR review, 2026-10-15), read as gross cost, credits and tax left out, with net and tax recorded beside it (S15-R2 sitting, P4).
 - [ ] *(T6)* The teardown runbook was run once and left no billable resource.
 - [ ] Guard: `make eval-retrieval`'s metric lines and the dev fingerprint are unchanged.
 - [ ] Retro done; slice brief written; backlog updated.
@@ -83,10 +83,13 @@ These mirror `docs/backlog.md`; details live here.
 - **Goal:** the real environment, created with the developer, and the numbers that close the ADR triggers.
 - **Done when:** the T6 exit checks above hold, with each number in the slice doc.
 - **Notes / pointers:** paid (AWS hours, a few Anthropic asks); needs the developer's AWS login. ADR-004 (pgvector recheck), ADR-005 (connection trigger), ADR-008 (instance).
+- **How:** the checklist in run contract S15-R2 (one window covering a full UTC day, evidence E0–E13). It changes no repo file; T7 records its numbers and ticks it.
 - **Deps:** T5.
 
 ### S15-T7: Docs and the S15 retro `[commodity]`
 
+- **Goal:** T6's numbers and evidence in the repo, the ADR triggers closed, then the S15 retro.
+- **Done when:** the "T7 plan" in run contract S15-R2 holds. An interactive task (`/start-task S15-T7`), not a run: it is the only task left that isn't `[human]` (S15-R2 decision 6).
 - **Deps:** T6.
 
 ## Risks & unknowns
@@ -100,6 +103,7 @@ These mirror `docs/backlog.md`; details live here.
 ## Decisions expected (ADRs)
 
 - ADR-014: deployment topology (S15-R1 sitting).
+- ADR-014 amendment 2026-10-16: the deployment exists only in windows (S15-R2 sitting).
 
 ## Run contracts
 
@@ -359,6 +363,96 @@ docker rm -f orgknow-api orgknow-worker
 - **2 PRs, split after T3.** PR 1 (`s15-r1a-review-image`, cut at T3's commit): the contract, ADR-014, T1, T3. PR 2 (this branch, base PR 1's branch): T4, T5.
 - Greptile on both (23/50 → 25/50). No re-review unless must-fix changes behavior.
 - **Paid calls allowed:** none. Free downloads only (the base images, the model, the Python wheels, the Terraform providers).
+
+### Run S15-R2: First deploy window (T6) and T7
+
+- **Status:** planned. T6 starts only on the developer's "go".
+- **Tasks:** T6 `[human]`, with the developer (paid); then T7 as an interactive task (decision 6). No unattended run: CLAUDE.md's bundle is 2–5 tasks, and T7 is the only one left that isn't `[human]`.
+- **Goal (plain words):** create the AWS environment once, for one full UTC day; measure it (the RDS checks, the fingerprint, retrieval speed on 2 CPUs, connections, the real daily cost); capture the evidence as text and a few screenshots; destroy it and prove nothing bills. Then T7 writes it all into the repo and closes S15.
+
+#### Sitting evidence (2026-10-15/16)
+
+- **Input:** a handoff from the developer's planning chat, checked against the repo first (not committed). 14 findings; the ones that changed the plan:
+  - S16's "smoke eval in CI" isn't free: `make eval-smoke` makes one paid Anthropic call per question (`Makefile:190`), and it needs the full 431 MB corpus database, which CI doesn't have.
+  - The accepted cost check needs one full UTC day of the stack (`docs/deployment.md` 7.6e), so T6 is ~30–36 hours of stack time, not "about a day".
+  - E7's commands (the response's request ID, and the same ID in CloudWatch Logs) weren't in the runbook; added in this commit.
+  - No OIDC role (OpenID Connect: CI's keyless AWS login) exists in `infra/`; a local "run it yourself" path needs a data load (a published dump, or ~5.69 M paid embedding tokens: ADR-014 Context).
+- **Devil's advocate (P1):** its 3 strongest objections were S16's deploy having no standing server, the repeated work and version drift between windows, and a budget alarm sized for always-on (80% of US$50 ≈ 26 days of a forgotten stack). The amendment answers them with S16's own sitting, T6's timing log and a revisit trigger, and a budget per window.
+- **The request ID on the laptop** (the image `orgknow:dev`, `GET /health`): the `X-Request-ID` header gave `RID=[f73da06738c7487eb74d748861bfbddb] len=32`, and the container's log had `"message": "GET /health 200", "request_id": "f73da06738c7487eb74d748861bfbddb"`. The runbook's extraction command works on the real header.
+
+#### Decisions (made in the sitting, confirmed 2026-10-16)
+
+| # | Decision | Rejected | Why |
+|---|---|---|---|
+| P1 | **The deployment exists only in windows** (ADR-014 amendment 2026-10-16): opened when a task needs one (T6; maybe hours in S16; ~7 days in S18), each ended by destroy and step 9's checks; a budget per window; over 2 hands-on hours or a new failure → the next sitting reconsiders stop/start; "≤ US$50/month always on" stays the sizing rule | Always on; stop/start between uses; T6's stack kept through S16–S17 | ~CA$68–74/month with tax for a system only the developer can reach; a stopped RDS restarts itself after 7 days |
+| P2 | **T6 now, its window covering one full UTC day** (~30–36 h, ~US$2–2.50 before tax) | Folding T6 into S18 | S16 and S17 get designed on measured numbers; S15 can't close without T6 (exit checks) |
+| P3 | **Text-first evidence:** E0–E13 below; raw captures in a local folder outside the repo; T7 commits `docs/deployment-evidence.md` with ≤ 6 redacted screenshots, and S18 adds its window; a search for the account ID must print nothing before any commit; no screen recording until S18 | Screenshots of everything, curated in S18; numbers only | Text is searchable and easy to redact; captures are gone once the stack is destroyed |
+| P4 | **Gross and net cost:** read Billing → Credits at the start; the full day's gross cost (credits and tax left out) × 30.4 is compared with US$50, with net and tax recorded; `budget_usd = 5` for T6; if the budget counts credits and the account has them, a Proposed addition makes it count gross before the next window | Fixing the budget before T6; reading only the net bill | Credits would make the bill read ~US$0; a guided 1.5-day window carries little forget risk |
+| P5 | **A dated backup of the dump and the corpus archive**, with their sha256, on the Windows side; every window makes fresh files | Deleting them; reloading them in S18 | The embeddings cost money to recreate and the GitHub snapshots are pinned by hash; a stale dump in S18 could miss S16–S17's changes |
+| 6 | **T7 is an interactive task** after T6, with the plan below | A 1-task run; folding T7 into S16 | T7's inputs (screenshots, timings, readings) are the developer's; only one slice can be active |
+
+**Claude's calls** (confirmed at the read-back):
+- c1. The sitting's outputs ship as one docs-only PR, merged before T6, so the runbook's edits are in place. No Greptile (docs only).
+- c2. T6's blocker rule: a problem not fixed the same day → destroy (step 9) first, then park it; the stack never bills overnight while we debug. The same failure after 3 attempts also parks it.
+- c3. Screenshots are cropped to the panel when taken, with no account menu, so T7 redacts less.
+- c4. Cost Explorer (AWS's billing report page) is opened once before T6's day 1: its data appears ~24 h after the first visit (`docs/deployment.md` 7.6e).
+- c5. T6 changes no repo file; T7 records its numbers and ticks it.
+- c6. The ADR trigger outcomes go in the ADRs that own them (004, 005, 008), one dated line each, in T7.
+- c7. The handoff's errors are corrected in the backlog's Proposed additions (S16's paid smoke eval and its data, no OIDC role yet, the local path's data load).
+
+#### T6 checklist (`[human]`, paid; nothing starts before "go")
+
+Runbook steps are `docs/deployment.md`'s. Evidence goes to a local folder outside the repo.
+
+| When | Runbook step | Evidence |
+|---|---|---|
+| Before day 1 (free) | This sitting's PR merged; step 1 (MFA on root, an IAM Identity Center admin, the AWS CLI and the Session Manager plugin, `aws sso login`); Cost Explorer opened once; Billing → Credits read; the timing log started | E0 |
+| Day 1 | 2: `terraform.tfvars` (`alert_email`, `langfuse_base_url`, `budget_usd = 5`), `plan`, `apply`; the alert email confirmed; whether the budget counts credits | E1, E4 (EC2), E11 |
+| | 3: the 4 secrets · 4: the image pushed | E2 |
+| | 5: dump, archive, upload; the restore timed; the extensions; the backup and its sha256 | E3, E4 (RDS) |
+| | 6: `orgknow-deploy` · 7.1–7.5: logs, tunnel, `/health`, `/ready`, the fingerprint, a free worker job | E5, E6 |
+| | 7.6: CPU credits ≥ 30, then the retrieval eval (D2's 15 s rule: record it, change nothing); 1 live question, its request ID found in CloudWatch, its Langfuse trace; `max_connections`, the peak, the connect time | E9, E7, E8 |
+| Day 2 | Nothing: the stack runs through the whole UTC day | — |
+| Just after UTC midnight ending day 2 | 9: `destroy`, then every check prints nothing | E12 |
+| Day 4 (a day after day 2 ends) | 7.6e: day 2's gross by service, net and tax; gross × 30.4 against US$50. Day 3's cost near US$0 | E10, E13 |
+
+**Evidence** (P3; text unless marked as a screenshot):
+
+| # | What | Step |
+|---|---|---|
+| E0 | Hands-on minutes per runbook step (P1's 2-hour trigger) | All |
+| E1 | `apply`'s last lines (`37 added`) | 2 |
+| E2 | The pushed tag in the registry | 4 |
+| E3 | The restore's time and exit code, the extensions query, the dump's sha256 line | 5 |
+| E4 | Screenshots: the server running; the database "Available", "Publicly accessible: No" | 2, 5 |
+| E5 | `/health` and `/ready` through the tunnel | 7.3 |
+| E6 | The RDS fingerprint line, equal to the laptop's | 7.4 |
+| E7 | The live answer (status, time, citations), its `X-Request-ID`, and the matching CloudWatch log line | 7.6c |
+| E8 | Screenshot: the question's Langfuse trace | 7.6c |
+| E9 | The retrieval eval's 5 metric lines and its retrieve-time line | 7.6b |
+| E10 | Day 2's gross cost by service, net, and tax | 7.6e |
+| E11 | Screenshot: the budget page; the alert-email confirmation (and any alert received) | 2 |
+| E12 | `destroy`'s last line (`37 destroyed`) and step 9's checks printing nothing | 9 |
+| E13 | The day after teardown: gross near US$0 | 9 |
+
+- **Redaction** (before anything is committed): the account ID (in the bucket name, the registry URL and every ARN, AWS's resource names), API keys, the alert email, instance and session IDs, the server's IP address. `DATABASE_URL` is never printed.
+- **Stop rules:** no AWS command before "go"; c2's blocker rule; a 400 "credit balance is too low" stops the paid steps at once; D2's 15 s rule is recorded, not acted on (the next sitting decides).
+- **Paid calls allowed:** Credit at sitting: US$109 (2026-10-15). Anthropic: at most 3 `POST /query` questions (~US$0.03 each). AWS: ~US$2–2.50 before tax for the window, plus Cost Explorer's API at US$0.01 per request (~5 requests).
+
+#### T7 plan (an interactive task after T6; `/start-task S15-T7`)
+
+- **Done when:**
+  1. This slice doc records every T6 number (exit checks) and marks each of E0–E13 taken or missed.
+  2. `docs/deployment-evidence.md` holds T6's section: the text captures and ≤ 6 redacted screenshots in one image folder; a search of both for the account ID prints nothing.
+  3. The ADR-004 (pgvector and `btree_gist` on RDS), ADR-005 (`max_connections` against 2× the peak, the connect time) and ADR-008 (D2's 15 s rule) outcomes are written, one dated line each in their ADR (c6).
+  4. A Proposed addition for each thing T6 triggered: the budget counting credits (P4), a window over 2 hands-on hours (P1), a retrieve p95 over 15 s (D2), any blocker.
+  5. `docs/deployment.md` gets fixes only, for anything T6 found wrong.
+  6. `docs/architecture.md` and the README get one short deployment section each.
+  7. The S15 retro (`/slice-retro`) is the PR's last commit: exit checks, the slice brief (interview points: why windows, cost per day vs. per month, what the request-ID trace proves, why no NAT gateway and no inbound ports), S15 ✅ and S16 🟨.
+- **Rules:** no code (`src/`, `tests/`, `infra/`), no AWS command (the stack is gone), nothing paid.
+- **Files in scope:** this slice doc; `docs/deployment-evidence.md` and its image folder (new); `docs/deployment.md` (fixes); ADR-004, -005, -008 and `docs/decisions/README.md`; `docs/backlog.md`; `docs/architecture.md`; `README.md`; the slice brief and the glossary (the retro).
+- **Proof map:** done-when 1 → each exit check carries its number and its E-capture; 2 → the account-ID search prints nothing; 3 → one dated line in each ADR; 4 → the backlog diff; 7 → `/slice-retro`'s exit-check pass. `make check` green.
+- **PR:** one, docs only: no Greptile.
 
 ## Retro (fill in at the end)
 

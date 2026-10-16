@@ -19,7 +19,7 @@ An ADR records **one decision**, why it was made, and what it costs. ADRs are th
 | [011](ADR-011-corrective-retrieval.md) | Corrective retrieval: not adopted | Accepted; amended in S12-R1 |
 | [012](ADR-012-decision-provenance.md) | Decision provenance | Accepted |
 | [013](ADR-013-async-ingestion.md) | Async ingestion: the jobs table is the queue (no SQS), one writer lock | Accepted; amended after S14-R2 (PR #51 review) |
-| [014](ADR-014-deployment-topology.md) | Deployment topology: one EC2 host, RDS, no inbound ports | Accepted |
+| [014](ADR-014-deployment-topology.md) | Deployment topology: one EC2 host, RDS, no inbound ports | Accepted; amended in S15-R2 (the deployment exists only in windows) |
 
 "Changed": a sub-decision updated in place and logged in a Changes table. "Amended": a dated Amendment section at the end. Both are described under Rules.
 
