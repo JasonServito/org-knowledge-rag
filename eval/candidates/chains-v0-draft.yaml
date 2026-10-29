@@ -1,0 +1,84 @@
+# Gold chains v0: the LLM's DRAFT (S13-R1 design review, 2026-10-13), for the author's review.
+# Not a label file until the author signs off and copies it to eval/golden_set/chains-v0.yaml.
+#
+# Drafted by an LLM, who knows the builder's rules (ADR-012 D1), at the author's request.
+# Principle: accept every text a careful person would cite as evidence for the step, and date
+# each event step by when it happened. Labels were not picked by what the rules will choose.
+# Candidates and excerpts: eval/results/s13-sitting/label_sheet.py (the sheet itself holds
+# GitHub text and stays out of the repo). Format: the S13-R1 plan, "Pinned: T4".
+version: chains-v0
+chains:
+  - seed: kep:2572
+    role: built-on
+    question: "Why did Kubernetes move to three releases per year?"   # q04, fixed in the sitting
+    steps:
+      - step: problem
+        date: 2020-10-14   # raised publicly when Discussion #1290 opened
+        texts:   # both state 1.19's long cycle leaving 3 releases in 2020, and the questions it raised
+          - {document: "gh:sig-release/discussions/1290", section: "Opening post · @justaugustus · 2020-10-14"}
+          - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation"}
+      - step: discussion
+        date: 2020-10-14   # the discussion opened; comments ran to 2021-03-26
+        texts:   # the comments themselves; the KEP's "GitHub Discussion" note only points to them
+          - {document: "gh:sig-release/discussions/1290", section: "Comments"}
+      - step: proposal
+        date: 2021-03-12   # public for review when PR #2567 opened; kep.yaml's 2021-01-21 is a draft date
+        texts:   # the KEP's content; PR #2567's description and the tracking issue are cover notes
+          - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Summary"}
+          - {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal"}
+      - step: decision
+        date: 2021-04-23   # PR #2567 merged
+        texts:   # the approvers' votes, the SIG Testing chair's /lgtm, and the post summing up the approvals; not jberkus's non-binding /lgtm
+          - {document: "gh:enhancements/pull/2567", section: "Comments > @dims · 2021-04-19"}
+          - {document: "gh:enhancements/pull/2567", section: "Comments > @derekwaynecarr · 2021-04-20"}
+          - {document: "gh:enhancements/pull/2567", section: "Comments > @johnbelamaric · 2021-04-20"}
+          - {document: "gh:enhancements/pull/2567", section: "Comments > @dchen1107 · 2021-04-22"}
+          - {document: "gh:enhancements/pull/2567", section: "Comments > @dims · 2021-04-22"}
+          - {document: "gh:enhancements/pull/2567", section: "Comments > @spiffxp · 2021-04-23 · review"}
+          - {document: "gh:enhancements/pull/2567", section: "Comments > @justaugustus · 2021-04-23"}
+      - step: implementation
+        date: 2021-08-04   # 1.22, the first release made on the new cadence (the 2021-07-20 blog announced it)
+        texts:
+          - {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/"}
+          - {document: "changelog:1.22", section: "v1.22.0 > What's New (Major Themes) > Kubernetes release cadence change"}
+          - {document: "web:/blog/2021/08/04/kubernetes-1-22-release-announcement/", section: ""}   # its intro (text before the first heading)
+          - {document: "web:/blog/2021/08/04/kubernetes-1-22-release-announcement/", section: "Project Velocity"}
+      - step: current_docs
+        texts:   # each states the current cadence (about three a year)
+          - {document: "web:/releases/release/", section: "The Release Cycle"}
+          - {document: "sig-release:release-engineering/versioning.md", section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"}
+          - {document: "community:contributors/devel/sig-release/release.md", section: "Targeting enhancements, Issues and PRs to Release Milestones > The Release Cycle"}
+
+  - seed: kep:3015
+    role: held-out
+    question: "Why did Kubernetes add the PreferSameZone and PreferSameNode traffic distribution options for Services?"
+    steps:
+      - step: problem
+        date: 2021-10-14   # first raised in PR #3010 (prefer a local endpoint, fall back to remote)
+        texts:
+          - {document: "gh:enhancements/pull/3010", section: "Opening post · @danwinship · 2021-10-14"}
+          - {document: "gh:enhancements/issues/3015", section: "Opening post · @danwinship · 2021-10-21"}
+          - {document: "kep:3015", section: "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution > Motivation"}
+      - step: discussion
+        date: 2021-10-14   # PR #3010's design discussion; the later rounds (#3016, #4931) aren't stored
+        texts:   # the tracking issue's comments are status notes, not discussion
+          - {document: "gh:enhancements/pull/3010", section: "Comments"}
+      - step: proposal
+        date: 2025-02-06   # the proposal that was accepted (PR #5140 opened; the KEP's history says the same)
+        texts:
+          - {document: "kep:3015", section: "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution > Summary"}
+          - {document: "kep:3015", section: "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution > Proposal"}
+      - step: decision
+        not_stored: "https://github.com/kubernetes/enhancements/pull/5140"   # merged 2025-02-11; not linked by a full URL, so not ingested
+      - step: implementation
+        date: 2025-04-23   # alpha shipped in 1.33 (the KEP's history says 2025-05-30; 1.33 was released 2025-04-23)
+        texts:   # alpha (1.33), beta (1.34 sneak peek), stable (1.35)
+          - {document: "changelog:1.33", section: "v1.33.0 > Changes by Kind > API Change"}
+          - {document: "web:/docs/concepts/services-networking/service/", section: "Virtual IP addressing mechanism > Traffic distribution"}
+          - {document: "web:/blog/2025/07/28/kubernetes-v1-34-sneak-peek/", section: "Featured enhancements of Kubernetes v1.34 > `PreferSameZone` and `PreferSameNode` traffic distribution for Services"}
+          - {document: "web:/blog/2025/12/17/kubernetes-v1-35-release/", section: "Features graduating to Stable > PreferSameNode traffic distribution"}
+      - step: current_docs
+        texts:   # the gate page sits here, not in implementation: one document can't be whole-document in 2 steps
+          - {document: "web:/docs/concepts/services-networking/service/", section: "Virtual IP addressing mechanism > Traffic distribution control"}
+          - {document: "web:/docs/reference/networking/virtual-ips/", section: "Traffic distribution control"}
+          - {document: "gate:PreferSameTrafficDistribution"}

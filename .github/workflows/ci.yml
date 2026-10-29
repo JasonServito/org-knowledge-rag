@@ -1,0 +1,64 @@
+# CI runs the same Make targets as local development (ADR-004); no commands are copied here.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  # Fail if uv.lock is out of date with pyproject.toml, instead of silently re-locking.
+  UV_LOCKED: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # setup-uv publishes no floating major tag, so pin the exact release.
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: make check
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      db:
+        # Same pinned image and credentials as compose.yaml. The runner waits for the healthcheck.
+        image: pgvector/pgvector:0.8.1-pg18
+        env:
+          POSTGRES_USER: orgknow
+          POSTGRES_PASSWORD: orgknow
+          POSTGRES_DB: orgknow
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U orgknow -d orgknow"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql://orgknow:orgknow@localhost:5433/orgknow
+      # Locally `make test-int` uses a separate `orgknow_test` database; CI's service database
+      # holds no ingested data, so the tests use it directly.
+      TEST_DATABASE_URL: postgresql://orgknow:orgknow@localhost:5433/orgknow
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: make migrate
+      - name: make migrate (again; must be a no-op)
+        run: make migrate
+      # Proves every downgrade undoes its upgrade: down to 0001, then back up to head.
+      - name: Migration round trip (down to 0001, then up)
+        run: |
+          uv run alembic downgrade 0001
+          make migrate
+      - run: make test-int

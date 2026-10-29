@@ -1,0 +1,151 @@
+# Blind rewording of golden set v0's 36 answerable questions (S09-R1 design review, 2026-10-09).
+# Written by a separate LLM session that never saw the router rules or the modes, asked to keep
+# each question's meaning and time scope in Slack-style wording. `mode` and `original` are copied
+# from eval/golden_set/v0.yaml by a script. Not verified by the author: candidate material for
+# a v1 router check set (backlog, proposed additions). Evidence for ADR-009: rules routed 12 of
+# 36 of these correctly (36 of 36 originals); claude-opus-5-5 routed 35 of 36.
+questions:
+  - id: q01
+    mode: CURRENT
+    original: "How many Kubernetes minor releases happen per year?"
+    reworded: "number of k8s minor releases in a year?"
+  - id: q02
+    mode: HISTORY
+    original: "What was the Kubernetes release cadence before 2021?"
+    reworded: "pre-2021, how often did k8s ship a minor release?"
+  - id: q03
+    mode: CHANGE
+    original: "When was the move to three releases a year decided, and which release was the first to follow it?"
+    reworded: "k8s switched to 3 releases/yr - when was that decided and which version was first on the new schedule?"
+  - id: q04
+    mode: WHY
+    original: "Why did Kubernetes move to three releases per year?"
+    reworded: "reasoning behind k8s going to 3 releases a year?"
+  - id: q06
+    mode: CURRENT
+    original: "What enforces pod security standards in-tree?"
+    reworded: "which built-in component enforces the pod security standards?"
+  - id: q07
+    mode: HISTORY
+    original: "What did Pod Security Admission replace, and when was that removed?"
+    reworded: "PSA replaced something - what was it and when did it get removed?"
+  - id: q08
+    mode: CHANGE
+    original: "What were Pod Security Admission's graduation stages?"
+    reworded: "PSA graduation timeline (alpha/beta/GA)?"
+  - id: q09
+    mode: WHY
+    original: "Why was PodSecurityPolicy replaced instead of fixed?"
+    reworded: "PSP got replaced rather than fixed - why?"
+  - id: q11
+    mode: CURRENT
+    original: "What happens to unused auto-generated ServiceAccount token Secrets?"
+    reworded: "fate of unused auto-generated SA token Secrets?"
+  - id: q12
+    mode: HISTORY
+    original: "Did Kubernetes create a token Secret for every ServiceAccount?"
+    reworded: "was a token Secret auto-created for every SA in k8s?"
+  - id: q13
+    mode: CHANGE
+    original: "When did legacy token cleanup reach GA?"
+    reworded: "legacy SA token cleanup - which release GA'd it?"
+  - id: q14
+    mode: WHY
+    original: "Why did Kubernetes stop auto-generating Secret-based ServiceAccount tokens?"
+    reworded: "reason k8s quit auto-creating Secret-based SA tokens?"
+  - id: q16
+    mode: CURRENT
+    original: "Does the API server reject IP addresses with leading zeros by default?"
+    reworded: "IPs with leading zeros get rejected by kube-apiserver out of the box?"
+  - id: q17
+    mode: HISTORY
+    original: "Before strict IP validation was on by default, what happened when a Service used an IPv4 address with leading zeros?"
+    reworded: "back before strict IP validation was default, what did a Service with a leading-zero IPv4 address do?"
+  - id: q18
+    mode: CHANGE
+    original: "What are the release stages of strict IP/CIDR validation (KEP-4858)?"
+    reworded: "KEP-4858 strict IP/CIDR validation: alpha/beta/GA versions?"
+  - id: q19
+    mode: WHY
+    original: "Why did Kubernetes tighten validation of IP addresses and CIDRs in API fields?"
+    reworded: "motivation for stricter IP/CIDR validation in k8s API fields?"
+  - id: q21
+    mode: CURRENT
+    original: "How long does a Kubernetes minor release receive patch support?"
+    reworded: "patch support window for a k8s minor version?"
+  - id: q22
+    mode: CURRENT
+    original: "In which week of a Kubernetes release cycle does code freeze start?"
+    reworded: "code freeze kicks in what week of the k8s release cycle?"
+  - id: q23
+    mode: HISTORY
+    original: "Before v1.28, how many minor versions older than kube-apiserver could the kubelet be?"
+    reworded: "pre-1.28 kubelet/apiserver skew: how many minors behind the apiserver could kubelet lag?"
+  - id: q24
+    mode: HISTORY
+    original: "Which container image registry did Kubernetes use by default before v1.25?"
+    reworded: "default container image registry for k8s pre-1.25?"
+  - id: q25
+    mode: CHANGE
+    original: "When were the legacy apt.kubernetes.io and yum.kubernetes.io package repositories frozen, and when were they removed?"
+    reworded: "apt.kubernetes.io / yum.kubernetes.io legacy repos - freeze date and removal date?"
+  - id: q26
+    mode: WHY
+    original: "Why did Kubernetes extend patch support for minor releases from 9 months to about a year?"
+    reworded: "what drove k8s bumping minor-release patch support from 9 months to ~1 year?"
+  - id: q30
+    mode: CURRENT
+    original: "How do I configure the kube-apiserver to use more than one authorization webhook?"
+    reworded: "multiple authz webhooks on kube-apiserver - how to set that up?"
+  - id: q31
+    mode: CURRENT
+    original: "Can I write an RBAC rule that explicitly denies a permission?"
+    reworded: "explicit deny rules in RBAC, possible?"
+  - id: q32
+    mode: HISTORY
+    original: "In Kubernetes v1.28, did KMS v1 encryption at rest still work without turning on a feature gate?"
+    reworded: "as of 1.28, was KMS v1 encryption at rest still usable with no feature gate enabled?"
+  - id: q33
+    mode: HISTORY
+    original: "Before v1.29, could the kube-apiserver trust more than one OIDC issuer?"
+    reworded: "pre-1.29 kube-apiserver: multiple OIDC issuers trusted or just one?"
+  - id: q34
+    mode: CHANGE
+    original: "What were the graduation stages of KMS v2 encryption at rest?"
+    reworded: "KMS v2 encryption at rest - alpha -> beta -> GA versions?"
+  - id: q35
+    mode: CHANGE
+    original: "When did ValidatingAdmissionPolicy go alpha, beta and GA?"
+    reworded: "which k8s versions took ValidatingAdmissionPolicy to alpha, beta, GA?"
+  - id: q36
+    mode: WHY
+    original: "Why did Kubernetes add a structured authentication configuration file instead of keeping the --oidc-* flags?"
+    reworded: "structured authn config file vs just sticking with the --oidc-* flags - why the change?"
+  - id: q40
+    mode: CURRENT
+    original: "Is kube-proxy's ipvs mode still supported, and what should I use instead?"
+    reworded: "kube-proxy ipvs mode - still supported? what's the replacement?"
+  - id: q41
+    mode: CURRENT
+    original: "Should a new controller watch Endpoints or EndpointSlices to find a Service's backends?"
+    reworded: "writing a new controller: Endpoints or EndpointSlices for discovering a Service's backends?"
+  - id: q42
+    mode: HISTORY
+    original: "In Kubernetes 1.20, how did you turn on IPv4/IPv6 dual-stack networking?"
+    reworded: "enabling IPv4/IPv6 dual-stack back in 1.20 - what were the steps?"
+  - id: q43
+    mode: HISTORY
+    original: "In Kubernetes 1.20, how could a Service prefer endpoints on the same node as the client?"
+    reworded: "k8s 1.20: making a Service favor endpoints on the client's own node - how?"
+  - id: q44
+    mode: CHANGE
+    original: "When did kube-proxy's nftables mode become generally available, and what came before?"
+    reworded: "nftables kube-proxy mode GA'd in which release, and what preceded it?"
+  - id: q45
+    mode: CHANGE
+    original: "How did support for multiple Service CIDRs (ServiceCIDR objects) progress through its release stages?"
+    reworded: "ServiceCIDR objects (multiple Service CIDRs) - alpha/beta/GA progression?"
+  - id: q46
+    mode: WHY
+    original: "Why did SIG Network build a new nftables backend for kube-proxy?"
+    reworded: "what pushed SIG Network to write a new nftables backend for kube-proxy?"

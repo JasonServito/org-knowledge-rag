@@ -1,0 +1,986 @@
+"""The answer step (S04-T6): validator, fill-in, prompt, failure states, and `answer`.
+
+Every expected value is typed by hand from the S04-R2 plan's pinned formats and from real rows
+of the dev database (chunk 551, PSA "Exemptions", and chunk 4916, the KEP-2579 summary; checked
+2026-10-06). The authority lines and citation fields are the S09-R2 plan's (S09-T6), with
+KEP-2579's review values: at 1.37 stable (claimed, not observed), at 1.22 alpha (observed), tier
+3 at both. The rule-found conflicts on every path and their prompt block are the S10-R1 plan's
+("T4 rules (pinned)"); the model-found ones, the system prompt's new sentences and the claim line's
+milestone are its "T5 rules (pinned)", with the design review's real pair (versioning.md vs. the
+version-skew page, S10-T3). The settle line and the system prompt's rule that points to it are
+the S10-R2 plan's ("Pinned: the settle line (T5b)"). None is computed by the code under test.
+No test calls a network.
+"""
+
+import json
+from pathlib import Path
+from typing import Any
+
+import anthropic
+import httpx2
+import pytest
+from tests.conftest import FakeGenerator
+
+from orgknow.db.models import Authority, Hit
+from orgknow.generation.conflicts import Conflict, ModelConflict
+from orgknow.generation.generator import (
+    AnthropicGenerator,
+    GenerationError,
+    answer,
+    checked_output,
+)
+from orgknow.generation.prompt import SYSTEM_PROMPT, evidence_block, user_prompt
+from orgknow.generation.schema import AnswerStatus, Generation, ModelAnswer, TokenUsage
+from orgknow.generation.validate import fill_in, rejection_reason
+from orgknow.settings import Settings
+
+REAL_MANIFEST = Path(__file__).parents[2] / "config" / "corpus_manifest.yaml"
+QUESTION = "What enforces pod security standards in-tree?"
+
+PSA_SHA = "c28dcd8393562ddc6adf89b920ad3c396166a31b"
+PSA_TEXT = (
+    "Source: docs_page\n"
+    "Title: Pod Security Admission\n"
+    "Document: web:/docs/concepts/security/pod-security-admission/\n"
+    "Section: Exemptions\n"
+    "\n"
+    "You can define _exemptions_ from pod security enforcement."
+)
+KEP_SHA = "0ffd37f8925d8a9af7ce7a7409007db8285a30b1"
+DOCS_AT_37 = Authority(target_release=37, tier=1, effective_stage=None, stage_confidence=None)
+KEP_AT_37 = Authority(target_release=37, tier=3, effective_stage="stable", stage_confidence="low")
+KEP_AT_22 = Authority(target_release=22, tier=3, effective_stage="alpha", stage_confidence="high")
+KEP_TEXT = (
+    "Source: kep\n"
+    "Title: KEP-2579: PSP Replacement Policy\n"
+    "Document: kep:2579\n"
+    "Section: KEP-2579: Pod Security Admission Control > Summary\n"
+    "\n"
+    "Replace PodSecurityPolicy with a new built-in admission controller."
+)
+
+
+def _docs_hit(chunk_id: int = 551, **changes: Any) -> Hit:
+    hit = Hit(
+        chunk_id=chunk_id,
+        content_hash="a" * 64,
+        distance=0.25,
+        text=PSA_TEXT,
+        canonical_id="web:/docs/concepts/security/pod-security-admission/",
+        source_type="docs_page",
+        heading_path=["Exemptions"],
+        release_windows=[(30, None)],
+        current=True,
+        claimed_status=None,
+        claimed_stage=None,
+        snapshot_repo="website",
+        snapshot_sha=PSA_SHA,
+        source_path="content/en/docs/concepts/security/pod-security-admission.md",
+        metadata={"title": "Pod Security Admission"},
+        authority=DOCS_AT_37,
+    )
+    return hit.model_copy(update=changes)
+
+
+def _kep_hit(**changes: Any) -> Hit:
+    hit = Hit(
+        chunk_id=4916,
+        content_hash="b" * 64,
+        distance=0.3,
+        text=KEP_TEXT,
+        canonical_id="kep:2579",
+        source_type="kep",
+        heading_path=["KEP-2579: Pod Security Admission Control", "Summary"],
+        release_windows=[(21, 22), (22, 24), (24, 25), (25, None)],
+        current=True,
+        claimed_status="implemented",
+        claimed_stage="stable",
+        snapshot_repo="enhancements",
+        snapshot_sha=KEP_SHA,
+        source_path="keps/sig-auth/2579-psp-replacement/README.md",
+        metadata={"title": "PSP Replacement Policy"},
+        authority=KEP_AT_37,
+    )
+    return hit.model_copy(update=changes)
+
+
+HITS_1_2_3 = [_docs_hit(1), _docs_hit(2), _docs_hit(3)]
+
+
+def _answered(*ids: int) -> ModelAnswer:
+    return ModelAnswer(
+        answer_status="answered",
+        answer="The built-in Pod Security admission controller.",
+        evidence=list(ids),
+        insufficient_evidence_reason=None,
+        conflicts=[],
+    )
+
+
+@pytest.fixture
+def settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        database_url="x",
+        corpus_manifest_path=REAL_MANIFEST,
+        generation_model="claude-opus-5-5",
+        generation_effort="medium",
+        generation_max_tokens=16_000,
+    )
+
+
+# --- The validator (decision 8) ------------------------------------------------------------------
+
+
+def test_a_citation_outside_the_retrieved_set_is_rejected(settings: Settings) -> None:
+    fake = FakeGenerator(_answered(2, 999))
+
+    result = answer(QUESTION, HITS_1_2_3, fake, settings)
+
+    assert result.answer_status == "insufficient_evidence"
+    assert result.insufficient_evidence_reason == "citation_validation_failed: [999]"
+    assert result.evidence == []
+    assert result.answer == ""
+    # The rejected answer stays available for the trace.
+    assert result.trace is not None
+    assert result.trace.generation.output == _answered(2, 999)
+    assert result.trace.rejection == "citation_validation_failed: [999]"
+    assert result.trace.rejected_ids == [999]
+
+
+def test_out_of_set_ids_are_listed_once_in_the_models_order() -> None:
+    output = _answered(999, 2, 1000, 999)
+
+    assert rejection_reason(output, {1, 2, 3}) == "citation_validation_failed: [999, 1000]"
+
+
+def test_an_answer_with_no_citations_is_rejected(settings: Settings) -> None:
+    result = answer(QUESTION, HITS_1_2_3, FakeGenerator(_answered()), settings)
+
+    assert result.answer_status == "insufficient_evidence"
+    assert result.insufficient_evidence_reason == "citation_validation_failed: [no citations]"
+    assert result.evidence == []
+    assert result.answer == ""
+
+
+@pytest.mark.parametrize("reason", ["", "  \n", None])
+def test_insufficient_evidence_with_an_empty_reason_is_rejected(
+    settings: Settings, reason: str | None
+) -> None:
+    output = ModelAnswer(
+        answer_status="insufficient_evidence",
+        answer="",
+        evidence=[],
+        insufficient_evidence_reason=reason,
+        conflicts=[],
+    )
+
+    result = answer(QUESTION, HITS_1_2_3, FakeGenerator(output), settings)
+
+    assert result.answer_status == "insufficient_evidence"
+    assert result.insufficient_evidence_reason == "citation_validation_failed: [empty reason]"
+
+
+def test_a_valid_answer_citing_1_and_3_passes(settings: Settings) -> None:
+    result = answer(QUESTION, HITS_1_2_3, FakeGenerator(_answered(1, 3)), settings)
+
+    assert result.answer_status == "answered"
+    assert result.answer == "The built-in Pod Security admission controller."
+    assert [e.chunk_id for e in result.evidence] == [1, 3]
+    assert result.insufficient_evidence_reason is None
+    assert result.trace is not None
+    assert result.trace.rejection is None
+    assert result.trace.rejected_ids == []
+
+
+def test_evidence_keeps_the_models_order_and_collapses_duplicates(settings: Settings) -> None:
+    result = answer(QUESTION, HITS_1_2_3, FakeGenerator(_answered(3, 1, 3)), settings)
+
+    assert [e.chunk_id for e in result.evidence] == [3, 1]
+
+
+def test_insufficient_evidence_may_keep_valid_citations(settings: Settings) -> None:
+    output = ModelAnswer(
+        answer_status="insufficient_evidence",
+        answer="",
+        evidence=[2],
+        insufficient_evidence_reason="The chunks name the controller but not when it shipped.",
+        conflicts=[],
+    )
+
+    result = answer(QUESTION, HITS_1_2_3, FakeGenerator(output), settings)
+
+    assert result.answer_status == "insufficient_evidence"
+    assert [e.chunk_id for e in result.evidence] == [2]
+    assert result.insufficient_evidence_reason == (
+        "The chunks name the controller but not when it shipped."
+    )
+
+
+# --- Fill-in (decision 7) ------------------------------------------------------------------------
+
+
+def test_fill_in_a_docs_hit() -> None:
+    evidence = fill_in(_docs_hit(), {"website": "https://github.com/kubernetes/website"})
+
+    assert json.loads(evidence.model_dump_json()) == {
+        "chunk_id": 551,
+        "document": "web:/docs/concepts/security/pod-security-admission/",
+        "title": "Pod Security Admission",
+        "section": "Exemptions",
+        "source_type": "docs_page",
+        "release_windows": [["1.30", None]],
+        "claimed_status": None,
+        "claimed_stage": None,
+        "tier": 1,
+        "superseded_proposal": False,
+        "effective_stage": None,
+        "stage_confidence": None,
+        "source_url": "https://github.com/kubernetes/website/blob/"
+        "c28dcd8393562ddc6adf89b920ad3c396166a31b/"
+        "content/en/docs/concepts/security/pod-security-admission.md",
+    }
+
+
+def test_fill_in_a_kep_hit() -> None:
+    hit = _kep_hit(release_windows=[(22, 24), (25, None)])
+
+    evidence = fill_in(hit, {"enhancements": "https://github.com/kubernetes/enhancements"})
+
+    assert json.loads(evidence.model_dump_json()) == {
+        "chunk_id": 4916,
+        "document": "kep:2579",
+        "title": "KEP-2579: PSP Replacement Policy",
+        "section": "KEP-2579: Pod Security Admission Control > Summary",
+        "source_type": "kep",
+        "release_windows": [["1.22", "1.24"], ["1.25", None]],
+        "claimed_status": "implemented",
+        "claimed_stage": "stable",
+        "tier": 3,
+        "superseded_proposal": False,
+        "effective_stage": "stable",
+        "stage_confidence": "low",
+        "source_url": "https://github.com/kubernetes/enhancements/blob/"
+        "0ffd37f8925d8a9af7ce7a7409007db8285a30b1/"
+        "keps/sig-auth/2579-psp-replacement/README.md",
+    }
+
+
+def test_a_discussions_source_url_is_the_items_github_url() -> None:
+    # S13-T1: a GitHub item has no file in a repo; its citation links the item itself.
+    hit = _docs_hit(
+        canonical_id="gh:enhancements/pull/2567",
+        source_type="discussion",
+        heading_path=["Comments", "@dims · 2021-04-19"],
+        snapshot_repo="enhancements",
+        snapshot_sha="ab" * 20,
+        source_path="github/enhancements/pull/2567.json",
+        metadata={
+            "title": "KEP-2572: Defining the Release Cadence",
+            "url": "https://github.com/kubernetes/enhancements/pull/2567",
+        },
+    )
+
+    evidence = fill_in(hit, {"enhancements": "https://github.com/kubernetes/enhancements"})
+
+    assert evidence.source_url == "https://github.com/kubernetes/enhancements/pull/2567"
+
+
+def test_a_superseded_proposals_citation_has_no_tier_and_says_so() -> None:
+    superseded = Authority(
+        target_release=37, tier=None, effective_stage="beta", stage_confidence="low"
+    )
+    hit = _kep_hit(claimed_status="withdrawn", claimed_stage="beta", authority=superseded)
+
+    evidence = fill_in(hit, {"enhancements": "https://github.com/kubernetes/enhancements"})
+
+    assert (evidence.tier, evidence.superseded_proposal) == (None, True)
+    assert (evidence.effective_stage, evidence.stage_confidence) == ("beta", "low")
+
+
+def test_the_section_is_null_before_the_first_heading() -> None:
+    evidence = fill_in(_docs_hit(heading_path=[]), {"website": "https://example.org"})
+
+    assert evidence.section is None
+
+
+# --- The prompt (pinned evidence block) ----------------------------------------------------------
+
+
+def test_the_evidence_block_of_a_docs_hit() -> None:
+    hit = _docs_hit(release_windows=[(24, 29), (31, None)])
+
+    assert evidence_block(hit) == (
+        "[chunk 551] valid in releases: 1.24\N{EN DASH}1.29, 1.31\N{EN DASH}now\n"
+        "authority: tier 1\n" + PSA_TEXT
+    )
+
+
+def test_the_evidence_block_of_a_kep_hit() -> None:
+    # Windows are printed as the hit lists them: no merging, even where they touch.
+    assert evidence_block(_kep_hit()) == (
+        "[chunk 4916] valid in releases: "
+        "1.21\N{EN DASH}1.22, 1.22\N{EN DASH}1.24, 1.24\N{EN DASH}1.25, 1.25\N{EN DASH}now\n"
+        "authority: tier 3\n"
+        "claimed: implemented/stable\n"
+        "stage at 1.37: stable (claimed, not observed)\n" + KEP_TEXT
+    )
+
+
+def test_a_kep_blocks_stage_observed_at_the_target_release() -> None:
+    hit = _kep_hit(release_windows=[(21, 22)], authority=KEP_AT_22)
+
+    assert evidence_block(hit) == (
+        "[chunk 4916] valid in releases: 1.21\N{EN DASH}1.22\n"
+        "authority: tier 3\n"
+        "claimed: implemented/stable\n"
+        "stage at 1.22: alpha (observed)\n" + KEP_TEXT
+    )
+
+
+def test_a_superseded_proposals_block() -> None:
+    superseded = Authority(
+        target_release=37, tier=None, effective_stage="beta", stage_confidence="low"
+    )
+    hit = _kep_hit(
+        release_windows=[(25, None)],
+        claimed_status="withdrawn",
+        claimed_stage="beta",
+        authority=superseded,
+    )
+
+    assert evidence_block(hit) == (
+        "[chunk 4916] valid in releases: 1.25\N{EN DASH}now\n"
+        "authority: superseded proposal\n"
+        "claimed: withdrawn/beta\n"
+        "stage at 1.37: beta (claimed, not observed)\n" + KEP_TEXT
+    )
+
+
+def test_a_one_release_window_prints_once_and_a_missing_claim_prints_none() -> None:
+    # No claim and no observation: the stage is unknown.
+    unknown = Authority(target_release=37, tier=3, effective_stage=None, stage_confidence=None)
+    hit = _kep_hit(release_windows=[(24, 24), (26, None)], claimed_stage=None, authority=unknown)
+
+    assert evidence_block(hit) == (
+        "[chunk 4916] valid in releases: 1.24, 1.26\N{EN DASH}now\n"
+        "authority: tier 3\n"
+        "claimed: implemented/none\n"
+        "stage at 1.37: unknown\n" + KEP_TEXT
+    )
+
+
+def test_the_system_prompt_explains_the_tiers_and_the_stage_line() -> None:
+    # The S09-R2 plan's pinned paragraph, word for word, with S10-R1's last sentence.
+    assert (
+        "Each chunk starts with a line giving its id and the releases it was valid in "
+        '("now": still valid in the latest release), then its authority tier (1 = docs and '
+        "feature-gate pages, 2 = release notes, 3 = shipped KEPs, 4 = governance docs, "
+        "5 = unshipped KEPs, 6 = blog posts). A KEP chunk adds the status and stage the KEP "
+        "claimed, with its latest milestone, and its stage at the asked-about release.\n"
+    ) in SYSTEM_PROMPT
+
+
+def test_the_system_prompts_last_bullet_asks_for_conflicts_and_states_adr_003_d6() -> None:
+    # The S10-R1 plan's pinned bullet, word for word, as the prompt's last line, with the
+    # S10-R2 plan's new rule ("Pinned: the settle line (T5b)").
+    assert SYSTEM_PROMPT.endswith(
+        "\n- If two chunks disagree (two sources, or an older and a newer version of one text), "
+        "list the pair in `conflicts` with one sentence on what differs, and say so in the "
+        "answer. Settle it this way: an observed stage beats a KEP's claim; a chunk valid at the "
+        "release named before the question beats one that isn't; otherwise the lower tier "
+        "number wins; with equal tiers, say it is unresolved. Conflicts found by code are listed "
+        "after the evidence: don't list them again.\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("claimed", "milestone", "authority", "line"),
+    [
+        # 37 - 22 = 15 releases before the target.
+        (
+            ("implementable", "alpha"),
+            "v1.22",
+            KEP_AT_37,
+            "claimed: implementable/alpha (latest milestone v1.22, 15 releases before 1.37)",
+        ),
+        # 37 - 36 = 1: singular.
+        (
+            ("implementable", "alpha"),
+            "v1.36",
+            KEP_AT_37,
+            "claimed: implementable/alpha (latest milestone v1.36, 1 release before 1.37)",
+        ),
+        # At or after the target: a plan, not a release, so left out (S10-T5c). v1.38 at 1.37 is
+        # q48's KEP-4858.
+        (("implemented", "stable"), "v1.37", KEP_AT_37, "claimed: implemented/stable"),
+        (("implemented", "stable"), "v1.38", KEP_AT_37, "claimed: implemented/stable"),
+        # No "v", printed as written; 37 - 17 = 20.
+        (
+            ("implementable", "alpha"),
+            "1.17",
+            KEP_AT_37,
+            "claimed: implementable/alpha (latest milestone 1.17, 20 releases before 1.37)",
+        ),
+        # At the hit's own target, 1.22: 22 - 17 = 5.
+        (
+            ("implementable", "alpha"),
+            "v1.17",
+            KEP_AT_22,
+            "claimed: implementable/alpha (latest milestone v1.17, 5 releases before 1.22)",
+        ),
+        # Unchanged: no milestone, one not like v1.N, or no authority (no target).
+        (("implementable", "alpha"), None, KEP_AT_37, "claimed: implementable/alpha"),
+        (("implementable", "alpha"), "0.0", KEP_AT_37, "claimed: implementable/alpha"),
+        (("implementable", "alpha"), "v1.22", None, "claimed: implementable/alpha"),
+    ],
+    ids=[
+        "15-before",
+        "1-before",
+        "at-target",
+        "after-target",
+        "no-v",
+        "at-1.22",
+        "no-milestone",
+        "0.0",
+        "no-authority",
+    ],
+)
+def test_the_claim_line_shows_the_latest_milestone_only_before_the_target(
+    claimed: tuple[str, str], milestone: str | None, authority: Authority | None, line: str
+) -> None:
+    metadata = {"title": "PSP Replacement Policy"}
+    if milestone is not None:
+        metadata["latest-milestone"] = milestone
+    hit = _kep_hit(
+        claimed_status=claimed[0],
+        claimed_stage=claimed[1],
+        metadata=metadata,
+        authority=authority,
+    )
+
+    lines = evidence_block(hit).splitlines()
+
+    assert [text for text in lines if text.startswith("claimed:")] == [line]
+
+
+def test_the_prompt_sent_holds_every_block_the_settle_line_then_the_question(
+    settings: Settings,
+) -> None:
+    fake = FakeGenerator(_answered(551))
+
+    answer(QUESTION, [_docs_hit(), _kep_hit(release_windows=[(25, None)])], fake, settings)
+
+    assert fake.calls == [
+        (
+            SYSTEM_PROMPT,
+            "Evidence:\n\n"
+            "[chunk 551] valid in releases: 1.30\N{EN DASH}now\nauthority: tier 1\n"
+            + PSA_TEXT
+            + "\n\n"
+            "[chunk 4916] valid in releases: 1.25\N{EN DASH}now\nauthority: tier 3\n"
+            "claimed: implemented/stable\nstage at 1.37: stable (claimed, not observed)\n"
+            + KEP_TEXT
+            + "\n\nSettle conflicts at release 1.37."
+            "\n\nQuestion: What enforces pod security standards in-tree?",
+        )
+    ]
+
+
+# --- Failure states (ADR-006 D2) -----------------------------------------------------------------
+
+USAGE = TokenUsage(input_tokens=10, output_tokens=5, thinking_tokens=None)
+
+
+@pytest.mark.parametrize("stop_reason", ["refusal", "max_tokens"])
+def test_a_refusal_or_a_cut_off_is_a_generation_error(stop_reason: str) -> None:
+    # The stop reason alone decides: even a parsed output isn't used.
+    generation = Generation(output=_answered(1), stop_reason=stop_reason, usage=USAGE)
+
+    with pytest.raises(GenerationError) as error:
+        checked_output(generation)
+
+    assert error.value.stop_reason == stop_reason
+    assert error.value.usage == USAGE
+
+
+def test_no_output_is_a_generation_error() -> None:
+    generation = Generation(output=None, stop_reason="end_turn", usage=USAGE)
+
+    with pytest.raises(GenerationError) as error:
+        checked_output(generation)
+
+    assert error.value.stop_reason == "end_turn"
+
+
+def test_a_finished_output_is_returned() -> None:
+    generation = Generation(output=_answered(1), stop_reason="end_turn", usage=USAGE)
+
+    assert checked_output(generation) == _answered(1)
+
+
+def test_answer_raises_a_generation_error_on_a_refusal(settings: Settings) -> None:
+    with pytest.raises(GenerationError) as error:
+        answer(QUESTION, HITS_1_2_3, FakeGenerator(None, stop_reason="refusal"), settings)
+
+    assert error.value.stop_reason == "refusal"
+
+
+def test_no_hits_answers_insufficient_evidence_without_calling_the_model(
+    settings: Settings,
+) -> None:
+    fake = FakeGenerator(_answered(1))
+
+    result = answer(QUESTION, [], fake, settings)
+
+    assert fake.calls == []
+    assert result.answer_status == "insufficient_evidence"
+    assert result.insufficient_evidence_reason == "no evidence retrieved"
+    assert result.evidence == []
+    assert result.answer == ""
+    assert result.trace is None
+    assert result.conflicts == []  # S10-T4
+
+
+# --- Rule-found conflicts on every path, and their prompt block (S10-T4) -------------------------
+
+# KEP-4858 at 1.37 as `rule_conflicts` words it (S10-R1, pinned; its v1.38 milestone left out,
+# S10-T5c), about chunks 101, 102.
+# KEP-2579's real history line, about chunk 205: v1.23 was released 2021-12-07, 34 days after the
+# line's date.
+CLAIM = Conflict(
+    kind="claim_mismatch",
+    found_by="rule",
+    chunk_ids=[101, 102],
+    documents=["kep:4858"],
+    summary="kep:4858 claims stable; the feature-gate reference at 1.37 says beta.",
+    resolution="observed_beats_claimed",
+    prevails=None,
+)
+HISTORY = Conflict(
+    kind="history_date",
+    found_by="rule",
+    chunk_ids=[205],
+    documents=["kep:2579"],
+    summary="kep:2579 says v1.23 was released 2021-11-03; the releases table says 2021-12-07.",
+    resolution="observed_beats_claimed",
+    prevails=None,
+)
+HITS_101_102 = [_docs_hit(101), _docs_hit(102)]
+
+
+@pytest.mark.parametrize(
+    ("output", "status", "reason"),
+    [
+        # Answered.
+        (_answered(101), "answered", None),
+        # The model's own insufficient_evidence.
+        (
+            ModelAnswer(
+                answer_status="insufficient_evidence",
+                answer="",
+                evidence=[],
+                insufficient_evidence_reason="The chunks give no GA release.",
+                conflicts=[],
+            ),
+            "insufficient_evidence",
+            "The chunks give no GA release.",
+        ),
+        # Rejected for a bad citation: the model's output isn't trusted, the rule conflicts stay.
+        (_answered(101, 999), "insufficient_evidence", "citation_validation_failed: [999]"),
+    ],
+)
+def test_every_path_with_hits_carries_the_rule_conflicts(
+    settings: Settings, output: ModelAnswer, status: str, reason: str | None
+) -> None:
+    result = answer(QUESTION, HITS_101_102, FakeGenerator(output), settings, [CLAIM, HISTORY])
+
+    assert (result.answer_status, result.insufficient_evidence_reason) == (status, reason)
+    assert result.conflicts == [CLAIM, HISTORY]
+
+
+def test_no_hits_carries_no_conflicts_and_calls_no_model(settings: Settings) -> None:
+    fake = FakeGenerator(_answered(101))
+
+    result = answer(QUESTION, [], fake, settings, [CLAIM])
+
+    assert fake.calls == []
+    assert result.conflicts == []
+
+
+def test_with_no_rule_conflicts_the_answer_has_none(settings: Settings) -> None:
+    result = answer(QUESTION, HITS_101_102, FakeGenerator(_answered(101)), settings)
+
+    assert result.conflicts == []
+
+
+def test_the_prompt_lists_a_rule_conflict_on_2_chunks_after_the_evidence(
+    settings: Settings,
+) -> None:
+    fake = FakeGenerator(_answered(101))
+
+    answer(QUESTION, HITS_101_102, fake, settings, [CLAIM])
+
+    block = "[chunk {}] valid in releases: 1.30\N{EN DASH}now\nauthority: tier 1\n" + PSA_TEXT
+    assert fake.calls == [
+        (
+            SYSTEM_PROMPT,
+            "Evidence:\n\n" + block.format(101) + "\n\n" + block.format(102) + "\n\n"
+            "Conflicts found by code:\n"
+            "- chunks 101, 102: kep:4858 claims stable; the feature-gate reference at 1.37 says "
+            "beta. Resolved: observed beats claimed."
+            "\n\nSettle conflicts at release 1.37."
+            "\n\nQuestion: What enforces pod security standards in-tree?",
+        )
+    ]
+
+
+def test_the_prompt_names_a_conflict_on_1_chunk_and_lists_each_conflict() -> None:
+    prompt = user_prompt(QUESTION, [_docs_hit(205)], [HISTORY, CLAIM])
+
+    assert prompt.endswith(
+        "\n\nConflicts found by code:\n"
+        "- chunk 205: kep:2579 says v1.23 was released 2021-11-03; the releases table says "
+        "2021-12-07. Resolved: observed beats claimed.\n"
+        "- chunks 101, 102: kep:4858 claims stable; the feature-gate reference at 1.37 says "
+        "beta. Resolved: observed beats claimed."
+        "\n\nSettle conflicts at release 1.37."
+        "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
+
+
+def test_with_no_rule_conflict_the_prompt_has_no_conflict_block() -> None:
+    assert user_prompt(QUESTION, [_docs_hit(205)], []) == (
+        "Evidence:\n\n[chunk 205] valid in releases: 1.30\N{EN DASH}now\nauthority: tier 1\n"
+        + PSA_TEXT
+        + "\n\nSettle conflicts at release 1.37."
+        "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
+
+
+# --- The settle line (S10-T5b): the release conflicts are settled at, before the question --------
+
+
+def test_the_settle_line_names_the_hits_target_release() -> None:
+    # A HISTORY question that settles at 1.20 (7 of v0's 43 settle before 1.37, S10-R2).
+    at_20 = Authority(target_release=20, tier=1, effective_stage=None, stage_confidence=None)
+
+    prompt = user_prompt(QUESTION, [_docs_hit(205, release_windows=[(20, None)], authority=at_20)])
+
+    assert prompt == (
+        "Evidence:\n\n[chunk 205] valid in releases: 1.20\N{EN DASH}now\nauthority: tier 1\n"
+        + PSA_TEXT
+        + "\n\nSettle conflicts at release 1.20."
+        "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
+
+
+def test_with_no_authority_the_prompt_has_no_settle_line() -> None:
+    prompt = user_prompt(QUESTION, [_docs_hit(205, authority=None)])
+
+    assert prompt == (
+        "Evidence:\n\n[chunk 205] valid in releases: 1.30\N{EN DASH}now\n"
+        + PSA_TEXT
+        + "\n\nQuestion: What enforces pod security standards in-tree?"
+    )
+
+
+# --- Model-found conflicts (S10-T5) -------------------------------------------------------------
+
+# The design review's real pair (S10-T3): versioning.md (governance doc, tier 4, 1.36-now) vs. the
+# version-skew page (tier 2, 1.28-now). Both are valid at 1.37, so the lower tier, 7201, prevails.
+VERSIONING = _docs_hit(
+    36383,
+    canonical_id="sig-release:release-engineering/versioning.md",
+    source_type="governance_doc",
+    heading_path=["Kubernetes Release Versioning", "Supported releases and component skew"],
+    release_windows=[(36, None)],
+    authority=Authority(target_release=37, tier=4, effective_stage=None, stage_confidence=None),
+)
+SKEW = _docs_hit(
+    7201,
+    canonical_id="web:/docs/setup/release/version-skew-policy/",
+    source_type="release_record",
+    heading_path=["Supported versions"],
+    release_windows=[(28, None)],
+    authority=Authority(target_release=37, tier=2, effective_stage=None, stage_confidence=None),
+)
+PAIR_HITS = [SKEW, VERSIONING, *HITS_101_102]  # CLAIM is about 101 and 102
+FOUR_VS_THREE = ModelConflict(
+    first=36383, second=7201, summary="versioning.md says four releases; the skew page, three."
+)
+MODEL_FOUND = Conflict(
+    kind="contradiction",
+    found_by="model",
+    chunk_ids=[36383, 7201],
+    documents=[
+        "sig-release:release-engineering/versioning.md",
+        "web:/docs/setup/release/version-skew-policy/",
+    ],
+    summary="versioning.md says four releases; the skew page, three.",
+    resolution="lower_tier",
+    prevails=7201,
+)
+SKEW_ANSWER = "Three minor releases are supported."
+
+
+@pytest.mark.parametrize(
+    ("status", "evidence", "reason"),
+    [
+        ("answered", [7201], None),
+        # The model's own insufficient_evidence keeps its pairs too.
+        ("insufficient_evidence", [], "The chunks disagree on the count."),
+    ],
+)
+def test_a_valid_pair_is_a_model_conflict_after_the_rule_conflicts(
+    settings: Settings, status: AnswerStatus, evidence: list[int], reason: str | None
+) -> None:
+    output = ModelAnswer(
+        answer_status=status,
+        answer=SKEW_ANSWER,
+        evidence=evidence,
+        insufficient_evidence_reason=reason,
+        conflicts=[FOUR_VS_THREE],
+    )
+
+    result = answer(QUESTION, PAIR_HITS, FakeGenerator(output), settings, [CLAIM])
+
+    assert result.answer_status == status
+    assert result.conflicts == [CLAIM, MODEL_FOUND]
+    assert result.trace is not None
+    assert result.trace.dropped_conflicts == []
+
+
+def test_bad_pairs_are_dropped_and_the_answer_is_unchanged(settings: Settings) -> None:
+    outside = ModelConflict(first=36383, second=999, summary="999 wasn't retrieved.")
+    twice = ModelConflict(first=7201, second=7201, summary="One chunk twice.")
+    again = ModelConflict(first=7201, second=36383, summary="The same pair, reversed.")
+    rule_again = ModelConflict(first=102, second=101, summary="CLAIM's chunks.")
+    output = ModelAnswer(
+        answer_status="answered",
+        answer=SKEW_ANSWER,
+        evidence=[7201],
+        insufficient_evidence_reason=None,
+        conflicts=[outside, twice, FOUR_VS_THREE, again, rule_again],
+    )
+
+    result = answer(QUESTION, PAIR_HITS, FakeGenerator(output), settings, [CLAIM])
+
+    # The answer and its citations are as the model gave them: no id was rejected.
+    assert (result.answer_status, result.answer) == ("answered", SKEW_ANSWER)
+    assert [citation.chunk_id for citation in result.evidence] == [7201]
+    assert result.insufficient_evidence_reason is None
+    assert result.trace is not None
+    assert (result.trace.rejection, result.trace.rejected_ids) == (None, [])
+    assert result.conflicts == [CLAIM, MODEL_FOUND]
+    assert result.trace.dropped_conflicts == [outside, twice, again, rule_again]
+
+
+def test_a_rejected_answer_keeps_only_the_rule_conflicts(settings: Settings) -> None:
+    # A bad citation: the model's output isn't trusted, so none of its pairs is kept.
+    output = ModelAnswer(
+        answer_status="answered",
+        answer=SKEW_ANSWER,
+        evidence=[7201, 999],
+        insufficient_evidence_reason=None,
+        conflicts=[FOUR_VS_THREE],
+    )
+
+    result = answer(QUESTION, PAIR_HITS, FakeGenerator(output), settings, [CLAIM])
+
+    assert result.insufficient_evidence_reason == "citation_validation_failed: [999]"
+    assert result.conflicts == [CLAIM]
+    assert result.trace is not None
+    assert result.trace.dropped_conflicts == [FOUR_VS_THREE]
+
+
+# --- The printed JSON (pinned format) ------------------------------------------------------------
+
+
+def test_the_printed_json_has_the_pinned_shape(settings: Settings) -> None:
+    result = answer(QUESTION, [_docs_hit()], FakeGenerator(_answered(551)), settings, [HISTORY])
+
+    printed = json.loads(result.model_dump_json())
+
+    # S10-T4: `conflicts` follows `evidence`.
+    assert list(printed) == [
+        "question",
+        "answer_status",
+        "answer",
+        "evidence",
+        "conflicts",
+        "insufficient_evidence_reason",
+        "model",
+        "trace_id",
+    ]
+    assert printed == {
+        "question": "What enforces pod security standards in-tree?",
+        "answer_status": "answered",
+        "answer": "The built-in Pod Security admission controller.",
+        "evidence": [
+            {
+                "chunk_id": 551,
+                "document": "web:/docs/concepts/security/pod-security-admission/",
+                "title": "Pod Security Admission",
+                "section": "Exemptions",
+                "source_type": "docs_page",
+                "release_windows": [["1.30", None]],
+                "claimed_status": None,
+                "claimed_stage": None,
+                "tier": 1,
+                "superseded_proposal": False,
+                "effective_stage": None,
+                "stage_confidence": None,
+                "source_url": "https://github.com/kubernetes/website/blob/"
+                "c28dcd8393562ddc6adf89b920ad3c396166a31b/"
+                "content/en/docs/concepts/security/pod-security-admission.md",
+            }
+        ],
+        "conflicts": [
+            {
+                "kind": "history_date",
+                "found_by": "rule",
+                "chunk_ids": [205],
+                "documents": ["kep:2579"],
+                "summary": "kep:2579 says v1.23 was released 2021-11-03; the releases table says "
+                "2021-12-07.",
+                "resolution": "observed_beats_claimed",
+                "prevails": None,
+            }
+        ],
+        "insufficient_evidence_reason": None,
+        "model": "claude-opus-5-5",
+        "trace_id": None,
+    }
+
+
+# --- AnthropicGenerator, against a mock HTTP transport (no network) ------------------------------
+
+
+def _client(reply: dict[str, Any], requests: list[httpx2.Request]) -> anthropic.Anthropic:
+    """A real SDK client whose HTTP calls are answered by `reply` and recorded."""
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request)
+        return httpx2.Response(200, json=reply)
+
+    return anthropic.Anthropic(
+        api_key="test-key",
+        max_retries=0,
+        http_client=httpx2.Client(transport=httpx2.MockTransport(handle)),
+    )
+
+
+def _reply(
+    content: list[dict[str, Any]], stop_reason: str, usage: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "id": "msg_test",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-opus-5-5",
+        "content": content,
+        "stop_reason": stop_reason,
+        "stop_sequence": None,
+        "usage": usage,
+    }
+
+
+ANSWER_JSON = (
+    '{"answer_status": "answered", "answer": "Pod Security admission.", "evidence": [551], '
+    '"insufficient_evidence_reason": null, "conflicts": []}'
+)
+
+
+def test_the_request_and_a_parsed_reply(settings: Settings) -> None:
+    requests: list[httpx2.Request] = []
+    reply = _reply(
+        [
+            {"type": "thinking", "thinking": "", "signature": "sig"},
+            {"type": "text", "text": ANSWER_JSON},
+        ],
+        "end_turn",
+        {
+            "input_tokens": 4200,
+            "output_tokens": 900,
+            "output_tokens_details": {"thinking_tokens": 600},
+        },
+    )
+
+    generation = AnthropicGenerator(_client(reply, requests), settings).generate("SYS", "PROMPT")
+
+    assert len(requests) == 1
+    assert requests[0].url.path == "/v1/messages"
+    body = json.loads(requests[0].content)
+    assert body["model"] == "claude-opus-5-5"
+    assert body["max_tokens"] == 16_000
+    assert body["system"] == "SYS"
+    assert body["messages"] == [{"role": "user", "content": "PROMPT"}]
+    assert body["output_config"]["effort"] == "medium"
+    assert body["output_config"]["format"]["type"] == "json_schema"
+    # S10-T5: `conflicts` is required, like every other field: the schema has no defaults.
+    schema = body["output_config"]["format"]["schema"]
+    assert schema["required"] == [
+        "answer_status",
+        "answer",
+        "evidence",
+        "insufficient_evidence_reason",
+        "conflicts",
+    ]
+    assert schema["$defs"]["ModelConflict"]["required"] == ["first", "second", "summary"]
+    # No temperature (Opus 5.5 rejects it), no thinking setting (always on), no fallbacks.
+    assert "temperature" not in body
+    assert "thinking" not in body
+    assert "fallbacks" not in body
+    assert generation == Generation(
+        output=ModelAnswer(
+            answer_status="answered",
+            answer="Pod Security admission.",
+            evidence=[551],
+            insufficient_evidence_reason=None,
+            conflicts=[],
+        ),
+        stop_reason="end_turn",
+        usage=TokenUsage(input_tokens=4200, output_tokens=900, thinking_tokens=600),
+    )
+
+
+def test_the_answer_call_waits_at_most_generation_timeout_s(settings: Settings) -> None:
+    requests: list[httpx2.Request] = []
+    reply = _reply(
+        [{"type": "text", "text": ANSWER_JSON}], "end_turn", {"input_tokens": 1, "output_tokens": 1}
+    )
+    limited = settings.model_copy(update={"generation_timeout_s": 45})
+
+    AnthropicGenerator(_client(reply, requests), limited).generate("SYS", "PROMPT")
+
+    # S14-T3: 45 s for each wait on the network (the SDK's default read timeout is 600 s).
+    assert requests[0].extensions["timeout"] == {"connect": 45, "read": 45, "write": 45, "pool": 45}
+
+
+def test_a_refusal_reply_has_no_output(settings: Settings) -> None:
+    reply = _reply([], "refusal", {"input_tokens": 4200, "output_tokens": 0})
+    reply["stop_details"] = {"type": "refusal", "category": None, "explanation": None}
+
+    generation = AnthropicGenerator(_client(reply, []), settings).generate("SYS", "PROMPT")
+
+    assert generation == Generation(
+        output=None,
+        stop_reason="refusal",
+        usage=TokenUsage(input_tokens=4200, output_tokens=0, thinking_tokens=None),
+    )
+
+
+def test_output_cut_off_mid_json_is_a_generation_error(settings: Settings) -> None:
+    reply = _reply(
+        [{"type": "text", "text": '{"answer_status": "answ'}],
+        "max_tokens",
+        {"input_tokens": 4200, "output_tokens": 16_000},
+    )
+
+    with pytest.raises(GenerationError) as error:
+        AnthropicGenerator(_client(reply, []), settings).generate("SYS", "PROMPT")
+
+    # The SDK loses the stop reason and usage on this path (deferred).
+    assert error.value.stop_reason is None
+    assert error.value.usage is None

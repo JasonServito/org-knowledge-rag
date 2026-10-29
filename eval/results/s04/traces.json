@@ -1,0 +1,367 @@
+{
+  "seed-06": {
+    "trace_id": "815f66d0a5802ccd6e6e09d3b6608c7b",
+    "observations": [
+      "ask",
+      "generate",
+      "retrieve",
+      "validate"
+    ],
+    "ask_level": "DEFAULT",
+    "ask_latency_s": 6.629,
+    "retrieve_output": [
+      {
+        "chunk_id": 4648,
+        "distance": 0.3539841560134783
+      },
+      {
+        "chunk_id": 4654,
+        "distance": 0.35594002271055925
+      },
+      {
+        "chunk_id": 4649,
+        "distance": 0.36518887488908214
+      },
+      {
+        "chunk_id": 546,
+        "distance": 0.37565920498018124
+      },
+      {
+        "chunk_id": 4639,
+        "distance": 0.38163240174860935
+      },
+      {
+        "chunk_id": 4633,
+        "distance": 0.38179206848144087
+      },
+      {
+        "chunk_id": 1813,
+        "distance": 0.3865257406486726
+      },
+      {
+        "chunk_id": 1293,
+        "distance": 0.387553769720976
+      },
+      {
+        "chunk_id": 1446,
+        "distance": 0.3894002205490924
+      },
+      {
+        "chunk_id": 554,
+        "distance": 0.392126358024694
+      }
+    ],
+    "generate": {
+      "model": "claude-opus-5-5",
+      "model_parameters": {
+        "effort": "medium",
+        "max_tokens": 16000
+      },
+      "usage_details": {
+        "input": 3437,
+        "output": 323,
+        "total": 3760,
+        "reasoning": 0
+      },
+      "stop_reason": "end_turn",
+      "langfuse_total_cost_usd": 0.020208,
+      "latency_s": 5.646
+    },
+    "validate_output": {
+      "result": "passed",
+      "rejected_ids": []
+    }
+  },
+  "seed-07": {
+    "trace_id": "ad590a170d67746062cb00485cddb6da",
+    "observations": [
+      "ask",
+      "generate",
+      "retrieve",
+      "validate"
+    ],
+    "ask_level": "DEFAULT",
+    "ask_latency_s": 13.171,
+    "retrieve_output": [
+      {
+        "chunk_id": 585,
+        "distance": 0.3447514577135875
+      },
+      {
+        "chunk_id": 555,
+        "distance": 0.36102988240033485
+      },
+      {
+        "chunk_id": 4974,
+        "distance": 0.3635565448867242
+      },
+      {
+        "chunk_id": 4955,
+        "distance": 0.37503904477110883
+      },
+      {
+        "chunk_id": 4790,
+        "distance": 0.3750732727326943
+      },
+      {
+        "chunk_id": 4917,
+        "distance": 0.3785191855166842
+      },
+      {
+        "chunk_id": 4633,
+        "distance": 0.3810483259899905
+      },
+      {
+        "chunk_id": 1191,
+        "distance": 0.38195171683306994
+      },
+      {
+        "chunk_id": 1242,
+        "distance": 0.3822845404659324
+      },
+      {
+        "chunk_id": 511,
+        "distance": 0.3863458267656461
+      }
+    ],
+    "generate": {
+      "model": "claude-opus-5-5",
+      "model_parameters": {
+        "effort": "medium",
+        "max_tokens": 16000
+      },
+      "usage_details": {
+        "input": 4645,
+        "output": 195,
+        "total": 4840,
+        "reasoning": 0
+      },
+      "stop_reason": "end_turn",
+      "langfuse_total_cost_usd": 0.02248,
+      "latency_s": 12.897
+    },
+    "validate_output": {
+      "result": "passed",
+      "rejected_ids": []
+    }
+  },
+  "seed-08": {
+    "trace_id": "4e8e5c1f08c5983308a7c3ebf9ef5689",
+    "observations": [
+      "ask",
+      "generate",
+      "retrieve",
+      "validate"
+    ],
+    "ask_level": "DEFAULT",
+    "ask_latency_s": 8.728,
+    "retrieve_output": [
+      {
+        "chunk_id": 4770,
+        "distance": 0.3418673676808881
+      },
+      {
+        "chunk_id": 4954,
+        "distance": 0.34239299984061256
+      },
+      {
+        "chunk_id": 4955,
+        "distance": 0.3428517784387921
+      },
+      {
+        "chunk_id": 4952,
+        "distance": 0.35069682304244065
+      },
+      {
+        "chunk_id": 4974,
+        "distance": 0.357790470123291
+      },
+      {
+        "chunk_id": 4830,
+        "distance": 0.3588138222694397
+      },
+      {
+        "chunk_id": 4953,
+        "distance": 0.3700511014400555
+      },
+      {
+        "chunk_id": 4790,
+        "distance": 0.3829884896881277
+      },
+      {
+        "chunk_id": 4915,
+        "distance": 0.39004059970620764
+      },
+      {
+        "chunk_id": 4737,
+        "distance": 0.39196860790252686
+      }
+    ],
+    "generate": {
+      "model": "claude-opus-5-5",
+      "model_parameters": {
+        "effort": "medium",
+        "max_tokens": 16000
+      },
+      "usage_details": {
+        "input": 6033,
+        "output": 853,
+        "total": 6886,
+        "reasoning": 0
+      },
+      "stop_reason": "end_turn",
+      "langfuse_total_cost_usd": 0.041192,
+      "latency_s": 8.407
+    },
+    "validate_output": {
+      "result": "passed",
+      "rejected_ids": []
+    }
+  },
+  "seed-09": {
+    "trace_id": "89ee6fe88dd121ab342dbbd0685713ee",
+    "observations": [
+      "ask",
+      "generate",
+      "retrieve",
+      "validate"
+    ],
+    "ask_level": "DEFAULT",
+    "ask_latency_s": 15.65,
+    "retrieve_output": [
+      {
+        "chunk_id": 4781,
+        "distance": 0.6512185723315762
+      },
+      {
+        "chunk_id": 4933,
+        "distance": 0.6542305534160773
+      },
+      {
+        "chunk_id": 4942,
+        "distance": 0.6616297162550464
+      },
+      {
+        "chunk_id": 4917,
+        "distance": 0.6722459212009098
+      },
+      {
+        "chunk_id": 4975,
+        "distance": 0.6723489077819094
+      },
+      {
+        "chunk_id": 4932,
+        "distance": 0.6785936462040878
+      },
+      {
+        "chunk_id": 4966,
+        "distance": 0.6832894384860903
+      },
+      {
+        "chunk_id": 4918,
+        "distance": 0.6913018064650592
+      },
+      {
+        "chunk_id": 4968,
+        "distance": 0.6914737566960609
+      },
+      {
+        "chunk_id": 4967,
+        "distance": 0.6934994209109696
+      }
+    ],
+    "generate": {
+      "model": "claude-opus-5-5",
+      "model_parameters": {
+        "effort": "medium",
+        "max_tokens": 16000
+      },
+      "usage_details": {
+        "input": 4777,
+        "output": 492,
+        "total": 5269,
+        "reasoning": 0
+      },
+      "stop_reason": "end_turn",
+      "langfuse_total_cost_usd": 0.028948,
+      "latency_s": 15.374
+    },
+    "validate_output": {
+      "result": "passed",
+      "rejected_ids": []
+    }
+  },
+  "seed-10": {
+    "trace_id": "9e50f620a3857aeae3d0929c239a0813",
+    "observations": [
+      "ask",
+      "generate",
+      "retrieve",
+      "validate"
+    ],
+    "ask_level": "DEFAULT",
+    "ask_latency_s": 4.604,
+    "retrieve_output": [
+      {
+        "chunk_id": 4933,
+        "distance": 0.5171404768740838
+      },
+      {
+        "chunk_id": 4932,
+        "distance": 0.5204387878848566
+      },
+      {
+        "chunk_id": 666,
+        "distance": 0.5328249613747016
+      },
+      {
+        "chunk_id": 726,
+        "distance": 0.5380695462226834
+      },
+      {
+        "chunk_id": 4641,
+        "distance": 0.5402647256851163
+      },
+      {
+        "chunk_id": 4919,
+        "distance": 0.5436728842648406
+      },
+      {
+        "chunk_id": 716,
+        "distance": 0.5462712319927665
+      },
+      {
+        "chunk_id": 4922,
+        "distance": 0.551284372806546
+      },
+      {
+        "chunk_id": 4643,
+        "distance": 0.5521801679026972
+      },
+      {
+        "chunk_id": 4723,
+        "distance": 0.5527191162109344
+      }
+    ],
+    "generate": {
+      "model": "claude-opus-5-5",
+      "model_parameters": {
+        "effort": "medium",
+        "max_tokens": 16000
+      },
+      "usage_details": {
+        "input": 5360,
+        "output": 162,
+        "total": 5522,
+        "reasoning": 0
+      },
+      "stop_reason": "end_turn",
+      "langfuse_total_cost_usd": 0.02468,
+      "latency_s": 4.394
+    },
+    "validate_output": {
+      "result": "passed",
+      "rejected_ids": []
+    }
+  }
+}

@@ -1,0 +1,16 @@
+# Ruff only (ADR-004); mypy and tests run in `make check` and CI.
+# Local hooks run ruff through uv, so the version comes from uv.lock and always
+# matches `make check`. Install once per clone with: uv run pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]

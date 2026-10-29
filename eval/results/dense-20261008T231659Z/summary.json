@@ -1,0 +1,60 @@
+{
+  "name": "dense",
+  "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
+  "started_at": "2026-10-08T23:16:59Z",
+  "questions": 43,
+  "answerable": 36,
+  "errors": 0,
+  "recall": 0.384402557319224,
+  "hit": 0.9444444444444444,
+  "mrr": 0.6143518518518518,
+  "ndcg": 0.36936121233801383,
+  "distinct_sections": 7.138888888888889,
+  "ac1": {
+    "pass": 34,
+    "total": 34
+  },
+  "ac2": {
+    "pass": 43,
+    "total": 43
+  },
+  "ac3": {
+    "pass": 7,
+    "total": 7
+  },
+  "false_refusals": {
+    "count": 2,
+    "total": 36
+  },
+  "input_tokens": 232992,
+  "output_tokens": 16484,
+  "latency_s_mean": 4.680906976744186,
+  "latency_s_p95": 11.315,
+  "retrieve_s_p95": null,
+  "cost_usd_mean": 0.0293406511627907,
+  "stale": null,
+  "temporal": null,
+  "router": null,
+  "authority": null,
+  "conflicts_rule": null,
+  "conflicts_model": null,
+  "loser_only_answers": null,
+  "conflict_precision": null,
+  "conflict_precision_rule": null,
+  "conflict_precision_model": null,
+  "conflict_recall": null,
+  "conflict_recall_rule": null,
+  "conflict_recall_texts": null,
+  "conflict_unreachable": null,
+  "ac4": null,
+  "ac4_seeds": null,
+  "ac5": {
+    "pass": 2,
+    "total": 10
+  },
+  "ac6": {
+    "pass": 6,
+    "total": 9
+  },
+  "latest_release": "1.37"
+}

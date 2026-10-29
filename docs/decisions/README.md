@@ -1,0 +1,57 @@
+# Architecture Decision Records
+
+An ADR records **one decision**, why it was made, and what it costs. ADRs are the project's highest source of truth: each one answers the question "why was it done that way?"
+
+## Index
+
+| ADR | Title | Status |
+|---|---|---|
+| [001](ADR-001-corpus-kubernetes.md) | Corpus is Kubernetes | Accepted |
+| [002](ADR-002-versioning-and-identity.md) | Versioning and document identity | Accepted; changed in S02, S05-R2 and S13-R1 |
+| [003](ADR-003-authority-and-status.md) | Source types, authority tiers, status taxonomy | Accepted; changed in S02, S09-R1, S09-R2 and S10-R1 |
+| [004](ADR-004-toolchain.md) | Development toolchain | Accepted; amended in S01 (×2), S02, S03-R1, S04-R2, S08-R1 and S12-R1 |
+| [005](ADR-005-data-access.md) | Data access approach | Accepted; amended in S14-R1 (no connection pool; revisit in S15) |
+| [006](ADR-006-generation-and-tracing.md) | Generation model, structured output, tracing | Accepted; amended in S06-R1 and S11-R1 |
+| [007](ADR-007-golden-set-and-labeling.md) | Golden-set schema and labeling | Accepted; amended in S10-R2 (D4, the conflict set) |
+| [008](ADR-008-reranker.md) | Reranker model, runtime and candidate count | Accepted |
+| [009](ADR-009-query-mode-routing.md) | Query-mode routing | Accepted |
+| [010](ADR-010-conflict-detection.md) | Conflict detection method | Accepted; changed in S10-R2 and after S10-T8's run 1; amended in S11-R1 and S12-R1 (D4's detector probed, not adopted) |
+| [011](ADR-011-corrective-retrieval.md) | Corrective retrieval: not adopted | Accepted; amended in S12-R1 |
+| [012](ADR-012-decision-provenance.md) | Decision provenance | Accepted |
+| [013](ADR-013-async-ingestion.md) | Async ingestion: the jobs table is the queue (no SQS), one writer lock | Accepted; amended after S14-R2 (PR #51 review) |
+| [014](ADR-014-deployment-topology.md) | Deployment topology: one EC2 host, RDS, no inbound ports | Accepted; amended in S15-R2 (the deployment exists only in windows) |
+
+"Changed": a sub-decision updated in place and logged in a Changes table. "Amended": a dated Amendment section at the end. Both are described under Rules.
+
+## Rules
+
+- **When to write one:** new dependency or service; schema shape; a retrieval or eval method; anything that is hard to reverse; anything you'd be asked "why?" about.
+- **Statuses:** Proposed → Accepted → (Superseded by ADR-NNN). Never edit an accepted decision silently: change it as below.
+- **Amendments:** an accepted ADR may get a dated `## Amendment YYYY-MM-DD` section at the end, for clarifications that add no new decision (e.g. naming a library the decision already implies). Each bullet says what, why, and the alternative rejected. The original text stays unchanged.
+- **Changing one sub-decision** (a `Dn`): decided by the author in a design review, with its evidence (and a devil's advocate when the decision protocol calls for one). The sub-decision's text is updated in place, so the ADR reads as the current rule, and the change is logged in a dated `## Changes from <design review> (YYYY-MM-DD)` table: Where / Was / Now / Evidence. The status line names the design review. (S05-R3 design review, decision 6: this is how S02 and S05-R2 changed ADR-002 and ADR-003.)
+- **Superseding:** a new ADR that supersedes the old one is needed only when the ADR's main decision (its title) changes.
+- **Keep it short:** about one page. If it needs more, the decision is probably two decisions.
+- **How it lands:** the decision is made in a design review, and the ADR is committed as Accepted in the PR that builds it; merging the PR confirms it.
+
+## Template
+
+```markdown
+# ADR-NNN: <decision title>
+
+- **Status:** Proposed | Accepted | Superseded by ADR-NNN
+- **Date:** YYYY-MM-DD
+- **Blueprint/spec refs:**
+
+## Context
+What forces this decision? What facts (with evidence) constrain it?
+
+## Decision
+What we will do, stated precisely enough to implement and test.
+
+## Alternatives considered
+| Option | Why not |
+|---|---|
+
+## Consequences
+What gets easier, what gets harder, what we deferred, what we must now verify.
+```

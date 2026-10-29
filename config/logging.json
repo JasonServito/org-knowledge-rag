@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "json": {"()": "orgknow.logs.JsonFormatter"}
+  },
+  "handlers": {
+    "stderr": {"class": "logging.StreamHandler", "formatter": "json", "stream": "ext://sys.stderr"}
+  },
+  "loggers": {
+    "orgknow": {"level": "INFO"},
+    "uvicorn": {"level": "INFO"}
+  },
+  "root": {"level": "WARNING", "handlers": ["stderr"]}
+}

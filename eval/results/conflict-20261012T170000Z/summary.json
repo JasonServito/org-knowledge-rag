@@ -1,0 +1,118 @@
+{
+  "name": "conflict",
+  "golden_sha256": "1a7159685da14e6db4cf050a50b59a35a257f66defbf5d01793252690f7573d5",
+  "started_at": "2026-10-12T17:00:00Z",
+  "questions": 43,
+  "answerable": 36,
+  "errors": 0,
+  "recall": 0.5522156084656085,
+  "hit": 1.0,
+  "mrr": 0.8132716049382717,
+  "ndcg": 0.5347974618791838,
+  "distinct_sections": 8.277777777777779,
+  "ac1": {
+    "pass": 36,
+    "total": 36
+  },
+  "ac2": {
+    "pass": 43,
+    "total": 43
+  },
+  "ac3": {
+    "pass": 7,
+    "total": 7
+  },
+  "false_refusals": {
+    "count": 0,
+    "total": 36
+  },
+  "input_tokens": 285061,
+  "output_tokens": 24417,
+  "latency_s_mean": 11.972209302325583,
+  "latency_s_p95": 18.729,
+  "retrieve_s_p95": 7.799,
+  "cost_usd_mean": 0.03787404651162791,
+  "stale": {
+    "count": 0,
+    "total": 100
+  },
+  "temporal": {
+    "pass": 47,
+    "total": 90
+  },
+  "router": {
+    "pass": 35,
+    "total": 36
+  },
+  "authority": {
+    "pass": 9,
+    "total": 9
+  },
+  "conflicts_rule": 8,
+  "conflicts_model": 14,
+  "loser_only_answers": 0,
+  "conflict_precision": {
+    "pass": 18,
+    "total": 22
+  },
+  "conflict_precision_rule": {
+    "pass": 8,
+    "total": 8
+  },
+  "conflict_precision_model": {
+    "pass": 10,
+    "total": 14
+  },
+  "conflict_recall": {
+    "pass": 19,
+    "total": 60
+  },
+  "conflict_recall_rule": {
+    "pass": 8,
+    "total": 8
+  },
+  "conflict_recall_texts": {
+    "pass": 11,
+    "total": 52
+  },
+  "conflict_unreachable": 2,
+  "ac4": {
+    "pass": 2,
+    "total": 4
+  },
+  "ac4_seeds": [
+    {
+      "conflict_id": "k01",
+      "question_id": "q18",
+      "retrieved": true,
+      "surfaced": true
+    },
+    {
+      "conflict_id": "k02",
+      "question_id": "q01",
+      "retrieved": true,
+      "surfaced": true
+    },
+    {
+      "conflict_id": "k03",
+      "question_id": "q08",
+      "retrieved": false,
+      "surfaced": false
+    },
+    {
+      "conflict_id": "k04",
+      "question_id": "c01",
+      "retrieved": false,
+      "surfaced": false
+    }
+  ],
+  "ac5": {
+    "pass": 8,
+    "total": 10
+  },
+  "ac6": {
+    "pass": 8,
+    "total": 9
+  },
+  "latest_release": "1.37"
+}

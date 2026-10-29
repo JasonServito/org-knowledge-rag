@@ -1,0 +1,342 @@
+# done: q01 q02 q03 q04 q05 q06 q07 q08 q09 q10 q11 q12 q13 q14 q15 q16 q17 q18 q19 q20 q21 q22 q23 q24 q25 q26 q27 q30 q31 q32 q33 q34 q35 q36 q40 q41 q42 q43 q44 q45 q46 q47 q48 c01 c02
+version: v0
+questions:
+  - id: c01
+    question: "In Kubernetes 1.30, how long was a minor release supported?"
+  - id: c02
+    question: "When was Pod Security Admission's beta released?"
+conflicts:
+  - id: k001
+    question: q01
+    kind: texts
+    note: "KEP-1498 says minor releases come 'every 3 months' and KEP-2572 that Kubernetes 'currently releases 4 times per year'; the Release Cycle page says releases happen 'approximately three times per year'."
+    first: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Motivation"}, {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation"}]
+    second: [{document: "web:/releases/release/", section: "The Release Cycle"}, {document: "changelog:1.22", section: "v1.22.0 > What's New (Major Themes) > Kubernetes release cadence change"}, {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: ""}]
+  - id: k002
+    question: q01
+    kind: texts
+    note: "KEP-1498 says each minor release gets patch support 'for approximately 9 months'; the Releases page says Kubernetes 1.19 and newer receive 'approximately 1 year of patch support'."
+    first: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Motivation"}]
+    second: [{document: "web:/docs/setup/release/", section: ""}]
+  - id: k003
+    question: q01
+    kind: texts
+    note: "KEP-2572 says supported patch release streams 'right now can overlap up to 4'; the Releases page says the project maintains release branches for 'the most recent three minor releases'."
+    first: [{document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories > SIG Release members"}]
+    second: [{document: "web:/docs/setup/release/", section: ""}]
+  - id: k004
+    question: q02
+    kind: texts
+    note: "The cadence blog's schedule puts the 1.23 release cycle at 'August 23' to 'December 07'; KEP-2572's proposed 3-release schedule puts the third 2021 release at 'August 30' to 'December 14'."
+    first: [{document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "What's changing and when"}]
+    second: [{document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal"}]
+  - id: k005
+    question: q04
+    kind: texts
+    note: "KEP-2572 says Kubernetes effectively moved to a 3-releases-per-year cadence 'starting with the Kubernetes 1.19 release'; the 1.22 release announcement calls 1.22 'the first longer-cycle release related to that change'."
+    first: [{document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > Risks and Mitigations > Unprepared Kubernetes Users"}]
+    second: [{document: "web:/blog/2021/08/04/kubernetes-1-22-release-announcement/", section: ""}]
+  - id: k006
+    question: q06
+    kind: texts
+    note: "The Enforcing Pod Security Standards page calls PodSecurityPolicies 'deprecated'; the Security Checklist calls it 'the removed PodSecurityPolicy admission' and the Pod Security Admission page refers to versions 'that [do] not include PodSecurityPolicies'."
+    first: [{document: "web:/docs/setup/best-practices/enforcing-pod-security-standards/", section: "Using the built-in Pod Security Admission Controller"}]
+    second: [{document: "web:/docs/concepts/security/security-checklist/", section: "Pod security"}, {document: "web:/docs/concepts/security/pod-security-admission/", section: "{{% heading \"whatsnext\" %}}"}]
+  - id: k007
+    question: q08
+    kind: texts
+    note: "An older KEP-2579 GA section says 'We are targeting GA in v1.24'; the newer GA section says 'Targeting GA in v1.25', and the PodSecurity gate and the stable blog put stable at 1.25."
+    first: [{document: "kep:2579", section: "KEP-2579: Pod Security Admission Control > Design Details > Graduation Criteria > GA"}]
+    second: [{document: "kep:2579", section: "KEP-2579: Pod Security Admission Control > Design Details > Graduation Criteria > GA"}, {document: "gate:PodSecurity", section: ""}, {document: "web:/blog/2022/08/25/pod-security-admission-stable/", section: ""}]
+  - id: k008
+    question: q09
+    kind: texts
+    note: "The 2021 PSP deprecation blog tells readers to plan 'for PSP's eventual removal' (not yet removed); the historical-context blog and the 1.25 release blog say PSP 'has been removed' as of v1.25."
+    first: [{document: "web:/blog/2021/04/06/podsecuritypolicy-deprecation-past-present-and-future/", section: "What does this mean for you?"}]
+    second: [{document: "web:/blog/2022/08/23/podsecuritypolicy-the-historical-context/", section: ""}, {document: "web:/blog/2022/08/23/kubernetes-v1-25-release/", section: "What's New (Major Themes) > PodSecurityPolicy is removed; Pod Security Admission graduates to Stable"}]
+  - id: k009
+    question: q12
+    kind: texts
+    note: "An older KEP-2799 PRR answer says LegacyServiceAccountTokenTracking gives legacy tokens a 'new annotation'; the newer version says a 'new label', and the Managing Service Accounts page names the 'kubernetes.io/legacy-token-last-used' label."
+    first: [{document: "kep:2799", section: "KEP-2799: Reduction of Secret-based Service Account Tokens > Production Readiness Review Questionnaire > Feature Enablement and Rollback > Does enabling the feature change any default behavior?"}]
+    second: [{document: "kep:2799", section: "KEP-2799: Reduction of Secret-based Service Account Tokens > Production Readiness Review Questionnaire > Feature Enablement and Rollback > Does enabling the feature change any default behavior?"}, {document: "web:/docs/reference/access-authn-authz/service-accounts-admin/", section: "Auto-generated legacy ServiceAccount token clean up"}]
+  - id: k010
+    question: q13
+    kind: texts
+    note: "KEP-2799's LegacyServiceAccountTokenCleanUp graduation table moves from alpha 1.24 / beta 1.25 / GA 1.26 to 1.27 / 1.28 / 1.29 to 1.28 / 1.29 / 1.30; the feature-gate reference and the changelogs give alpha 1.28, beta 1.29, GA 1.30."
+    first: [{document: "kep:2799", section: "KEP-2799: Reduction of Secret-based Service Account Tokens > Design Details > Graduation Criteria > LegacyServiceAccountTokenCleanUp"}]
+    second: [{document: "kep:2799", section: "KEP-2799: Reduction of Secret-based Service Account Tokens > Design Details > Graduation Criteria > LegacyServiceAccountTokenCleanUp"}, {document: "gate:LegacyServiceAccountTokenCleanUp", section: ""}, {document: "changelog:1.30", section: "v1.30.0-alpha.2 > Changes by Kind > Other (Cleanup or Flake)"}, {document: "changelog:1.28", section: "v1.28.0-alpha.1 > Changes by Kind > API Change"}, {document: "web:/blog/2023/12/13/kubernetes-v1-29-release/", section: "Improvements that graduated to beta in Kubernetes v1.29 > Clean up for legacy Secret-based ServiceAccount tokens ([SIG Auth](https://github.com/kubernetes/community/tree/master/sig-auth))"}]
+  - id: k011
+    question: q13
+    kind: texts
+    note: "The 1.28 changelog says the cleaner 'removes service account token secrets that have not been used' for the clean-up period 'defaulting to one year'; the 1.29 release blog says tokens are marked invalid after 1 year unused and removed only after '1 additional year by default'."
+    first: [{document: "changelog:1.28", section: "v1.28.0-alpha.1 > Changes by Kind > API Change"}]
+    second: [{document: "web:/blog/2023/12/13/kubernetes-v1-29-release/", section: "Improvements that graduated to beta in Kubernetes v1.29 > Clean up for legacy Secret-based ServiceAccount tokens ([SIG Auth](https://github.com/kubernetes/community/tree/master/sig-auth))"}]
+  - id: k012
+    question: q14
+    kind: texts
+    note: "The Manual Secret management section says 'Versions of Kubernetes before v1.22 automatically created' token Secrets; the clean-up section says 'Before version 1.24', and the 1.29 blog and 1.24 changelog put the end of auto-generation at 1.24."
+    first: [{document: "web:/docs/reference/access-authn-authz/service-accounts-admin/", section: "Manual Secret management for ServiceAccounts"}]
+    second: [{document: "web:/docs/reference/access-authn-authz/service-accounts-admin/", section: "Auto-generated legacy ServiceAccount token clean up"}, {document: "web:/blog/2023/12/13/kubernetes-v1-29-release/", section: "Improvements that graduated to beta in Kubernetes v1.29 > Clean up for legacy Secret-based ServiceAccount tokens ([SIG Auth](https://github.com/kubernetes/community/tree/master/sig-auth))"}, {document: "changelog:1.24", section: "v1.24.0-alpha.4 > Urgent Upgrade Notes > (No, really, you MUST read this before you upgrade)"}]
+  - id: k013
+    question: q16
+    kind: claim_mismatch
+    note: "KEP-4858's version valid at 1.37 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says StrictIPCIDRValidation is beta."
+    first: [{document: "kep:4858"}]
+  - id: k014
+    question: q16
+    kind: texts
+    note: "The 1.23 changelog says 'Kubernetes will keep allowing leading zeros on IPv4 address'; the 1.36 changelog and the StrictIPCIDRValidation gate (beta, on by default from 1.36) say API fields 'no longer allow' IPv4 octets with leading '0's."
+    first: [{document: "changelog:1.23", section: "v1.23.0-alpha.2 > Changes by Kind > API Change"}]
+    second: [{document: "changelog:1.36", section: "v1.36.0 > Changes by Kind > API Change"}, {document: "gate:StrictIPCIDRValidation", section: ""}]
+  - id: k015
+    question: q17
+    kind: claim_mismatch
+    note: "KEP-4858's version valid at 1.37 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says StrictIPCIDRValidation is beta."
+    first: [{document: "kep:4858"}]
+  - id: k016
+    question: q17
+    kind: texts
+    note: "The 1.23 changelog says 'Kubernetes will keep allowing leading zeros on IPv4 address'; the StrictIPCIDRValidation gate (beta, on by default from 1.36) says IPv4 octets are 'not allowed to have any leading 0s'."
+    first: [{document: "changelog:1.23", section: "v1.23.0-alpha.2 > Changes by Kind > API Change"}]
+    second: [{document: "gate:StrictIPCIDRValidation", section: ""}]
+  - id: k017
+    question: q18
+    kind: claim_mismatch
+    note: "KEP-4858's version valid at 1.37 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says StrictIPCIDRValidation is beta."
+    first: [{document: "kep:4858"}]
+  - id: k018
+    question: q19
+    kind: claim_mismatch
+    note: "KEP-4858's version valid at 1.37 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says StrictIPCIDRValidation is beta."
+    first: [{document: "kep:4858"}]
+  - id: k019
+    question: q19
+    kind: texts
+    note: "An older KEP-4858 Affected Fields section says ServiceCIDR and IPAddress names have 'stricter semantics than we propose here (they require canonical form for IPv6 values)'; the newer one says they 'already have the semantics we propose here', and the Goals now require canonical IPv6 for all new fields."
+    first: [{document: "kep:4858", section: "KEP-4858: IP/CIDR Validation Improvements > Proposal > Affected Fields"}]
+    second: [{document: "kep:4858", section: "KEP-4858: IP/CIDR Validation Improvements > Proposal > Affected Fields"}, {document: "kep:4858", section: "KEP-4858: IP/CIDR Validation Improvements > Motivation > Goals"}]
+  - id: k020
+    question: q20
+    kind: claim_mismatch
+    note: "KEP-4858's version valid at 1.37 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says StrictIPCIDRValidation is beta."
+    first: [{document: "kep:4858"}]
+  - id: k021
+    question: q21
+    kind: texts
+    note: "The Releases page, version skew policy, Release Manager Handbook, cherry-pick doc and KEP-1498 history say 1.19+ releases get 'approximately 1 year' of patch support; the Patch Releases page says 'roughly fourteen (14) months', KEP-3744 'up to 14 months' and the versioning doc 'approximately fourteen months'."
+    first: [{document: "web:/docs/setup/release/", section: ""}, {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported versions"}, {document: "sig-release:release-engineering/handbooks/release-manager.md", section: "Release Manager Handbook > Patch release management"}, {document: "community:contributors/devel/sig-release/cherry-picks.md", section: "Overview > Cherry Picks for Unsupported Releases"}, {document: "kep:1498", section: "Kubernetes Yearly Support Period > Implementation History"}]
+    second: [{document: "web:/releases/patch-releases/", section: "Support Period"}, {document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}, {document: "sig-release:release-engineering/versioning.md", section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"}]
+  - id: k022
+    question: q21
+    kind: texts
+    note: "KEP-1498's Motivation says each minor release has patch support 'for approximately 9 months'; the current release docs say approximately 1 year (1.19 and newer) or roughly 14 months."
+    first: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Motivation"}]
+    second: [{document: "web:/docs/setup/release/", section: ""}, {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported versions"}, {document: "sig-release:release-engineering/handbooks/release-manager.md", section: "Release Manager Handbook > Patch release management"}, {document: "community:contributors/devel/sig-release/cherry-picks.md", section: "Overview > Cherry Picks for Unsupported Releases"}, {document: "kep:1498", section: "Kubernetes Yearly Support Period > Implementation History"}, {document: "web:/releases/patch-releases/", section: "Support Period"}, {document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}, {document: "sig-release:release-engineering/versioning.md", section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"}]
+  - id: k023
+    question: q21
+    kind: texts
+    note: "The Releases page and version skew policy say the project maintains release branches for 'the most recent three minor releases'; the release versioning doc says 'we expect to support four minor releases at a time'."
+    first: [{document: "web:/docs/setup/release/", section: ""}, {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported versions"}]
+    second: [{document: "sig-release:release-engineering/versioning.md", section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"}]
+  - id: k024
+    question: q21
+    kind: texts
+    note: "KEP-1498 says minor releases come 'every 3 months'; KEP-3744 says Kubernetes releases minor versions '3 times a year' and the versioning doc 'approximately every four months (three releases per year)'."
+    first: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Motivation"}]
+    second: [{document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}, {document: "sig-release:release-engineering/versioning.md", section: "Kubernetes Release Versioning > Release versioning > Supported releases and component skew"}]
+  - id: k025
+    question: q22
+    kind: texts
+    note: "The Release Cycle sections say Code Freeze 'starts in week ~12 and continues for ~2 weeks', followed by about two more weeks before release; the Definitions sections call Code Freeze 'the period of ~4 weeks before the final release date' and KEP-2572 says 'code freeze remains in effect until the last week of the release'."
+    first: [{document: "web:/releases/release/", section: "The Release Cycle"}, {document: "community:contributors/devel/sig-release/release.md", section: "Targeting enhancements, Issues and PRs to Release Milestones > The Release Cycle"}]
+    second: [{document: "web:/releases/release/", section: "Definitions"}, {document: "community:contributors/devel/sig-release/release.md", section: "Targeting enhancements, Issues and PRs to Release Milestones > Definitions"}, {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal"}]
+  - id: k026
+    question: q23
+    kind: texts
+    note: "Older version skew policy text says kubelet 'may be up to two minor versions older' than kube-apiserver (and the upgrade-order section lets kubelets stay at -1 or -2); the 1.28+ text says 'up to three minor versions older', and the 1.28 release blog says skew expands 'from n-2 to n-3'."
+    first: [{document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kubelet"}, {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kubelet"}]
+    second: [{document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kubelet"}, {document: "web:/blog/2023/08/15/kubernetes-v1-28-release/", section: "What's New (Major Themes) > Changes to supported skew between control plane and node versions"}]
+  - id: k027
+    question: q23
+    kind: texts
+    note: "Older version skew policy text says kube-proxy 'may be up to two minor versions older' than kube-apiserver (and two older or newer than kubelet); the 1.28+ text says 'up to three minor versions' for both, matching the 1.28 blog's n-3."
+    first: [{document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}, {document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kube-proxy"}]
+    second: [{document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}, {document: "web:/blog/2023/08/15/kubernetes-v1-28-release/", section: "What's New (Major Themes) > Changes to supported skew between control plane and node versions"}]
+  - id: k028
+    question: q23
+    kind: texts
+    note: "The upgrade-order section says 'kube-proxy must be the same minor version as kubelet on the node'; the supported-skew section says kube-proxy 'may be up to two [later: three] minor versions older or newer than the kubelet'."
+    first: [{document: "web:/docs/setup/release/version-skew-policy/", section: "Supported component upgrade order > kube-proxy"}]
+    second: [{document: "web:/docs/setup/release/version-skew-policy/", section: "Supported version skew > kube-proxy"}]
+  - id: k029
+    question: q25
+    kind: texts
+    note: "The 1.29 release blog says the legacy repositories 'will go away entirely in January of 2024'; the deprecation blog's update and timeline and the pkgs.k8s.io post say they 'went away on March 4, 2024'."
+    first: [{document: "web:/blog/2023/12/13/kubernetes-v1-29-release/", section: "Graduations, deprecations and removals for Kubernetes v1.29 > Deprecations and removals > Legacy Linux package repositories"}]
+    second: [{document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: ""}, {document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: "Timeline of changes"}, {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories?"}]
+  - id: k030
+    question: q25
+    kind: texts
+    note: "Earlier versions of the pkgs.k8s.io post say packages in the legacy repositories 'will be available for the foreseeable future'; the later version, the deprecation blog's update and its timeline say the legacy repositories 'went away on March 4, 2024'."
+    first: [{document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories? (Updated on August 31, 2023)"}, {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories?"}]
+    second: [{document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories?"}, {document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: ""}, {document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: "Timeline of changes"}]
+  - id: k031
+    question: q25
+    kind: texts
+    note: "The 1.29 upcoming-changes blog says 'On September 13, 2023, those legacy repositories were formally deprecated'; the deprecation timeline and the pkgs.k8s.io post say they were 'deprecated as of August 31, 2023' (frozen on September 13)."
+    first: [{document: "web:/blog/2023/11/16/kubernetes-1-29-upcoming-changes/", section: "A note about the Kubernetes community-owned package repositories"}]
+    second: [{document: "web:/blog/2023/08/31/legacy-package-repository-deprecation/", section: "Timeline of changes"}, {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories?"}, {document: "web:/blog/2023/08/15/pkgs-k8s-io-introduction/", section: "What you need to know about the new package repositories? (Updated on August 31, 2023)"}, {document: "web:/blog/2023/12/13/kubernetes-v1-29-release/", section: "Graduations, deprecations and removals for Kubernetes v1.29 > Deprecations and removals > Legacy Linux package repositories"}]
+  - id: k032
+    question: q26
+    kind: texts
+    note: "KEP-1498's Summary and Implementation History put patch support at '1 year'; its Proposal says 'extend the Kubernetes support cadence from 9 months to 14 months' and KEP-3744 says 'up to 14 months'."
+    first: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Summary"}, {document: "kep:1498", section: "Kubernetes Yearly Support Period > Implementation History"}]
+    second: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Proposal"}, {document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}]
+  - id: k033
+    question: q26
+    kind: texts
+    note: "KEP-1498's Motivation and Alternatives describe patch support of 'approximately 9 months' as current; the Go-versions blog says that since v1.19 the project provides '12-14 months of patch releases', KEP-3744 'up to 14 months', and the KEP's history '1 year support' for 1.19 and newer."
+    first: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Motivation"}, {document: "kep:1498", section: "Kubernetes Yearly Support Period > Alternatives"}]
+    second: [{document: "web:/blog/2023/04/06/keeping-kubernetes-secure-with-updated-go-versions/", section: "The problem"}, {document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}, {document: "kep:1498", section: "Kubernetes Yearly Support Period > Implementation History"}]
+  - id: k034
+    question: q26
+    kind: texts
+    note: "KEP-1498 says minor releases come 'every 3 months'; KEP-3744 says Kubernetes releases minor versions '3 times a year' and the cadence blog says the cadence changed 'from four to three releases per year'."
+    first: [{document: "kep:1498", section: "Kubernetes Yearly Support Period > Motivation"}]
+    second: [{document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}, {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}]
+  - id: k035
+    question: q26
+    kind: texts
+    note: "KEP-3744 says 'exactly half of all go patch releases (84/168, 50%)' had security fixes; the Go-versions blog says 'just over half of all Go patch releases (88/171)'."
+    first: [{document: "kep:3744", section: "KEP-3744: Stay on supported go versions > Motivation"}]
+    second: [{document: "web:/blog/2023/04/06/keeping-kubernetes-secure-with-updated-go-versions/", section: "The problem"}]
+  - id: k036
+    question: q27
+    kind: texts
+    note: "KEP-2572's Motivation says Kubernetes 'currently releases 4 times per year'; its Non-Goals section says minor releases come 'every four months', its Risks section that Kubernetes 'effectively moved to a 3 release per year cadence in 2020', and the 1.23 interview and cadence blog say three releases a year."
+    first: [{document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation"}]
+    second: [{document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Motivation > Non-Goals > Accelerated release cycles"}, {document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > Risks and Mitigations > Unprepared Kubernetes Users"}, {document: "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/", section: ""}, {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}]
+  - id: k037
+    question: q27
+    kind: texts
+    note: "KEP-2572 says maintained patch release streams 'right now can overlap up to 4'; the 1.23 release interview says 'we support the last three releases' and the cadence blog says 'the previous three releases being supported'."
+    first: [{document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories > SIG Release members"}]
+    second: [{document: "web:/blog/2022/04/29/frontiers-fsgroups-and-frogs-the-kubernetes-1.23-release-interview/", section: ""}, {document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}]
+  - id: k038
+    question: q05
+    kind: texts
+    note: "KEP-2572 says maintained patch release streams 'right now can overlap up to 4'; the cadence blog says 'the previous three releases being supported'."
+    first: [{document: "kep:2572", section: "KEP-2572: Defining the Kubernetes Release Cadence > Proposal > User Stories > SIG Release members"}]
+    second: [{document: "web:/blog/2021/07/20/new-kubernetes-release-cadence/", section: "Why we decided to change the release cadence"}]
+  - id: k039
+    question: q30
+    kind: texts
+    note: "KEP-3221 says admins 'can only enable one webhook' and kube-apiserver 'only allows specifying a single webhook'; the Authorization page says authorization chains 'can include multiple webhooks' via the authorization config file."
+    first: [{document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Summary"}, {document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Proposal > User Stories > Story 1: Protecting installed CRDs"}]
+    second: [{document: "web:/docs/reference/access-authn-authz/authorization/", section: "Authorization modes > Configuring the API Server using an authorization config file"}]
+  - id: k040
+    question: q30
+    kind: texts
+    note: "KEP-3221's example config uses 'apiVersion: apiserver.config.k8s.io/v1beta1' and connectionInfo 'type: KubeConfig'; the Authorization page's example uses 'apiserver.config.k8s.io/v1' and 'type: KubeConfigFile'."
+    first: [{document: "kep:3221", section: "KEP-3221: Structured Authorization Configuration > Proposal > User Stories > Story 2: Preventing unnecessarily nested webhooks"}]
+    second: [{document: "web:/docs/reference/access-authn-authz/authorization/", section: "Authorization modes > Configuring the API Server using an authorization config file > Example configuration"}]
+  - id: k041
+    question: q31
+    kind: texts
+    note: "The RBAC page's Parallel authorizers section says that if earlier authorizers 'deny a request, then the RBAC authorizer attempts to authorize' it (and ABAC runs if RBAC 'also denies'); the Authorization page says 'an earlier module has higher priority to allow or deny a request'."
+    first: [{document: "web:/docs/reference/access-authn-authz/rbac/", section: "Upgrading from ABAC > Parallel authorizers"}]
+    second: [{document: "web:/docs/reference/access-authn-authz/authorization/", section: "Authorization modes > Command line authorization mode configuration"}]
+  - id: k042
+    question: q32
+    kind: claim_mismatch
+    note: "KEP-3299's version valid at 1.28 claims stable (latest milestone v1.29); the 1.28 feature-gate reference says KMSv2 is beta."
+    first: [{document: "kep:3299"}]
+  - id: k043
+    question: q32
+    kind: texts
+    note: "The KMSv1 gate reference lists KMSv1 in 1.28 as deprecated with 'defaultValue: true'; the 1.28 changelog says 'Set --feature-gates=KMSv1=true to use the deprecated KMSv1 feature'."
+    first: [{document: "gate:KMSv1", section: ""}]
+    second: [{document: "changelog:1.28", section: "v1.28.0-alpha.4 > Changes by Kind > Deprecation"}]
+  - id: k044
+    question: q32
+    kind: texts
+    note: "The 2022 KMS v2 blog says KMS v1 'is currently in beta'; the KMSv1 gate reference and the 1.28 changelog say KMS v1 is 'deprecated' from 1.28."
+    first: [{document: "web:/blog/2022/09/09/kms-v2-improvements/", section: "What is KMS?"}]
+    second: [{document: "gate:KMSv1", section: ""}, {document: "changelog:1.28", section: "v1.28.0-alpha.4 > Changes by Kind > Deprecation"}]
+  - id: k045
+    question: q33
+    kind: texts
+    note: "The Authenticating page (including its 1.29 Authentication Configuration section) says the API server 'can only be configured to trust a single issuer'; KEP-3331's configuration file design requires each issuer URL to be 'unique across all JWT authenticators', i.e. several issuers."
+    first: [{document: "web:/docs/reference/access-authn-authz/authentication/", section: "Authentication strategies > OpenID Connect Tokens > Configuring the API Server"}]
+    second: [{document: "kep:3331", section: "KEP-3331: Structured Authentication Config > Design Details > Configuration file"}]
+  - id: k046
+    question: q34
+    kind: texts
+    note: "The 1.27 KMS v2 beta blog says KMS v1 'is currently in beta'; the KMSv1 gate reference lists KMS v1 as 'deprecated' from 1.28."
+    first: [{document: "web:/blog/2023/05/16/kms-v2-moves-to-beta/", section: "What is KMS?"}]
+    second: [{document: "gate:KMSv1", section: ""}]
+  - id: k047
+    question: q36
+    kind: texts
+    note: "The 1.30 beta blog says file-based authentication configuration 'was added as alpha in Kubernetes v1.30'; the 1.34 release blog says 'Kubernetes v1.29 introduced a configuration file format'."
+    first: [{document: "web:/blog/2024/04/25/structured-authentication-moves-to-beta/", section: "What is structured authentication configuration?"}]
+    second: [{document: "web:/blog/2025/08/27/kubernetes-v1-34-release/", section: "Features graduating to Stable > Structured authentication configuration"}]
+  - id: k048
+    question: q36
+    kind: texts
+    note: "KEP-3331's Goals say that to 'use more than one OIDC provider' 'the only option, for now, is to use an external OIDC provider that handles multiplexing'; the 1.30 beta blog and 1.34 blog say you can configure 'multiple JWT authenticators' without an intermediary like Dex."
+    first: [{document: "kep:3331", section: "KEP-3331: Structured Authentication Config > Motivation > Goals"}, {document: "kep:3331", section: "Motivation > Goals"}]
+    second: [{document: "web:/blog/2024/04/25/structured-authentication-moves-to-beta/", section: "What is structured authentication configuration? > Benefits of structured authentication configuration"}, {document: "web:/blog/2025/08/27/kubernetes-v1-34-release/", section: "Features graduating to Stable > Structured authentication configuration"}]
+  - id: k049
+    question: q41
+    kind: texts
+    note: "KEP-752's mirroring unit tests say 'Only Endpoints with the skip label set to \"true\" will be mirrored'; the EndpointSlices page says the control plane mirrors Endpoints 'unless' the 'endpointslice.kubernetes.io/skip-mirror' label is set to 'true'."
+    first: [{document: "kep:752", section: "KEP-0752 EndpointSlices > Implementation > EndpointSliceMirroring Controller > Testing Plan > Unit Tests"}]
+    second: [{document: "web:/docs/concepts/services-networking/endpoint-slices/", section: "EndpointSlice API > EndpointSlice mirroring"}]
+  - id: k050
+    question: q41
+    kind: texts
+    note: "KEP-4974's Summary says v1.Endpoints has been 'essentially (though not actually) deprecated'; the Service and EndpointSlices pages mark Endpoints deprecated from v1.33, and the 1.33 blog and the KEP's history say it is 'now officially deprecated'."
+    first: [{document: "kep:4974", section: "KEP-4974: Deprecate v1.Endpoints and Associated Controllers > Summary"}]
+    second: [{document: "web:/docs/concepts/services-networking/service/", section: "Defining a Service > Endpoints (deprecated)"}, {document: "web:/docs/concepts/services-networking/endpoint-slices/", section: "EndpointSlice API > EndpointSlice mirroring"}, {document: "web:/blog/2025/04/24/endpoints-deprecation/", section: ""}, {document: "kep:4974", section: "KEP-4974: Deprecate v1.Endpoints and Associated Controllers > Implementation History"}]
+  - id: k051
+    question: q42
+    kind: texts
+    note: "The 1.20 dual-stack page says that to enable dual-stack you 'enable the IPv6DualStack feature gate' on each component; the 1.21 dual-stack pages, 1.21 changelog and 1.21 release blog say dual-stack is 'enabled by default' (gate 'turns it on by default')."
+    first: [{document: "web:/docs/concepts/services-networking/dual-stack/", section: "Enable IPv4/IPv6 dual-stack"}]
+    second: [{document: "web:/docs/concepts/services-networking/dual-stack/", section: ""}, {document: "web:/docs/concepts/services-networking/dual-stack/", section: "Configure IPv4/IPv6 dual-stack"}, {document: "changelog:1.21", section: "v1.21.0-beta.0 > Changes by Kind > Feature"}, {document: "web:/blog/2021/04/08/kubernetes-1-21-release-announcement/", section: "Major Themes > IPv4/IPv6 dual-stack support"}]
+  - id: k052
+    question: q43
+    kind: texts
+    note: "The 1.20 Service Topology page marks the feature 'alpha' (since v1.17); the 1.21+ version marks it 'deprecated' since v1.21."
+    first: [{document: "web:/docs/concepts/services-networking/service-topology/", section: ""}]
+    second: [{document: "web:/docs/concepts/services-networking/service-topology/", section: ""}]
+  - id: k053
+    question: q44
+    kind: texts
+    note: "The 2025 NFTables blog says the nftables mode is 'Currently in beta' and 'expected to be GA as of 1.33'; the 1.33 changelog says it 'is now GA' and the 1.37 changelog that it 'became GA in v1.33'."
+    first: [{document: "web:/blog/2025/02/28/nftables-kube-proxy/", section: ""}]
+    second: [{document: "changelog:1.33", section: "v1.33.0 > Changes by Kind > Feature"}, {document: "changelog:1.37", section: "v1.37.0 > Changes by Kind > Deprecation"}]
+  - id: k054
+    question: q45
+    kind: texts
+    note: "An older KEP-1880 upgrade example says 'upgrade to 1.25 with alpha gate'; the MultiCIDRServiceAllocator gate reference puts alpha at 1.27."
+    first: [{document: "kep:1880", section: "KEP-1880: Multiple Service CIDRs > Design Details > Upgrade / Downgrade / Version Skew Strategy"}]
+    second: [{document: "gate:MultiCIDRServiceAllocator", section: ""}]
+  - id: k055
+    question: q47
+    kind: texts
+    note: "The v1.37 sneak peek and v1.37 release blog list ipvs deprecation under 'Deprecations and removals for Kubernetes v1.37' and say clusters in ipvs mode 'now log a deprecation warning on startup'; the v1.35 blog, 1.35 changelog and KEP-5495 say 'Kubernetes v1.35 deprecates ipvs mode' and the warning 'happened in 1.35'."
+    first: [{document: "web:/blog/2026/08/26/kubernetes-v1-37-release/", section: "Deprecations, removals and community updates > Deprecating `kube-proxy`'s support for `ipvs` mode"}, {document: "web:/blog/2026/07/31/kubernetes-v1-37-sneak-peek/", section: "Deprecations and removals for Kubernetes v1.37 > Deprecating kube-proxy's support for `ipvs` mode"}]
+    second: [{document: "web:/blog/2025/12/17/kubernetes-v1-35-release/", section: "Graduations, deprecations, and removals in v1.35 > Deprecations, removals and community updates > Deprecation of ipvs mode in kube-proxy"}, {document: "changelog:1.35", section: "v1.35.0-alpha.2 > Changes by Kind > Deprecation"}, {document: "kep:5495", section: "KEP-5495: Deprecate IPVS mode in kube-proxy > Proposal"}, {document: "web:/blog/2025/11/26/kubernetes-v1-35-sneak-peek/", section: "Deprecations and removals for Kubernetes v1.35 > Deprecation of ipvs mode in kube-proxy"}]
+  - id: k056
+    question: q48
+    kind: claim_mismatch
+    note: "KEP-4858's version valid at 1.37 claims stable (latest milestone v1.38); the 1.37 feature-gate reference says StrictIPCIDRValidation is beta."
+    first: [{document: "kep:4858"}]
+  - id: k057
+    question: c02
+    kind: history_date
+    note: "KEP-2579's history says '2021-11-03: v1.23 Beta version released'; the releases table dates 1.23 to 2021-12-07, 34 days later."
+    first: [{document: "kep:2579", section: "KEP-2579: Pod Security Admission Control > Implementation History"}]
