@@ -93,6 +93,6 @@ class Answer(BaseModel):
     conflicts: list[Conflict] = []
     insufficient_evidence_reason: str | None
     model: str
-    trace_id: str | None = None  # set by the CLI when tracing is on (T7)
+    trace_id: str | None = None  # set by the ask pipeline when tracing is on (T7)
     # Not printed. None when the model wasn't called (no hits).
     trace: AnswerTrace | None = Field(default=None, exclude=True)

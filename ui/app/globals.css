@@ -1,0 +1,260 @@
+/* The UI's one stylesheet (S17-R1 c2): plain CSS, no framework. */
+
+body {
+  margin: 0 auto;
+  max-width: 60rem;
+  padding: 1rem 1.5rem 3rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  color: #1f2328;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+textarea {
+  font: inherit;
+  padding: 0.5rem;
+}
+
+button {
+  align-self: flex-start;
+  font: inherit;
+  padding: 0.4rem 1.2rem;
+}
+
+code {
+  background: #f0f2f4;
+  border-radius: 3px;
+  padding: 0 0.25rem;
+  font-size: 0.9em;
+}
+
+.insufficient {
+  border-left: 4px solid #bf8700;
+  background: #fff8e5;
+  padding: 0.25rem 1rem;
+}
+
+.failure {
+  border-left: 4px solid #cf222e;
+  background: #ffebe9;
+  padding: 0.25rem 1rem;
+}
+
+.citations li {
+  margin-bottom: 0.75rem;
+}
+
+.chunk {
+  font-family: ui-monospace, monospace;
+  color: #59636e;
+}
+
+.section {
+  display: block;
+  color: #59636e;
+  font-size: 0.9em;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85em;
+}
+
+.badge {
+  border: 1px solid #d1d9e0;
+  border-radius: 1rem;
+  padding: 0 0.5rem;
+}
+
+.tier {
+  background: #ddf4ff;
+}
+
+/* The conflict panel (S17-T4). */
+.conflicts > li {
+  border-left: 4px solid #8250df;
+  background: #fbefff;
+  padding: 0.25rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.kind {
+  font-weight: 600;
+}
+
+.resolution {
+  background: #fff;
+}
+
+.side.prevails {
+  font-weight: 600;
+}
+
+.winner {
+  margin-left: 0.4rem;
+  background: #dafbe1;
+  font-weight: normal;
+}
+
+.documents {
+  color: #59636e;
+  font-size: 0.85em;
+}
+
+/* The release timeline (S17-T4): a row per citation; each track is a grid with one column per
+   release, so a bar's columns are its releases. Dense auto-placement puts a bar that overlaps an
+   earlier one on the first line where it fits. */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.timeline-label {
+  flex: 0 0 6.5rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8em;
+  color: #59636e;
+}
+
+.timeline-track {
+  flex: 1;
+  display: grid;
+  grid-auto-flow: row dense;
+  grid-auto-rows: 0.7rem;
+  row-gap: 2px;
+  min-height: 0.7rem;
+  background: #f6f8fa;
+}
+
+.timeline-axis {
+  grid-auto-rows: auto;
+  background: none;
+  font-size: 0.7em;
+  color: #59636e;
+  text-align: center; /* each release's label over the middle of its column */
+}
+
+.segment,
+.swatch {
+  box-sizing: border-box;
+  background: #b6e3ff;
+  border: 1px solid #0969da;
+}
+
+.segment.open,
+.swatch.open {
+  background: #aceebb;
+  border-color: #1a7f37;
+}
+
+.legend {
+  font-size: 0.85em;
+}
+
+.swatch {
+  display: inline-block;
+  width: 1.5rem;
+  height: 0.7rem;
+  vertical-align: middle;
+}
+
+/* The links to the 2 pages (S17-T5). */
+.nav {
+  display: flex;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #d1d9e0;
+}
+
+/* A citation's link to its KEP's stored chain (S17-T5). */
+.chain-link {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.85em;
+}
+
+.built {
+  display: block;
+  color: #59636e;
+  font-size: 0.9em;
+}
+
+/* A decision chain (S17-T5): the steps down a vertical line, each with its date on the left and
+   a dot on the line; a missing step's dot is hollow and its text grey. */
+.chain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chain > li {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  column-gap: 1.25rem;
+  position: relative;
+  padding-bottom: 1rem;
+}
+
+.chain > li::before {
+  content: "";
+  position: absolute;
+  left: calc(11rem + 0.55rem);
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid #d1d9e0;
+}
+
+.chain > li::after {
+  content: "";
+  position: absolute;
+  left: calc(11rem + 0.25rem);
+  top: 0.4rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: #0969da;
+}
+
+.chain > li.missing::after {
+  background: #fff;
+  border: 2px solid #8c959f;
+  box-sizing: border-box;
+}
+
+.step-date {
+  grid-row: span 2;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  text-align: right;
+  color: #59636e;
+}
+
+.step-name {
+  font-weight: 600;
+}
+
+.missing-reason {
+  color: #59636e;
+  font-style: italic;
+}
+
+.via {
+  color: #59636e;
+  font-size: 0.85em;
+}

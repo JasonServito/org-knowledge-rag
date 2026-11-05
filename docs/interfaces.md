@@ -2,7 +2,7 @@
 
 The API's contract: each endpoint's input, output and errors, the one error shape, request IDs, the log format, each external dependency's timeout and retries, and the ingestion worker that runs the jobs the API queues.
 
-- It describes the API and the worker as run S14-R2 leaves them.
+- It describes the API and the worker as run S14-R2 leaves them, plus `GET /decisions` (S17-T5).
 - Every statement matches the code or a test. `tests/unit/test_interfaces_doc.py` checks that each route has a `###` heading below, each `###` heading is a route, and the error-code table equals the code's list.
 - `make serve` runs the API on `http://127.0.0.1:8000`. There is no auth and no rate limit (S15's security review).
 
@@ -11,6 +11,7 @@ The API's contract: each endpoint's input, output and errors, the one error shap
 | `GET /health` | Liveness: the process answers HTTP | Free | 200 |
 | `GET /ready` | Readiness: Postgres is reachable | Free | 200, 503 |
 | `POST /query` | Answers a question with citations | Paid | 200, 422, 502, 503, 500 |
+| `GET /decisions` | Lists the stored decision chains | Free | 200, 503, 500 |
 | `GET /decisions/{canonical_id}` | A seed KEP's stored decision chain | Free | 200, 404, 503, 500 |
 | `POST /ingestion-jobs` | Queues a rebuild of the corpus for the worker, or returns the job already queued or running | Free (the job's embed step pays only for new texts, capped) | 202, 200, 503, 500 |
 | `GET /ingestion-jobs/{job_id}` | One ingestion job, with each step's progress | Free | 200, 404, 422, 503, 500 |
@@ -56,15 +57,30 @@ Every response carries an `X-Request-ID` header (see Request IDs). Any endpoint 
 - **Other statuses:**
   - **422 `invalid_request`:** the body isn't JSON or isn't an object, `question` is missing or not a string, or it is empty or only whitespace. No connection is opened and no paid call is made.
   - **502 `upstream_failed`:** the ask failed upstream (`pipeline.ASK_ERRORS`): Voyage or Anthropic (answer or router) failed after its retries, or the model gave no usable answer or route (a refusal, a cut-off, output off the schema). Any `RuntimeError` or `ValueError` raised during the ask is reported the same way, because `ASK_ERRORS` lists those 2 base types.
-  - **503 `database_unavailable`:** no connection within `DB_CONNECT_TIMEOUT_S`, the connection failed mid-request, or a statement ran past `DB_STATEMENT_TIMEOUT_MS` (psycopg's `OperationalError`, which includes a cancelled statement). No paid call is made when the connection can't be opened.
+  - **503 `database_unavailable`:** no connection within `DB_CONNECT_TIMEOUT_S` (per address tried), the connection failed mid-request, or a statement ran past `DB_STATEMENT_TIMEOUT_MS` (psycopg's `OperationalError`, which includes a cancelled statement). No paid call is made when the connection can't be opened.
   - **500 `internal`:** anything else, including a database error that isn't a connection failure (e.g. a missing table).
 - **Cost:** paid, per call: 1 Voyage embedding request and 1 Anthropic answer call, plus 1 Anthropic router call in temporal and authority modes (authority is the default). With nothing retrieved, the answer call is skipped. Each retry (see Dependencies) is another request.
 - **Retry:** safe: it writes nothing to the database. Each retry pays again, and the model may word the answer differently. With tracing on, each call leaves its own trace.
 
+### GET /decisions
+
+- **Purpose:** list the stored decision chains: the ones `GET /decisions/{canonical_id}` can read (ADR-016 D4). Read-only: it never builds a chain (`make chains` does). The UI's Decisions page lists them, and a citation whose document is a listed seed links to its chain.
+- **Request:** no parameters. `/decisions/` (with a trailing `/`) redirects (307) here.
+- **200:** a JSON array, one object per stored chain, ordered by `seed` as text (so `kep:10000` would come before `kep:2572`); each the `DecisionSummary` model (`db/models.py`):
+  - `seed`: the seed KEP's canonical id, e.g. `kep:2572`.
+  - `title`: the chain's title, as in its `Chain`.
+  - `built_at`: when `make chains` stored the chain (ISO 8601, in the database session's time zone, as `built_at` below).
+  - No chain stored: `[]`, still a 200.
+- **Other statuses:**
+  - **503 `database_unavailable`:** as `POST /query`, including a statement past `DB_STATEMENT_TIMEOUT_MS`.
+  - **500 `internal`:** anything else (e.g. a missing table).
+- **Cost:** free.
+- **Retry:** safe (writes nothing).
+
 ### GET /decisions/{canonical_id}
 
 - **Purpose:** read the stored decision chain of one seed KEP, as `orgknow chain` prints it (`load_chain`). Read-only: it never builds a chain (`make chains` does).
-- **Request:** the path parameter `canonical_id`, a seed KEP's id, e.g. `kep:2572`. Any text without a `/` is looked up; a `/` inside the id matches no route (404), and a trailing `/` redirects (307) to the id without it.
+- **Request:** the path parameter `canonical_id`, a seed KEP's id, e.g. `kep:2572`. Any text of 1 or more characters without a `/` is looked up; a `/` inside the id matches no route (404), and a trailing `/` redirects (307) to the id without it. With no id, `/decisions/` redirects (307) to `GET /decisions`.
 - **200:** the `Chain` model (`provenance/chain.py`):
   - `seed`, `title`, `built_at` (ISO 8601, in the database session's time zone: UTC by the database's default, `Etc/UTC`, not enforced by the code).
   - `steps`: in step order (`problem`, `discussion`, `proposal`, `decision`, `implementation`, `current_docs`), each a `ChainStep`: `step`, `occurred_at`, `chunk_id`, `canonical_id`, `heading_path`, `source_type`, `source_url`, `tier`, `found_by`, `via_chunk_id`, `via_canonical_id`, `via_heading_path`, `missing_reason`. A missing step has only `step` and `missing_reason`; the rest are `null`.
@@ -274,7 +290,7 @@ A resumed job's counts are those of the attempt that ran the step: e.g. `new_chu
   - a GitHub snapshot is missing or isn't the one the lock pins (`GithubSnapshotError`; its text can name the cached file's path);
   - the embed cap (`RunTooLarge`: `<N> texts to embed come to <T> estimated tokens, above EMBED_MAX_TOKENS_PER_RUN (<cap>). …`);
   - ingest failures (`<N> ingest failures; the first: <failure>`);
-  - a chain that can't be built (`ChainError`): ``<seed> is not stored: run `make ingest` ``, `<seed> is not a numbered KEP (kep:<N>)`, `<canonical_id> has no <section> section`, or ``no text valid at the latest release has a vector: run `make embed` ``.
+  - a chain that can't be built (`ChainError`): `` <seed> is not stored: run `make ingest` ``, `<seed> is not a numbered KEP (kep:<N>)`, `<canonical_id> has no <section> section`, or `` no text valid at the latest release has a vector: run `make embed` ``.
 - **Any other error:** `internal error; see the worker log (job <id>)`. The traceback is in the worker's log, on an ERROR line with `exc_info`. The job is readable over the API, so an unknown error's text stays out of it.
 
 **A lost database connection**

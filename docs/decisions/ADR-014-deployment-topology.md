@@ -95,3 +95,23 @@ Decided in the S15-R2 design review, after a devil's advocate. Context: US$47.49
 - **S16 inherits it.** With no standing server, S16's design review decides how its deploy step works (a backlog Proposed addition).
 - **Revisit trigger.** A window that takes over 2 hands-on hours (S15-T6 logs them) or fails in a new way: the next design review reconsiders keeping the stack and stopping the server and database between uses.
 - **Rejected:** always on for months (~US$47/month for a system only the author can reach); keeping the stack but stopping it between uses (~US$5/month, but a stopped RDS instance restarts itself after 7 days and bills until noticed); keeping T6's stack up through S16–S17.
+
+## Amendment 2026-11-02 (S18-R1 design review): demo hours on 4 physical cores
+
+Decided in the S18-R1 design review (decision d2), after a devil's advocate. Context: D2's 15 s rule fired in S15-T6 (retrieve p50 57.83 s, p95 78.04 s on t3a.medium; ADR-008's 2026-10-30 amendment). On the laptop pinned to one physical core, 2 torch threads were 1.55× faster than 1, with identical metrics; the server's core was 2.57× slower than the laptop's at 1 thread, so 2 threads project to ~37 s p50 and ~50 s p95 there (the S18-R1 design review's measurement).
+
+- **t3a.medium stays the sized default.** The ≤ US$50/month always-on sizing rule (Context) and D2's type are unchanged; so is the Terraform code.
+- **Demo hours on c7a.xlarge.** For the hours a window shows the system (S18's video, an interview's screen share), the window's server is resized in place to c7a.xlarge (AMD, 4 vCPU = 4 physical cores, 8 GiB) by setting `instance_type` in the local `terraform.tfvars` and applying (stop, resize, start; Docker brings both containers back), and resized back afterwards. ~US$0.23 per hour in us-east-1, against ~US$0.04 for t3a.medium.
+- **Checks.** Before the window (free): c7a.xlarge is offered in the server's zone (`${var.region}a`), and the account's vCPU limit allows it. First in demo hours: torch's thread count in the API container and the retrieve p95 (`make eval-retrieval` in the container). A retrieve p95 over 15 s: c7a.2xlarge if the vCPU limit allows, else a stated limit.
+- **Rejected:** 2 torch threads on t3a.medium (answers ~45–60 s); Voyage's hosted reranker (its scores need the authority weights re-fitted on a fresh golden set: a scoring change in the final slice; future work, ADR-008); c7a.xlarge for a whole ~7-day window (~US$39, 2.6× the US$15 plan); c7a.large (2 cores; forecast retrieve p95 ~14–21 s, at the 15 s line).
+- **Revisit trigger:** an always-on deployment (the hosted reranker, once golden set v1 can re-check the authority weights), or demo hours that miss 15 s on c7a.2xlarge.
+
+## Amendment 2026-11-02 (S18-T4 design review): S18's window lasts up to 2 days
+
+Decided at S18-T4's start (decision t3), after a devil's advocate; the S18-R1 design review left the length open (call c9). Context: the 2026-10-16 amendment planned ~7 days in S18 before `make deploy` existed. Window 2 (S16-T6) went from nothing to a running deploy in 1 h 2 min of stack time, and nothing on the runbook's "Not verified" list needs 7 days.
+
+- **Up to 2 days, not ~7.** Create, load, deploy, demo hours and the video on day 1. The stack stays up overnight, on t3a.medium, only for a re-take. `terraform destroy` runs as soon as the developer accepts the video, by a clock-time deadline set on day 1, and at the latest at the end of day 2. ~US$0.70 if it ends the same day, at most ~US$4.
+- **Guards** (the devil's advocate's): `budget_usd = 6`, so the 80% email fires at US$4.80, above the plan (AWS's forecast alerts need ~5 weeks of history, which this account doesn't have yet); free checks the day before (a no-cache `make image`, the vCPU limit, the zone's offering); a laptop rehearsal of the demo questions first; back to t3a.medium before any break over 1 hour; the video checked for IDs and IP addresses before `destroy`.
+- **Wording:** the README and the resume name the window's real length, not "one week".
+- **Rejected:** one day, destroyed the same day (a re-take then needs a new window and a fresh image build, which can hit ECR's CRITICAL gate or break the `libbrotli1` pin); ~7 days (~US$12, 3× this plan's ceiling, for nothing measurable).
+- **Revisit trigger:** an interview booked inside the window's dates (keep the stack up for it, on t3a.medium).

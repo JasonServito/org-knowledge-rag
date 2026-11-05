@@ -10,7 +10,8 @@ Between the two, code finds the conflicts in the hits' stored facts (S10-T4), wi
 call; the answer lists them.
 
 With a Langfuse client (both keys set), each ask leaves one trace named `ask` (ADR-006 D3). This
-module is the only caller of Langfuse, and it never puts the settings or a key in a trace.
+module is the only one that writes to a trace (the CLI and the API only flush the client), and
+it never puts the settings or a key in a trace.
 """
 
 import sys

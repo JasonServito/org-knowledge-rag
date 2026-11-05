@@ -15,6 +15,7 @@ from psycopg.rows import TupleRow, class_row, dict_row
 
 from orgknow.db.models import (
     ChainDocument,
+    DecisionSummary,
     DocumentChunk,
     LinkCandidate,
     NearText,
@@ -181,6 +182,21 @@ def replace_decision(
             [{"decision_id": decision_id, **step.model_dump()} for step in evidence],
         )
     return decision_id
+
+
+def list_decisions(conn: psycopg.Connection[TupleRow]) -> list[DecisionSummary]:
+    """Each stored chain's seed, title and build time, by seed (as text, so `kep:10000` would come
+    before `kep:2572`): `GET /decisions`' list (S17-T5). Empty when no chain is stored."""
+    with conn.cursor(row_factory=class_row(DecisionSummary)) as cur:
+        cur.execute(
+            """
+            SELECT d.canonical_id AS seed, x.title, x.built_at
+            FROM decisions x
+            JOIN documents d ON d.id = x.document_id
+            ORDER BY d.canonical_id
+            """
+        )
+        return cur.fetchall()
 
 
 def stored_decision(conn: psycopg.Connection[TupleRow], canonical_id: str) -> StoredDecision | None:

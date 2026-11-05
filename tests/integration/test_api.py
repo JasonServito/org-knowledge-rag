@@ -27,6 +27,8 @@ from orgknow.api import app as api_app
 from orgknow.api.app import create_app
 from orgknow.cli import ask
 from orgknow.db.connect import api_connection
+from orgknow.db.decisions import replace_decision
+from orgknow.db.documents import create_document
 from orgknow.db.models import Authority, Hit
 from orgknow.generation.schema import Generation
 from orgknow.provenance import chain as chain_module
@@ -423,3 +425,38 @@ def test_get_of_an_unknown_id_is_404_even_beyond_the_bigint_range(
             "request_id": response.headers["X-Request-ID"],
         }
     }
+
+
+# S17-T5: `GET /decisions` (ADR-016 D4) on the test database. The chains are stored inside the
+# test's rolled-back transaction, which a new connection can't see: the request gets the test's
+# connection. Expected values typed by hand: each chain's seed, title and build time, by seed.
+
+
+def test_decisions_lists_the_stored_chains_by_seed_and_is_empty_when_none(
+    conn: Conn, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(conn))
+    client = TestClient(create_app(settings))  # no startup: the route needs no paid client
+    conn.execute("DELETE FROM decisions")  # rolled back at the end: none stored
+
+    empty = client.get("/decisions")
+
+    assert (empty.status_code, empty.json()) == (200, [])
+
+    # Stored out of seed order, each with its own build time (`replace_decision` stamps now()).
+    built = {"kep:9202": "2026-10-15T16:42:36.520397Z", "kep:9201": "2026-10-16T08:00:00Z"}
+    for seed, title in [("kep:9202", "KEP-9202: Second"), ("kep:9201", "KEP-9201: First")]:
+        decision_id = replace_decision(conn, create_document(conn, seed, "kep"), title, [])
+        conn.execute("UPDATE decisions SET built_at = %s WHERE id = %s", (built[seed], decision_id))
+
+    listed = client.get("/decisions")
+
+    assert listed.status_code == 200
+    assert listed.json() == [
+        {"seed": "kep:9201", "title": "KEP-9201: First", "built_at": "2026-10-16T08:00:00Z"},
+        {
+            "seed": "kep:9202",
+            "title": "KEP-9202: Second",
+            "built_at": "2026-10-15T16:42:36.520397Z",
+        },
+    ]

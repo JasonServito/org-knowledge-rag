@@ -25,3 +25,12 @@ infra/.terraform/
 *.tfstate
 *.tfstate.*
 infra/terraform.tfvars
+
+# The UI (S17): installed packages, Next's build and generated types (`next typegen`), the
+# typecheck's cache, Playwright's results.
+ui/node_modules/
+ui/.next/
+ui/next-env.d.ts
+ui/tsconfig.tsbuildinfo
+ui/test-results/
+ui/playwright-report/

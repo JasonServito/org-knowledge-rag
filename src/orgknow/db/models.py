@@ -321,6 +321,15 @@ class StoredDecision(BaseModel):
     steps: list[StoredEvidence]
 
 
+class DecisionSummary(BaseModel):
+    """One stored decision chain in `GET /decisions`' list (S17-T5; ADR-016 D4): its seed KEP,
+    title and build time, without its steps."""
+
+    seed: str  # the seed KEP's canonical id
+    title: str
+    built_at: AwareDatetime
+
+
 # Ingestion jobs (S14-T4; ADR-013 D6; the S14-R2 plan's "Pinned: T4"): migration 0009's
 # CHECK list, and the statuses a step in a job's `steps` list can have.
 JobStatus = Literal["queued", "running", "succeeded", "failed"]

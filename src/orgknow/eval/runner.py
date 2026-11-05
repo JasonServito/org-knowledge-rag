@@ -1133,7 +1133,7 @@ def summarize(
 
     AC5 and AC6 read each row's golden question, by id in `questions` (its mode, window and
     answerability: rows written before S09-T3 hold no window), and AC5 the `latest` release.
-    None, with no latest release recorded, without both.
+    Both are None unless `questions` and `latest` are both given (e.g. no latest release recorded).
 
     `rows` are the golden questions'; `new_rows` the conflict set's new questions'. The conflict
     counts and metrics read both; every other field reads the golden rows only."""

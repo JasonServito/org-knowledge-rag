@@ -62,3 +62,67 @@ jobs:
           uv run alembic downgrade 0001
           make migrate
       - run: make test-int
+
+  # The container image (ADR-015 D1): build it, then check it. The image is ~2.6 GB (torch, the
+  # reranker's weights), so the job logs the free disk before and after, and the build's time.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Free disk before the build
+        run: df -h
+      - name: make image (timed)
+        run: time make image
+      - run: make image-check
+      - name: Free disk and image size after the build
+        run: |
+          df -h
+          docker image ls orgknow:dev
+
+  # The Terraform code (ADR-015 D1): format, validate and the offline tests with mocked providers.
+  # No AWS login here: nothing is planned against AWS or created.
+  tf-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          # The laptop's version (S16-R1 design review).
+          terraform_version: 1.14.8
+          # No wrapper script: Make sees terraform's own output and exit codes.
+          terraform_wrapper: false
+      - run: make tf-check
+
+  # Known vulnerabilities in the locked runtime packages (ADR-015 D4). Not a required check: new
+  # advisories appear over time, not with code changes, so it warns without blocking other PRs.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: make audit
+
+  # The UI (ADR-016 D2): lint, typecheck, unit tests and build, then the browser smoke test.
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          # The laptop's Node (S17-R1 c12).
+          node-version-file: ui/.nvmrc
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - run: make ui-check
+      # Chromium, and the Linux libraries it needs (apt, with the runner's sudo).
+      - run: npx playwright install --with-deps chromium
+        working-directory: ui
+      - run: make ui-e2e

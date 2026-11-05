@@ -3,11 +3,12 @@
 Blueprint gap #6 for the S15 deployment: each risk, how bad it is, what limits it, and where that control lives. Written in S15-T1 from the S15-R1 design review's decisions (ADR-014 and the run plan).
 
 - **Scope:** the AWS deployment as ADR-014 describes it: 1 server, 1 database, **no inbound ports** (D1). S17 opens it to the public; its controls are designed here (section 7), marked Proposed.
-- **Result:** 37 risks in the 6 topics: 1 high, 5 medium, 31 low. The high one is the root-only AWS account, closed by the runbook's first step.
+- **Result:** 38 risks in the 6 topics: 1 high, 5 medium, 32 low (2.10 added in S16). The high one is the root-only AWS account, closed by the runbook's first step.
 - **Abuse and exposure are not "n/a":** both are low today only because nothing can reach the API; in S17 they become high until section 7's controls exist.
 - **Carried items:** 6 from S14 and PR #51, all low; none is must-fix with no inbound ports, so no code changes. All 6 go to S17's design review (section 8).
 - **Cost:** US$47.49 a month in the design review's table, at most US$47.69 with the 2 alarms it left out: under the US$50 cap.
 - **1 gap closed in the run:** teardown would stop on a repository that still holds images (6.6); the run added `force_delete` to it (plan c5).
+- **At the project's close (S18):** the API stayed private, so section 7 and the carried items were never built; section 11 lists them as known limits.
 
 ## How to read the tables
 
@@ -58,6 +59,7 @@ The secrets: 4 API keys (Anthropic, Voyage, Langfuse's 2) and the database passw
 | 2.7 | The AWS account has only the root login [design review]: root can do anything, billing included | **High until runbook step 1:** 1 stolen password = the whole account | MFA on root; an IAM Identity Center admin user; the CLI through `aws sso login` (short-lived credentials, no stored keys) [Pinned T5, step 1] | Runbook 1 |
 | 2.8 | The server role's credentials are taken through IMDS (e.g. by a forged request) | Low: the role holds what the containers already have | IMDSv2 required [m12]; the role pulls 1 repository, reads 1 bucket, writes 1 log group, and reads `/orgknow/*` by path; the managed Session Manager policy can also read any parameter by name, and this account has no others [D6] | TF `aws_instance` (`metadata_options`); TF IAM inline policy |
 | 2.9 | `sslmode=require` encrypts the database link but doesn't check the server's certificate [m11; libpq docs, "SSL Mode Descriptions"] | Low: the link never leaves the VPC [D3] | Private subnets; the database admits only the server [D3] | D3 |
+| 2.10 | An ECR login token on disk. S15's deploy script ran `docker login`, which wrote a 12-hour token unencrypted to the server's `/root/.docker/config.json` [S15-T6]. `make deploy` still runs `docker login` on the laptop [`scripts/deploy.sh` step 4] | Low: the server's file was root-only; the laptop's token gives the developer's own ECR access, for 12 hours | Server: the ECR credential helper gets a token at each pull, with its cache off (`AWS_ECR_DISABLE_CACHE=true`), so none is written [ADR-015 D3]. It still writes a log under `/root/.ecr/log/`: no token in it on the failure path [S16-T3, offline]; after a real pull, `/root/.ecr` held only `log/`, no `cache.json`, and root's Docker config only `credHelpers` [S16-T6, `deployment-evidence.md` Window 2]. Laptop: Docker hands the token to its credential store (`credsStore: desktop.exe`, Docker Desktop), not to the config file [`~/.docker/config.json`'s keys, 2026-11-01] | In place (S16): TF boot script (`orgknow-deploy`, root's Docker config); `scripts/deploy.sh` |
 
 ## 3. Prompt and data injection
 
@@ -85,7 +87,7 @@ The secrets: 4 API keys (Anthropic, Voyage, Langfuse's 2) and the database passw
 |---|---|---|---|---|
 | 3.1 | An injected comment steers the answer's wording: `answer` and a kept conflict's `summary` are free text [`schema.py:21`; `conflicts.py:236`]. It can state a false claim citing the injected text itself, which passes: validation checks ids, not support [`validate.py:24-40`] | Medium: 210 texts, pinned, but any answer can use them, and the reader sees a real citation | The limiters above; each citation shows its tier, so a tier-7 source is visible [`validate.py:66`]. S17: the prompt says evidence is data, not instructions; today it explains tiers 1–6, not 7 [`prompt.py:21-23`; backlog, "GitHub texts in CURRENT questions"]. A prompt change: measure it on golden set v1 | In place; Proposed (S17) |
 | 3.2 | The question carries instructions (direct injection) | Low: only the asker sees the result; no tools, no secrets, no other user's data in the prompt | The limiters above | In place |
-| 3.3 | S17's UI shows model text as HTML (a script or a link in `answer`) | Low: S15 returns JSON through a tunnel [D1]. S17: medium | S17: the UI shows `answer` and conflict summaries as plain text | Proposed (S17) |
+| 3.3 | S17's UI shows model text as HTML (a script or a link in `answer`) | Low: S15 returns JSON through a tunnel [D1]. S17: medium | S17: the UI shows `answer` and conflict summaries as plain text. A hand-written formatter turns only code spans, `**bold**` and `-`/`*` bullet lines into `code`, `strong` and list elements; the rest stays React text, which React escapes, so `<script>`, `[text](url)` and `![alt](url)` show as literal text; no `dangerouslySetInnerHTML`, no markdown library [ADR-016 D3; `ui/lib/format.tsx`; its test: a crafted answer gives 0 `a`, `img` and `script` elements] | In place for `answer` (S17-T3); conflict summaries: S17-T4 |
 | 3.4 | SQL injection | Low: no SQL text is built from input; values go as parameters | All SQL is in `db/` [a project convention] with values passed as parameters, e.g. `db/retrieval.py:64-66`; 0 SQL strings built with f-strings in `db/` | In place |
 | 3.5 | Log injection: a request ID with a line break forges a log line | Low: a caller's ID is dropped unless it has only safe characters | An ID is kept only if it matches `[A-Za-z0-9._-]{1,64}` [`api/middleware.py:26`]; logs are 1 JSON object per line [`docs/interfaces.md`, "Logs"] | In place |
 
@@ -109,7 +111,7 @@ The secrets: 4 API keys (Anthropic, Voyage, Langfuse's 2) and the database passw
 | 5.2 | A base image changes under its tag | Low: a digest names exact bytes, so a changed image can't match it | `python:3.12-slim` and `ghcr.io/astral-sh/uv` pinned by digest [Pinned T3] | Image (T3) |
 | 5.3 | The reranker's model changes, or runs code when loaded | Low: a fixed revision, no network at runtime, no pickle | A fixed revision [`settings.py:106-107`]; downloaded at build, offline at runtime [m3]; weights read from safetensors only, not pickle [`retrieval/cross_encoder.py:29-30`] | Image (T3); In place |
 | 5.4 | A Terraform provider changes | Low: versions pinned, with their hashes in the committed lock file | `hashicorp/aws` and `hashicorp/random` pinned to minor versions; the lock file with their hashes committed [m8; Pinned T4] | TF `versions.tf`; `.terraform.lock.hcl` |
-| 5.5 | Known vulnerabilities in the image's packages: pins freeze old versions | Low: nothing reaches the server [D1]. S17: medium | ECR scans each pushed image [m13], but it only reports, and no step reads it. S16: fail the pipeline on critical findings; refresh the lock and digests monthly | TF `aws_ecr_repository` (scan on push); Proposed (S16) |
+| 5.5 | Known vulnerabilities in the image's packages: pins freeze old versions | Low: nothing reaches the server [D1]. S17: medium | Python packages: `make audit` runs pip-audit on the exported runtime lock and fails on any known vulnerability. CI's `audit` job runs it on every PR (not a required check), the runbook before each window's `apply`, and `make deploy` first, where it blocks [ADR-015 D1, D4]. OS packages: ECR's basic scan of each pushed image [m13]; `make deploy` stops on any CRITICAL finding and prints the other counts [S16 c10]. **Gaps** [ADR-015 Consequences]: `torch` (from PyTorch's CPU index) isn't audited; the uv binary in the image is in neither scan; HIGH OS findings aren't gated; the base-image digests have no refresh trigger. S16-T6: the gate stopped a real deploy on CVE-2026-111497 (`libbrotli1`), fixed by Debian's update pinned in the `Dockerfile`; that pin fails the build once Debian ships a newer one (a backlog Proposed addition) | In place (S16): `Makefile` (`audit`, `deploy`); `scripts/deploy.sh`; CI `audit` job; Runbook 2, 6; TF `aws_ecr_repository` (scan on push) |
 | 5.6 | Unpinned parts: the Amazon Linux image ("latest", from AWS's public parameter) [m12]; Docker from `dnf` [Pinned T4]; the restore image `pgvector/pgvector:0.8.1-pg18`, by tag [Pinned T5, step 5] | Low: official sources; the restore runs once, by hand | The restore image's tag matches the laptop's [`compose.yaml:6`] | Accepted |
 
 ## 6. AWS cost guardrails
@@ -178,7 +180,7 @@ Each is rated for a deployment with no inbound ports [m16]. **Must-fix: none**, 
 - That auto-reload is off in the Anthropic console (2.6), and whether Voyage's account has a spending limit (1.4).
 - That a Terraform refresh writes the real API keys into state (2.4): the provider's docs say a stored value is in state; the refresh behavior is inferred.
 - That every outbound destination in c3 uses HTTPS (4.7).
-- Every `TF`, `Image` and `Runbook` location: this review was written before T3–T5, so each points at the plan's pinned text, not at built code.
+- Every S15 `TF`, `Image` and `Runbook` location: this review was written before S15's T3–T5, so each points at the plan's pinned text, not at built code. S16's rows (2.10, 5.5) point at built code, run against AWS in S16-T6.
 
 ## 10. Commands to reproduce
 
@@ -195,4 +197,22 @@ grep -rn 'tools=' src/ | wc -l
 grep -rnE 'execute\(f|f"""' src/orgknow/db/ | wc -l
 # The SDK's retry-after wait (8.2)
 sed -n 834,839p .venv/lib/python3.12/site-packages/anthropic/_base_client.py
+# Known vulnerabilities in the locked runtime packages (5.5): "No known vulnerabilities found", torch skipped
+make audit
 ```
+
+## 11. Known limits at the project's close (S18)
+
+What this review proposed and the project did not build. S17 kept the UI private on the laptop (ADR-016), so the API never became public, and the S18-R1 design review dropped these from S18 (decision s2). Each stays rated as above: low, with no inbound ports.
+
+| # | Limit | Why it stays low | What a public version would need |
+|---|---|---|---|
+| 2.4 | Terraform's local state file holds the database password, and likely the 4 API keys, in plain text | The state is local and gitignored; the keys are already in the laptop's `.env`; the password is useless outside the VPC | Write-only values (`value_wo`, Terraform ≥ 1.11) |
+| 4.6 | The app connects as the RDS master user | SQL is parameterized (3.4); only the server reaches the database; the data reloads from the dump | A least-privilege role for the app; the master user only for migrations and the restore |
+| 4.7 | The server may send traffic anywhere | Reaching a container needs the AWS login first | Only TCP 443 out, plus 5432 to the database |
+| 7 | No HTTPS, API key, spending cap, rate limits or question length cap on the API | Nothing outside the laptop's tunnel can reach it | Section 7's design |
+| 8.1, 8.3 | Logs: the reranker's library writes plain-text lines; a failed traced ask's line has no `trace_id`; a 502 or 503 logs no cause; a 502's message can carry a provider's text (seen in S15-T6: a Voyage 401's text) | Only the author sees the API; never a key; the UI shows its own fixed text per error code (ADR-016 D3) | A fixed 502 text, with the cause in the log |
+| 8.2 | Anthropic's `retry-after` wait has no cap | 1 user: a stalled ask holds 1 request | A deadline per ask |
+| 8.4 | `VOYAGE_MAX_RETRIES` has no upper bound and its wait doubles without a cap; the connection helper replaces any `options` in `DATABASE_URL` | The deployment sets neither | A bound on both; merge `options` |
+| 8.5 | A job's error can name a snapshot's file path | The path holds no user name or secret | Name the item only |
+| 8.6 | A connection lost mid-step logs a misleading "step failed" line | The job's row is right, and Docker restarts the worker | Log the lost connection as such |

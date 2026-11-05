@@ -1,7 +1,8 @@
 """The answer step (S04-T6): prompt, one model call, validate, fill in (ADR-006 D1-D2).
 
-`answer()` is the only entry point; the CLI (T7) calls it with an `AnthropicGenerator`, and tests
-call it with a fake. A refusal or a cut-off answer is a `GenerationError`, never a crash.
+`answer()` is the only entry point; the ask pipeline (`pipeline.py`) and the eval runner call it
+with an `AnthropicGenerator`, and tests call it with a fake. A refusal or a cut-off answer is a
+`GenerationError`, never a crash.
 """
 
 from collections.abc import Sequence

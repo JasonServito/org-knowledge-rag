@@ -157,6 +157,24 @@ Added by migration `0008` (S13-T3, ADR-012 D2): each seed KEP's **decision chain
 - **Tested:** each CHECK, both UNIQUEs, the cascade from a deleted chunk and the reset (`tests/integration/test_decisions.py`).
 - **Size (S13-R1):** 2 chains, 12 steps.
 
+### `ingestion_jobs`
+
+Added by migration `0009` (S14-T4, ADR-013 D6): one row per corpus rebuild job, created by `POST /ingestion-jobs` and run by `make worker`. It holds no corpus data, so `make reset-corpus` leaves it.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `bigint` identity PK | |
+| `status` | `text` NOT NULL, default `queued` | CHECK: `queued`, `running`, `succeeded` or `failed` |
+| `created_at` | `timestamptz` NOT NULL, default `now()` | |
+| `started_at`, `finished_at` | `timestamptz` NULL | |
+| `attempts` | `integer` NOT NULL, default 0 | Runs and resumes started (ADR-013 D5). CHECK: ≥ 0 |
+| `error` | `text` NULL | A failed job's one-line reason |
+| `request_id` | `text` NULL | The `X-Request-ID` of the POST that created it |
+| `steps` | `jsonb` NOT NULL | Its 4 steps (ingest, lifecycle, embed, chains), each with its status, times and counts |
+
+- **At most one active job** (ADR-013 D4): the unique partial index `ingestion_jobs_one_active` gives every queued or running row the same key, so a second one is refused; finished jobs are outside it.
+- **Tested:** the CHECKs, the index and the reads and writes (`tests/integration/test_jobs.py`).
+
 ### Chunk header
 
 Every chunk's `text` is a header, a blank line, then the body. The header holds only fields that are the same in every version of a document (S04-R1 design review, decision 4):

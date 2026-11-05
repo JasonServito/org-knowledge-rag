@@ -283,6 +283,65 @@ What it means for S15 (a projection; S15 decides):
   - The hosted Voyage `rerank-2.5` fallback: no local model, ~$0.0004 per question (not verified).
   - ONNX quantization: not measured; unquantized ONNX was no faster.
 
+### 4 physical cores: the demo-hours forecast (S18-T1)
+
+S18-T1, 2026-11-02. A free forecast for demo hours on c7a.xlarge (4 physical cores; ADR-014's 2026-11-02 amendment): `make eval-retrieval` pinned to 4 of the laptop's cores, today's pipeline.
+
+- **The CPUs:** `lscpu -e` puts CPUs 0, 2, 4 and 6 on cores 0, 1, 2 and 3, one thread each (their siblings are 1, 3, 5 and 7).
+  - That is the topology WSL2's VM reports. Which of the chip's cores Windows runs them on isn't visible from Linux.
+- **The load:** `docker ps` listed only `orgknow-db-1` before each run. In the design review, another project's stack ran at 325% CPU.
+- **Torch's threads:** on 4 cores, no `OMP_NUM_THREADS` (torch picks). On 1 core, `OMP_NUM_THREADS=1`: the design review's 1-thread run again, on an idle laptop.
+
+A one-off script ran these in order, printing each command's wall time:
+
+```bash
+HF_HUB_OFFLINE=1 taskset -c 0,2,4,6 uv run python -c "import torch; print('torch threads', torch.get_num_threads())"
+HF_HUB_OFFLINE=1 taskset -c 0,2,4,6 make eval-retrieval
+OMP_NUM_THREADS=1 HF_HUB_OFFLINE=1 taskset -c 0,1 uv run python -c "import torch; print('torch threads', torch.get_num_threads())"
+OMP_NUM_THREADS=1 HF_HUB_OFFLINE=1 taskset -c 0,1 make eval-retrieval
+```
+
+Its output. Cut from each run: make's echo of its command (`uv run python -m orgknow.eval retrieval`), the `Loading weights` progress bar, the eval's `Mode:` line, its 4 other score lines (stale rate, authority selection, router accuracy, rule conflicts) and the closing `uptime` line:
+
+```
+=== taskset -c 0,2,4,6, OMP_NUM_THREADS=unset ===
+2026-11-02T18:38:13Z
+orgknow-db-1
+torch threads 4
+wall 1.584456712 s
+Recall@10 0.522  Hit@10 0.972  MRR 0.781  nDCG@10 0.508
+Retrieve time: p50 7.86 s, p95 10.61 s (36 questions). Reranker load 7.2 s.
+exit 0
+wall 290.067867049 s
+=== taskset -c 0,1, OMP_NUM_THREADS=1 ===
+2026-11-02T18:43:05Z
+orgknow-db-1
+torch threads 1
+wall 2.310351180 s
+Recall@10 0.522  Hit@10 0.972  MRR 0.781  nDCG@10 0.508
+Retrieve time: p50 16.09 s, p95 22.18 s (36 questions). Reranker load 6.1 s.
+exit 0
+wall 576.294634057 s
+```
+
+| Setup | Torch threads | Retrieve p50 | Retrieve p95 | Reranker load | Whole command |
+|---|---|---|---|---|---|
+| 4 cores (`taskset -c 0,2,4,6`) | 4 | 7.86 s | 10.61 s | 7.2 s | 4 min 50 s |
+| 1 core, 1 thread (`taskset -c 0,1`) | 1 | 16.09 s | 22.18 s | 6.1 s | 9 min 36 s |
+| The same, loaded laptop (the S18-R1 design review's measurement) | 1 | 22.51 s | 32.50 s | 11.5 s | 13 min 47 s |
+
+- **4 cores are 2.05× faster than 1 thread at p50** (16.09 ÷ 7.86) and 2.09× at p95, not 4×. The metrics are identical.
+- **The design review's load made it 1.40× slower at p50** (22.51 ÷ 16.09) and 1.47× at p95.
+
+What it means for demo hours (a forecast; S18-T4 measures):
+
+- **On the laptop's cores, 4 cores give a retrieve p95 of 10.61 s:** 4.39 s under ADR-014 D2's 15 s line.
+- **An optimistic bound:** the laptop's core is faster than the server's. The line holds only if c7a's core is at most 1.41× slower than the laptop's at p95 (15 ÷ 10.61).
+  - t3a.medium's core was 3.59× slower than the idle laptop's at p50 (57.83 ÷ 16.09, if t3a ran 1 thread: its count wasn't captured). The design review's 2.57× was against the loaded laptop.
+  - c7a is a different CPU (AMD Zen 4); its speed per core against the laptop's is not measured.
+- **The real number:** the runbook's demo-hours step d (`docs/deployment.md`), first thing in S18-T4's demo hours.
+- **Not counted:** a live ask also routes the question (~4 s, p95 4.27 s; S18 slice doc, Risks).
+
 ## Time and authority scores by stage
 
 S09-R1 and S09-R2, 2026-10-10. Retrieval only, from `make eval-retrieval` in each mode: free, from the stored question vectors and, for `temporal` and `authority`, the stored routes. The paid S09 row and its improvement-rule verdict are in the next section (Authority).
@@ -689,10 +748,10 @@ uv run python eval/results/s11-sitting/summarize.py
 
 **Extra findings, from the logs:**
 
-- **c01** ("In Kubernetes 1.30, how long was a minor release supported?"): as routed (HISTORY, 1.30 ± 1), its top 10 holds kep:1498, 2 sections of the v1.30 release blog and 7 release-note chunks. With no window, `versioning.md`'s support section is at ranks 1–2 and k04 is reachable (`probe_relax.log`, `probe_c01.log`, `probe_pool.log`).
+- **c01** ("In Kubernetes 1.30, how long was a minor release supported?"): as routed (HISTORY, 1.30 ± 1), its top 10 holds kep:1498, 2 sections of the v1.30 release blog and 7 release-note chunks. With no window, `versioning.md`'s support section is at ranks 1–2 and k04 is reachable (`probe_relax.log`, `probe_c01.log`, `probe_pool.log`). S12 corrected this: a false match ("AC4's causes", below).
 - **q08:** no mode or window change retrieves KEP-2579's date line (k03) (`probe_relax.log`).
 - **The devil's advocate's candidate-pool test** (`probe_pool.log`): rephrased q08's first search holds 0 of its 8 labels among 20 candidates; the second search holds 4, at ranks 14–20 against the informal question. Rephrased q31's label is in neither.
-- **The LangGraph spike** (`spike/`): the same flow on fakes takes 82 lines with LangGraph and 30 as a plain loop; the LangGraph version needs 1 type cast to pass mypy --strict (`graph.py:76`, the graph's output type). Both skip the grader at 0 retries.
+- **The LangGraph spike** (`spike/`): the same flow on fakes takes 82 lines with LangGraph and 30 as a plain loop; the LangGraph version needs 1 type cast to pass mypy --strict (not in the committed spike). Both skip the grader at 0 retries.
 
 **The verdict (ADR-011 D1): no corrective step in Phase 1.** The pipeline stays route → retrieve → conflicts → answer, with no grader, no second search and no LangGraph.
 
@@ -732,7 +791,7 @@ Every run, not the mean: once a model writes the queries, retrieval varies from 
 
 - **AC4 stays at 1 of 4 until S12,** whose candidate tasks own its open seeds:
   - q01: ADR-010 D4's fallbacks (a separate detector call and the stale-KEP rule), measured as their own row (S11-R1 decision 1).
-  - q08 (k03) and c01 (k04): S12's design review decides, with q01's fallback result in hand (decision 6). The lead: c01's k04 is reachable when its 1.30 window is dropped.
+  - q08 (k03) and c01 (k04): S12's design review decides, with q01's fallback result in hand (decision 6). The lead: c01's k04 is reachable when its 1.30 window is dropped (S12: a false match, "AC4's causes").
 - **A proposed addition: query rewriting for informal wording.** Probe 4's design as its own stage: a second search on every question with a Haiku-written query, RRF with the first 10.
   - In probe 4: the rephrased set's Recall@10 0.427 → 0.468 and MRR 0.607 → 0.671, v0 neutral; 1 run, the best of 4 designs. Probe 5, the same merge with a "stop" option added to the prompt, failed.
   - Its costs: ~5.5 s more per question (ADR-011), and it would run on unanswerable questions too (q48).
@@ -778,7 +837,7 @@ S12-R1 design review, 2026-10-12 (UTC). Phase 1 closes with 3 stated exceptions 
 - **q01 (k02):** the summary check, above. The pair matches k02's sides; its fact is the cadence, not KEP-2572's out-of-date status.
 - **q08 (k03, KEP-2579's beta date):** KEP-2579's Implementation History (chunk 15419) is rank 10 in hybrid mode and rank 20 in rerank and authority modes. The reranker pushes it out of the top 10.
 - **c01 (k04, `versioning.md`'s "every three months"):** as routed (HISTORY, 1.30), no `versioning.md` text is among its 20 candidates. Only kep:1498 (rank 1), one of k04's second sides, is.
-- **S11's lead was a false match.** S11 found k04 "reachable" with no window (`eval/results/s11-sitting/probe_c01.log`): ranks 1–2 are chunks 36376 (1.35–1.36) and 36383 (1.36–now). Both say "every four months"; the seed's "every three months" is chunk 36362 (the S10 and S12 slice docs).
+- **S11's lead was a false match.** S11 found k04 "reachable" with no window (`eval/results/s11-sitting/probe_c01.log`): ranks 1–2 are chunks 36376 (1.35–1.36) and 36383 (1.36–now). Both say "every four months"; the seed's "every three months" is in chunks 36362 and 36369 (the S10 and S12 slice docs).
 - **Verdict (S12-R1 decision 2):** AC4 closes at 1 of 4 as a stated exception. No in-scope change moves it: retrieval tuned for q08 or c01 would be tuned on frozen v0.
   - q08 is reported as a reranker regression against hybrid mode (a proposed addition).
   - Golden/conflict set v1's AC4 wording is written now (product spec).
@@ -796,7 +855,7 @@ S12-R1 design review, 2026-10-12 (UTC). Phase 1 closes with 3 stated exceptions 
 
 - **The negative control:** dense retrieval knows nothing about time, so a reading it passes proves nothing about the time-aware stages. A devil's advocate argued the first picks were the most lenient readings, chosen on the runs they score; the control changed both picks.
 - **The chosen readings are rows 1 and 3** (S12-R1 decisions 3 and 4): dense 2 of 10 and 6 of 9, the final pipeline 8 of 10 and 8 of 9.
-  - Row 2 passes dense at 8–9 of 10. Row 4 rescues only q02 and passes dense at 8 of 9.
+  - Row 2 passes dense at 8–9 of 10. Row 4 rescues q02 for the final pipeline (q02 and q24 for dense) and passes dense at 8 of 9.
   - Row 5 passes the time filter by construction (it keeps ±1 release). Row 6 fails every system: history is often written down later.
 - **The final pipeline's fails:** AC5 q01 and q16 (they also cite older release notes); AC6 q02 (all its citations, its top label included, postdate "before 2021").
 - **AC6's population** is the 9 questions with a golden window (S09's temporal-accuracy population). The spec's literal "naming a release or date" is 7 (not q12, q17): 6 of 7 by the same rule.
@@ -824,7 +883,7 @@ S13-R1 run, 2026-10-13 (UTC). Phase 2 adds one capability (ADR-012): rebuild why
 - **Sources:**
   - the chain tables and their summary: `make eval-chain` (free; this run printed `Voyage requests: 0`; saved in `eval/results/s13-chains/chains.md`);
   - the retrieval block: `make eval-retrieval` (free);
-  - the per-question table and the rolled-back check: `uv run python eval/results/s13-chains/per_question.py eval/results/conflict-20261012T171932Z/questions.jsonl` (free, read-only; output in `per_question.log`), against S12's final run;
+  - the per-question table and the rolled-back check: `uv run python eval/results/s13-chains/per_question.py eval/results/conflict-20261012T171932Z/questions.jsonl` (free, read-only; output in `per_question.log`), against S10-T8's run 3;
   - the draw (35 KEPs), the 12 labeled steps and the 3 flagged calls: the S13-R1 plan.
 
 **The gold chains** (`eval/golden_set/chains-v0.yaml`, sha256 `50323a24…`):
@@ -911,7 +970,7 @@ Retrieve time: p50 5.03 s, p95 6.76 s (36 questions). Reranker load 8.3 s.
 | CURRENT MRR | 0.783 | 0.733 | −0.050 |
 
 - **MRR moves 0.002 past ±0.03** (Recall@10 sits on the edge), so the change is explained per question. The stale rate, temporal accuracy, router line and rule conflicts are unchanged.
-- **5 of 36 questions' scores change;** q22's top 10 also gains 2 PR #2567 comments (ranks 8–9) with unchanged scores; the other 30 are identical. Per question, against S12's final run (`conflict-20261012T171932Z`; `per_question.log`):
+- **5 of 36 questions' scores change;** q22's top 10 also gains 2 PR #2567 comments (ranks 8–9) with unchanged scores; the other 30 are identical. Per question, against S10-T8's run 3 (`conflict-20261012T171932Z`; `per_question.log`):
 
 | Question | Recall@10 | MRR | What's in its top 10 now |
 |---|---|---|---|
@@ -928,15 +987,243 @@ Retrieve time: p50 5.03 s, p95 6.76 s (36 questions). Reranker load 8.3 s.
   - Their date windows are open (a thread's one version starts at its last kept post), so they pass CURRENT's "current text only" filter (q01).
 - **No scoring was changed.** Whether discussions should be demoted or filtered, for example in CURRENT mode, is an open question for the author.
 
+## Final benchmark (S18)
+
+S18-T3, 2026-11-02 (UTC). The system as shipped, measured end to end on today's corpus: 3 paid runs, compared with S10's 3 `conflict` runs (2026-10-12), the last full answer eval.
+
+- **The questions:** golden set v0's 43 plus conflict set v0's 2 new ones (c01, c02), scored against conflict set v0 (`887201b7`), as in [S10](#the-s10-eval-s10-t8).
+- **What changed since S10:** S13 added the GitHub texts (5 documents, 210 texts). Retrieval equals [S13's re-check](#phase-1-re-check-with-the-new-texts) exactly. No scoring was changed for this benchmark.
+- **Folders:** `final-20261102T193250Z`, `final-20261102T194445Z` and `final-20261102T195637Z`, all on commit `01b035a` with `git_dirty: false`; 43 + 2 rows each, 0 errors; torch 11 threads.
+- **Each run took 9 min 50 s, 9 min 42 s and 9 min 13 s** (`run.json`). S10's took 9 min 31 s, 8 min 55 s and 8 min 48 s.
+- **Spent:** US$5.10 of Anthropic credit (US$1.69, US$1.72, US$1.69), 0 re-runs. 0 Voyage requests and 0 router calls: every vector and route was stored.
+- **Not re-runnable from the repo yet:** the unmatched flags, the per-question tables, the latency split and the costs with c01 and c02 come from read-only scratch scripts that aren't committed. Committing them is parked for the developer.
+
+The commands, free checks first:
+
+```bash
+HF_HUB_OFFLINE=1 make eval-retrieval
+HF_HUB_OFFLINE=1 make eval-conflicts
+HF_HUB_OFFLINE=1 uv run python -m orgknow.eval run --name final   # 3 times, one after the other; ~US$1.70 each
+make eval-table
+```
+
+**The free checks,** as printed (make's echo and the `Loading weights` bar cut):
+
+```
+Mode: authority (candidates 20, k 60, width 100, model BAAI/bge-reranker-base@2cfc18c, max length 512, router claude-opus-5-5, slack 1, boost 1.25, demote 0.8). Answerable questions: 36.
+Recall@10 0.522  Hit@10 0.972  MRR 0.781  nDCG@10 0.508
+Stale rate 0.000 (0 of 100 CURRENT hits)  Temporal accuracy 0.522 (47 of 90 dated HISTORY hits)
+Authority selection 0.889 (8 of 9 CURRENT questions)  CURRENT MRR 0.733
+Router accuracy 0.972 (35 of 36)  Windows 7 of 9 (0 extra)  Plans: 10 current-only, 7 windowed, 19 unfiltered
+Rule conflicts: 5 claim_mismatch (q16 q17 q18 q19 q32), 0 history_date
+Retrieve time: p50 5.65 s, p95 7.31 s (36 questions). Reranker load 6.8 s.
+
+Conflict set eval/golden_set/conflicts-v0.yaml (887201b7): 62 conflicts (4 seeds) on 45 questions (2 new). Unmatched sides: 0.
+Reachable: 52 of 62 (not reachable: k02 q01; k03 q08; k04 c01; k05 q01; k06 q01; k63 q01; k64 q03; k09 q05; k40 q27; k41 q27).
+Seeds retrieved: 1 of 4 (not retrieved: k02 q01; k03 q08; k04 c01).
+Rule-found: 8 flagged (q16 q17 q18 q19 q20 q32 q48 c02); precision 1.000 (8 of 8); recall 1.000 (8 of 8 reachable).
+```
+
+- **The retrieval lines equal S13's re-check** (and the S17 retro's): Recall@10 0.522, Hit@10 0.972, MRR 0.781, nDCG@10 0.508, router 35 of 36. Retrieve time is machine time.
+- **Conflicts in reach fell from 60 to 52, and seeds retrieved from 2 to 1.** All 8 lost conflicts belong to 4 questions whose top 10 now holds GitHub texts (per question, below).
+- **The rule-found line is S10's exactly:** 8 of 8.
+
+**The load before each run.** `docker ps` listed only `orgknow-db-1`. Each run waited for the load to settle after the reranker's last run; run 2 started at 1.13. Each run's own lines:
+
+```
+=== run 1 ===
+2026-11-02T19:32:44Z
+orgknow-db-1
+ 13:32:44 up 8 days,  1:21,  2 users,  load average: 0.86, 5.28, 4.17
+=== run 2 ===
+2026-11-02T19:44:36Z
+orgknow-db-1
+ 13:44:36 up 8 days,  1:33,  2 users,  load average: 1.13, 3.75, 4.26
+=== run 3 ===
+2026-11-02T19:56:29Z
+orgknow-db-1
+ 13:56:29 up 8 days,  1:45,  2 users,  load average: 0.80, 3.32, 4.06
+```
+
+**The runs' summary lines,** as printed:
+
+```
+# Run 1: final-20261102T193250Z
+43 questions (36 answerable), 0 errors. Recall@10 0.522, Hit@10 0.972, MRR 0.781, nDCG@10 0.508. AC1 34/34, AC2 43/43, AC3 7/7, AC5 8/10, AC6 8/9, false refusals 2/36. Tokens: 284,329 in, 24,210 out. Mean latency 13.5 s. Conflicts: 20 (8 rule, 12 model), 0 loser-only answers. Conflict precision 0.850 (17 of 20), recall 0.346 (18 of 52 reachable), AC4 1 of 4 (q01: not retrieved; q08: not retrieved; c01: not retrieved).
+Conflict questions: 2 (c01 c02), 0 errors, cost $0.0687.
+# Run 2: final-20261102T194445Z
+43 questions (36 answerable), 0 errors. Recall@10 0.522, Hit@10 0.972, MRR 0.781, nDCG@10 0.508. AC1 34/34, AC2 43/43, AC3 7/7, AC5 8/10, AC6 8/9, false refusals 2/36. Tokens: 284,329 in, 25,662 out. Mean latency 13.1 s. Conflicts: 22 (8 rule, 14 model), 0 loser-only answers. Conflict precision 0.818 (18 of 22), recall 0.365 (19 of 52 reachable), AC4 1 of 4 (q01: not retrieved; q08: not retrieved; c01: not retrieved).
+Conflict questions: 2 (c01 c02), 0 errors, cost $0.0676.
+# Run 3: final-20261102T195637Z
+43 questions (36 answerable), 0 errors. Recall@10 0.522, Hit@10 0.972, MRR 0.781, nDCG@10 0.508. AC1 34/34, AC2 43/43, AC3 7/7, AC5 8/10, AC6 8/9, false refusals 2/36. Tokens: 284,329 in, 24,187 out. Mean latency 12.4 s. Conflicts: 19 (8 rule, 11 model), 0 loser-only answers. Conflict precision 0.842 (16 of 19), recall 0.327 (17 of 52 reachable), AC4 1 of 4 (q01: not retrieved; q08: not retrieved; c01: not retrieved).
+Conflict questions: 2 (c01 c02), 0 errors, cost $0.0683.
+```
+
+### Against S10's `conflict` runs
+
+Each value is the mean of 3 runs. The spread is min–max; "none" means all 3 runs were equal.
+
+| Measure | Final | Spread over 3 runs | S10 `conflict` |
+|---|---|---|---|
+| Hits | identical in the 3 runs, by rank: 45 of 45 questions | — | 37 of 45 questions have S10's top 10 |
+| Recall@10, Hit@10, MRR, nDCG@10 | 0.522, 0.972, 0.781, 0.508 | none | 0.552, 1.000, 0.813, 0.535 |
+| AC1 | 100% (34 of 34 answered) | none | 100% (36 of 36) |
+| AC2 | 100% (43 of 43) | none | 100% (43 of 43) |
+| AC3 | 100% (7 of 7) | none | 100% (7 of 7) |
+| AC5 | 8 of 10 (q01, q16 fail) | none | 8 of 10 (the same 2) |
+| AC6 | 8 of 9 (q02 fails) | none | 8 of 9 (the same 1) |
+| False refusals | 2 of 36 (q01, q03) | none | 0 of 36 |
+| Errors | 0 | none | 0 |
+| p95 latency | 18.1 s | 16.6–19.0 s (runs: 19.0, 18.6, 16.6) | 16.3 s (14.9–18.7 s) |
+| Retrieve p95 | 8.4 s | 8.0–8.8 s | 6.9 s (6.3–7.8 s) |
+| Mean latency | 13.0 s | 12.4–13.5 s | 11.4 s (11.0–12.0 s) |
+| Cost per golden question | $0.0379 | $0.0377–0.0384 | $0.0378 ($0.0377–0.0379) |
+| Cost per run, c01 and c02 included | $5.10 for the 3 | $1.69, $1.72, $1.69 | $5.08 for the 3 |
+| Input tokens per run (golden) | 284,329 | identical | 285,061 |
+| Output tokens per run (golden) | — | 24,187–25,662 | 23,966–24,417 |
+| Stale rate, temporal accuracy, router accuracy | 0.000, 0.522, 0.972 | none | the same |
+| Authority selection | 0.889 (8 of 9) | none | 1.000 (9 of 9) |
+| Conflict precision, raw | 0.837 | 0.818–0.850 | 0.878 (0.818–0.952) |
+| Conflict precision, judged (below) | 0.934 | 0.900–0.955 | 0.955–1.000 |
+| Conflict recall | 0.346 (of 52 reachable) | 0.327–0.365 | 0.333 (0.317–0.350, of 60) |
+| AC4 | 1 of 4 | none | 2 of 4 by matching; 1 of 4 after q01's summary check (S12) |
+
+- **AC1 counts answered answers only,** so q01's and q03's refusals leave 34.
+- **The costs with c01 and c02** come from each run's rows at the `GENERATION_PRICE_*` prices (the eval's own cost function, in a scratch script), as in S10.
+- **Both halves of the latency grew** (each row's `latency_s` minus its `retrieve_s`, golden rows):
+  - Retrieve mean: 5.11–5.84 s in S10, 5.81–6.50 s now.
+  - Answer-call mean: 5.92–6.13 s in S10, 6.56–6.97 s now.
+  - The slowest single question was q04 in run 1, at 27.99 s. The p95 is the 41st of 43 (19.00 s in that run).
+
+### Against the Phase 1 thresholds
+
+The thresholds are the product spec's. Each result covers all 3 runs.
+
+| Threshold | Final | Result |
+|---|---|---|
+| Recall@10 ≥ 0.46, MRR ≥ 0.69, nDCG@10 ≥ 0.45, Hit@10 ≥ 0.944 | 0.522, 0.781, 0.508, 0.972 | pass |
+| AC1, AC2, AC3: 100% (hard gates) | 100%, 100%, 100% in each run | pass |
+| False refusals no more than the dense baseline's range (2–3 of 36) | 2 of 36 in each run | pass, at the range's low end |
+| p95 latency ≤ 23 s | 16.6–19.0 s | pass |
+| Cost per question ≤ $0.06 | $0.0377–0.0384 | pass |
+| Stale rate ≤ 0.01, temporal accuracy ≥ 0.51 | 0.000, 0.522 | pass |
+| Authority selection ≥ 0.88, router accuracy ≥ 0.90 | 0.889, 0.972 | pass |
+| Conflict precision, judged, ≥ 0.90 | 0.900–0.955 | pass; run 1 is on the line |
+| Conflict recall ≥ 0.30 | 0.327–0.365 | pass |
+| AC4: 4 of 4 (hard gate) | 1 of 4 | miss: a stated exception since S12 |
+| AC5, AC6 | 8 of 10, 8 of 9 | stated exceptions since S12, failed by the same questions |
+
+### Per question: what moved
+
+From the saved rows of both sets of runs: `questions.jsonl` and `conflict_questions.jsonl`, compared by a read-only scratch script that reuses the eval's own matching.
+
+**Where the top 10 changed** (deterministic: the same in all 3 runs of each set):
+
+| Question | What moved (S10 → now) | Its top 10 now |
+|---|---|---|
+| q01 (CURRENT): "How many Kubernetes minor releases happen per year?" | Recall@10 0.571 → 0.000, Hit@10 1 → 0, MRR 0.500 → 0.000. Answered ×3 → `insufficient_evidence` ×3 (a false refusal). Flags 2 of 2 matched (k02, k05) ×3 → no flags. k02, k05, k06 and k63 out of reach | Discussion #1290's comments at ranks 2–10 |
+| q03 (CHANGE): "When was the move to three releases a year decided, and which release was the first to follow it?" | Recall@10 0.667 → 0.167, MRR 1.000 → 0.333, nDCG@10 0.657 → 0.151. Answered ×3 → `insufficient_evidence` ×3 (a false refusal). 0 flags → 1 unmatched flag per run (judged below). k64 out of reach | PR #2567's and #1290's comments at 9 of 10 ranks |
+| q05 (unanswerable) | Still refused. k09 out of reach | GitHub texts at ranks 1–10 |
+| q27 (unanswerable) | Still refused. k40 and k41 out of reach | GitHub texts at ranks 3–10 |
+| q02, q04, q22, q26 | S13's small moves: q02 MRR 0.111 → 0.125; q04 nDCG@10 0.521 → 0.503; q26 nDCG@10 0.807 → 0.818; q22's scores unchanged. No answer check moved | GitHub texts in q02's, q04's and q22's; q26's candidates changed (S13) |
+
+- **The refusals' reasons,** run 1, verbatim:
+  - q01: "No chunk states the cadence that was decided or is in effect at 1.37. The KEP chunk covers only the motivation (4/year at the time, 3 in 2020), and the discussion comments are opinions, not a decision."
+  - q03: "The chunks are proposals and discussion comments only. None records a final decision, a merge or approval date, or which release actually first ran on the three-per-year cadence."
+- **q05 and q27 are unanswerable,** so `make eval-retrieval` doesn't score them, and S13's re-check didn't list them.
+
+**Where only the answers moved** (same top 10; the model differs from run to run):
+
+| Question | S10 (runs 1, 2, 3) | Now (runs 1, 2, 3) |
+|---|---|---|
+| c01 (conflict set) | `insufficient_evidence`, answered, `insufficient_evidence` | `insufficient_evidence` ×3 (not in the golden false-refusal count) |
+| q25 | k34 and k36 found ×3 | k34 found ×3; k36 in no run |
+| q36 | k51 found ×3 | k51 in runs 1 and 2 |
+| q12 | k13 in no run | k13 in run 1 |
+| q21 | k26 in no run | k26 in run 2 |
+| q32 | k45 ×3 | k45 ×3; k46 too in run 1 |
+| q33 | k49 in no run | k49 in run 2 |
+| q18, q34, q35, q45: unmatched flags | q18 in runs 1, 2; q34 in 1; q35 in 1, 2, 3; q45 in 1, 2 | q18 in runs 1, 2; q34 in 2, 3; q35 in 2, 3; q45 in 1 (below) |
+
+### Conflict precision and recall
+
+**Per run.** Precision and recall are as defined in [S10](#the-s10-eval-s10-t8).
+
+| Run | Flagged (rule, model) | Precision | Rule; model | Recall | Rule kinds; `texts` | Unreachable |
+|---|---|---|---|---|---|---|
+| 1 | 20 (8, 12) | 0.850 (17 of 20) | 8 of 8; 9 of 12 | 0.346 (18 of 52) | 8 of 8; 10 of 44 | 10 |
+| 2 | 22 (8, 14) | 0.818 (18 of 22) | 8 of 8; 10 of 14 | 0.365 (19 of 52) | 8 of 8; 11 of 44 | 10 |
+| 3 | 19 (8, 11) | 0.842 (16 of 19) | 8 of 8; 8 of 11 | 0.327 (17 of 52) | 8 of 8; 9 of 44 | 10 |
+
+- **The rules are exact again:** 8 of 8 in precision and recall, in every run.
+
+**Every unmatched flagged conflict, with the LLM's verdict.** As in S10, each pair was read against its stored chunk text, from the dev database with a read-only session, and S10's verdicts are the precedents:
+
+| Question | Pair (prevails in bold), kind | Runs | The model's summary (first run) | Verdict |
+|---|---|---|---|---|
+| q03 | `gh:enhancements/pull/2567`, two comments by @jeremyrickard: 48381 (2021-04-13) vs. 48391 (2021-04-14), contradiction, unresolved | 1, 2, 3 | "48381 says the KEP proposes making the change to 3 releases in 1.22, while the later update in 48391 says 1.22 is for communication and the policy takes force in 1.23." | **Not real, borderline.** Both give the same milestones: 48381 "Making the change to 3 releases 1.22 (KEP is alpha\*)", "Promoting to beta in 1.23"; 48391 "`alpha` for 1.22 … communication", "`beta` for 1.23, when we will the policy in force". The update says what each milestone means. A reader could take "the policy in force" in 1.23 as moving the change |
+| q18 | `gate:StrictIPCIDRValidation` 10419 (1.33–1.35) vs. **10420** (1.36–now), supersession | 1, 2 | "The older feature-gate page lists only an open-ended alpha stage from 1.33, while the newer page ends alpha at 1.35 and adds beta (default on) from 1.36; the newer page is valid at 1.37 and wins." | **Real** (as in S10). Alpha from 1.33 with no end vs. alpha to 1.35, then beta from 1.36 |
+| q34 | `gate:KMSv2` 9930 (1.29–1.31) vs. **9931** (1.32–now), supersession | 2, 3 | "The older feature-gate entry lists KMSv2 stable from 1.29 with no end, while the newer entry (valid at 1.37) ends stable at 1.31 and marks the gate as removed." | **Real** (as in S10). Stable with no end vs. stable to 1.31 and `removed: true` |
+| q35 | the v1.28 release blog, one section: 41925 (1.28) vs. **42160** (1.36–now), supersession | 2, 3 | "The older version of the 1.28 blog says only the v1beta1 API group needed enabling for beta, while the newer version (valid at 1.37, so preferred) says both the API group and the ValidatingAdmissionPolicy feature gate were required." | **Real, borderline** (as in S10). "enable the `admissionregistration.k8s.io/v1beta1` API group" vs. "enable both the … API group and the `ValidatingAdmissionPolicy` feature gate" |
+| q45 | `kep:1880`, one section: 24104 (1.24–1.26) vs. **24214** (1.28–1.30), supersession | 1 | "The older KEP draft targets alpha in 1.25 and calls the default object ServiceCIDRConfig, while the newer text says 'N+1' and calls it ServiceCIDR; the newer tier-3 text (with stable observed) prevails over the tier-5 draft." | **Not real** (as in S10). The author dropped this pair at S10-T7 (d25, "a type renamed during design"). "upgrade to 1.25" → "upgrade to N+1" removes a value |
+
+- **q03's pair is the first flag between two GitHub texts.** Conflict set v0 predates them, so none of its conflicts can match one.
+- **The model read q03's pair as rival plans in every run.** Run 3's q03 refusal says "the chunks only give proposed plans (1.22 versus 1.23)".
+
+**Raw and judged precision:**
+
+| Run | Raw | Unmatched judged real | Judged |
+|---|---|---|---|
+| 1 | 0.850 (17 of 20) | 1 of 3 (q18) | 0.900 (18 of 20) |
+| 2 | 0.818 (18 of 22) | 3 of 4 (q18, q34, q35) | 0.955 (21 of 22) |
+| 3 | 0.842 (16 of 19) | 2 of 3 (q34, q35) | 0.947 (18 of 19) |
+
+- **Judged precision is 0.934 on average** (0.900–0.955). The threshold (≥ 0.90) holds in each run, and run 1 is on the line.
+- **If q35 is judged not real:** 18 of 20, 20 of 22 and 17 of 19 (0.900, 0.909, 0.895). Run 3 would then fall under 0.90.
+- **If q03 is judged real:** 19 of 20, 22 of 22 and 19 of 19.
+- **Every verdict here is the LLM's.** q03's, the one new pair, is for the developer to confirm.
+
+**AC4 per seed:**
+
+| Seed | Question | Retrieved | Surfaced (runs 1, 2, 3) |
+|---|---|---|---|
+| k01: KEP-4858 claims stable, 1.37 says beta | q18 | yes | yes, yes, yes (the rule) |
+| k02: KEP-2572's out-of-date status | q01 | no (S10: yes) | not retrieved |
+| k03: KEP-2579's beta date | q08 | no | not retrieved |
+| k04: `versioning.md`'s "every three months" | c01 | no | not retrieved |
+
+- **1 of 4, as at Phase 1's close, with a new cause for k02.** S12 counted it a miss on the summary check; now search misses it, because q01's top 10 is #1290's comments.
+
+**Other checks:**
+
+- **Loser-only answers:** 0 in each run.
+- **q48:** `insufficient_evidence` in all 3 runs. S10-T5c's fix holds.
+
+### What it means
+
+- **The hard gates AC1–AC3 hold:** 100% in each run.
+- **AC4, AC5 and AC6 stay Phase 1's stated exceptions.** The counts are unchanged: 1 of 4, 8 of 10, 8 of 9.
+- **What the GitHub texts cost on v0:**
+  - 2 false refusals (q01, q03);
+  - MRR −0.032;
+  - authority selection −1 question;
+  - AC4's q01 seed lost to search;
+  - 8 conflicts out of reach.
+  - v0's labels and conflicts predate the new texts, so they can't credit them (S13).
+- **Precision drops: raw 0.878 → 0.837, judged 0.955–1.000 → 0.900–0.955.** Two causes, both GitHub texts:
+  - q01's 2 matched flags per run are gone;
+  - q03's new pair is unmatched in every run.
+- **Answers cost the same as in S10** ($0.0379 vs. $0.0378 a question).
+- **They are slower:** p95 18.1 s vs. 16.3 s, still under the 23 s ceiling in every run.
+- **No scoring was changed.** Demoting the GitHub texts, e.g. in CURRENT mode, stays parked (S13; S18-R1 s2).
+
 ## Known limits
 
 - **Answers aren't graded against the expected answer.** There's no grading model yet, so AC1–AC3 check structure, not correctness.
 - **37 of the 43 questions were checked by an LLM only.** The author spot-checked 6.
 - **Latency leaves out the question embedding, the router call and the reranker's load.** The vectors and routes are stored, so a live `orgknow ask` adds one Voyage call and, in temporal and authority modes, one router call (p95 4.27 s). Each `orgknow ask` also loads the reranker (~7.5 s); the API (`make serve`, S12-T2) loads it once at startup, so a `POST /query` request doesn't.
 - **AC5 and AC6 check citations' release windows, not claim support,** and their rules were chosen on the runs they score (S12). Golden set v1 is their clean test.
-- **The GitHub texts lower v0's retrieval numbers** (S13): MRR 0.813 → 0.781, and q01 loses all its labeled hits (Recall@10 0.571 → 0.000) to Discussion #1290's comments. v0's labels can't credit the new texts; no scoring was changed.
-- **Decision-chain completeness rests on 2 chains,** with gold labels drafted by an LLM, who knew the rules (S13). It shows feasibility, not a rate.
-- **A chain's links count only as full URLs** (S13-R1): a bare `#N` isn't read, so KEP-3015's decision step is missing `no_link`.
+- **S13's limits are in its section above:** the GitHub texts lower v0's MRR (0.813 → 0.781); decision-chain completeness rests on 2 chains with LLM-drafted labels; a bare `#N` link isn't read.
 - **Retrieve p95 is n/a for the dense and hybrid runs.** They ran before the retrieval step was timed (S08-T3).
   - Their p95 latency and cost were added to each `summary.json` from its `questions.jsonl` by `make eval-resummarize`, and match the numbers above.
 - **The time metrics are n/a for the dense, hybrid and rerank runs.** Their hits don't record whether they're current or their release windows (S09-T3). `make eval-retrieval` scores both for any mode, free.

@@ -21,9 +21,10 @@ class Settings(BaseSettings):
     # How long /ready, POST /query, GET /decisions, the /ingestion-jobs routes and the worker wait
     # for a new DB connection. libpq treats values below 2 as 2.
     db_connect_timeout_s: int = 2
-    # The API's per-request connections (POST /query, GET /decisions; `db/connect.py`) cancel any
-    # one SQL statement after this many milliseconds, and the request is a 503 (S14-R1 decision
-    # 2). At least 1: Postgres reads 0 as no timeout.
+    # The API's per-request connections (POST /query, GET /decisions, the /ingestion-jobs routes;
+    # `db/connect.py`) cancel any one SQL statement after this many milliseconds, and the request
+    # is a 503 (S14-R1 decision 2). The worker's connection has none. At least 1: Postgres reads 0
+    # as no timeout.
     db_statement_timeout_ms: int = Field(default=10_000, ge=1)
     # A relative path is resolved from the working directory; the make targets run from the
     # repo root.
@@ -150,8 +151,9 @@ class Settings(BaseSettings):
     # No key: the answer step and the router can't run (tests use fakes).
     anthropic_api_key: SecretStr | None = None
     # The Anthropic client's retries (0: never), for the answer and the router call alike, by the
-    # SDK's rule: no connection, a timeout, HTTP 408, 409, 429 or 5xx (S14-R1 open call c:
-    # the SDK's default, 2).
+    # SDK's rule: no connection, a timeout, HTTP 408, 409, 429 or 5xx; an error response's
+    # `x-should-retry` header, when `true` or `false`, decides first (S14-R1 open call c: the
+    # SDK's default, 2).
     anthropic_max_retries: int = Field(default=2, ge=0)
     # Langfuse tracing (ADR-006 D3): one trace per `ask`. Either key unset: tracing off, and `ask`
     # still runs. The public key is a SecretStr too, so neither key is ever printed.

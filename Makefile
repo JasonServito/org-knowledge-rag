@@ -2,7 +2,7 @@
 .PHONY: fmt check test-int up down migrate seed fetch-github ingest lifecycle ingest-report \
 	reset-corpus embed chains worker eval-check eval-check-chains eval-chain eval-sections \
 	eval-retrieval eval-conflicts eval-routes eval-smoke eval eval-table eval-resummarize serve \
-	image image-check tf-check
+	image image-check tf-check audit deploy ui-node ui ui-check ui-e2e
 
 # Integration tests use their own database in the same container, so data ingested into the dev
 # database never collides with test rows (S04-R1 decision 1). CI overrides it with its service DB.
@@ -251,9 +251,62 @@ image-check:
 # Check the Terraform code in infra/ offline (S15-T4, ADR-014): the format, then init (downloads
 # the providers pinned in infra/.terraform.lock.hcl, ~800 MB the first time; no backend), validate,
 # and the tests in infra/tests with mocked providers. No AWS account or login: nothing is planned
-# against AWS or created. Free. Not part of `make check` (CI gets Terraform in S16).
+# against AWS or created. Free. Not in `make check`; CI runs it as its own `tf-check` job (S16).
 tf-check:
 	terraform -chdir=infra fmt -check -recursive
 	terraform -chdir=infra init -backend=false -input=false
 	terraform -chdir=infra validate
 	terraform -chdir=infra test
+
+# Audit the locked runtime packages for known vulnerabilities (S16-T2, ADR-015 D4): export the
+# lock as the image installs it (no dev group) to build/ (gitignored), then pip-audit checks each
+# pinned version against PyPI's advisory data. Fails on any known vulnerability; it reports no
+# severity. torch, from PyTorch's CPU index, is "not found on PyPI": listed, not audited, not a
+# failure. An advisory with no fix is accepted below with `--ignore-vuln <ID>` and a one-line
+# reason (none today). Free (~7 s), but needs the network. CI runs it on every PR.
+audit:
+	uv export --frozen --no-dev --no-hashes --no-emit-project --format requirements-txt --quiet \
+		--output-file build/audit-requirements.txt
+	uv run pip-audit -r build/audit-requirements.txt --no-deps --disable-pip
+
+# Deploy this commit to the window's server from the laptop (S16-T4, ADR-015 D2): refuse
+# uncommitted changes to tracked files (untracked files don't count), then `make audit`,
+# `make image` and `make image-check`; read the registry and the server from Terraform's outputs
+# (none: it stops, "is a window open?"); push the image to ECR tagged with the commit's short SHA;
+# stop on any CRITICAL finding of ECR's scan (HIGH and below are printed); run
+# `orgknow-deploy <tag>` on the server through SSM Run Command, polled every 10 s up to 20 min;
+# there, retry /ready up to 120 s and print the ingestion fingerprint. Needs a window's stack and
+# the developer's AWS login (`export AWS_PROFILE=orgknow`, the runbook). The runbook's manual
+# commands are the fallback.
+deploy:
+	bash scripts/deploy.sh
+
+# The UI (S17, ADR-016) is a Next.js app in ui/, with its own Node toolchain; `make check` stays
+# Python-only. Each UI target first checks that `node` and `npm` are Linux ones (Node
+# ui/.nvmrc, via nvm): WSL's PATH also holds Windows' npm (/mnt/c/...), which can't run here.
+# Then that the packages are installed (`npm ci` in ui/; CI runs it). Next's telemetry (anonymous
+# usage data sent to Vercel) is off in every UI target, so in CI too (S18-R1 c2).
+ui-node:
+	@for tool in node npm; do case "$$(command -v $$tool)" in ""|/mnt/*) \
+		echo "make: no Linux $$tool on PATH: install Node $$(cat ui/.nvmrc) in WSL with nvm" >&2; \
+		exit 1;; esac; done
+	@test -d ui/node_modules || { echo "make: no ui/node_modules: run 'npm ci' in ui/" >&2; exit 1; }
+
+# The UI's dev server on http://127.0.0.1:3000. It forwards /api/* to API_BASE_URL (default
+# http://127.0.0.1:8000: `make serve`), waiting up to API_TIMEOUT_S (default 120) per request.
+# Both are read at its start. Free, but an ask through it is PAID, as with `make serve`.
+# Stop it with Ctrl-C.
+ui: ui-node
+	cd ui && NEXT_TELEMETRY_DISABLED=1 npm run dev
+
+# The UI's gate: ESLint (Next's rules), the typecheck (it also checks the fixtures against the
+# API's types), the Vitest tests (run in America/Edmonton time), then `next build`. Free and
+# offline. CI runs it in the `ui` job.
+ui-check: ui-node
+	cd ui && export NEXT_TELEMETRY_DISABLED=1 && npm run lint && npm run typecheck && npm test && npm run build
+
+# The UI's browser smoke test: Playwright in Chromium against the built app on port 3001 (run
+# `make ui-check` first: it builds). Needs Chromium once: `npx playwright install chromium` in
+# ui/ (CI adds its Linux libraries with --with-deps). Free and offline.
+ui-e2e: ui-node
+	cd ui && NEXT_TELEMETRY_DISABLED=1 npm run e2e

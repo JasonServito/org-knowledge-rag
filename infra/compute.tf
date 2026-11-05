@@ -19,6 +19,11 @@ resource "aws_instance" "server" {
   # The boot script needs the internet (dnf, once): wait for the subnet's route to the gateway.
   depends_on = [aws_route_table_association.public]
 
+  # The EC2 console's Name column (S15-T6); Project comes from the provider's default tags.
+  tags = {
+    Name = "orgknow-server"
+  }
+
   # Runs once, as root, at the first boot. It starts no container (c1): the first start is the
   # runbook's `orgknow-deploy <tag>`; after a reboot, Docker's restart policy brings both back.
   user_data = templatefile("${path.module}/boot.sh.tftpl", {

@@ -3,10 +3,12 @@
 The exact commands to create the AWS environment of ADR-014, load it, start it, check it, update it and remove it.
 Written in S15-T5 from the `Makefile`, the `Dockerfile`, `infra/` and the names table of the S15 run plan.
 
+S16-T5 moved steps 2, 4, 6 and 8 to `make audit` and `make deploy` (ADR-015); the manual commands stay as the fallback.
+
 > **Cost: about US$1.56 a day while the environment exists** (US$47.49 a month ÷ 30.4 days; S15 run plan, `docs/security-review.md` 6.1).
 > Billing starts with step 2's `apply` and stops only with [step 9's teardown](#9-teardown).
 >
-> **The environment exists only in windows** (ADR-014's 2026-10-16 amendment): each is created for a task (S15-T6, maybe a few hours in S16, a week in S18) and ends with step 9. Each sets its own budget in step 2.
+> **The environment exists only in windows** (ADR-014's 2026-10-16 amendment): each is created for a task (S15-T6, maybe a few hours in S16, up to 2 days in S18: the 2026-11-02 amendment) and ends with step 9. Each sets its own budget in step 2.
 
 ## Before you start
 
@@ -14,8 +16,10 @@ Written in S15-T5 from the `Makefile`, the `Dockerfile`, `infra/` and the names 
   - **Laptop:** WSL Ubuntu, in the repo root.
   - **Server:** a shell on the EC2 server, opened with Session Manager (step 5).
 - **Shell variables** (`REPO`, `TAG`, `OUT`, `BUCKET`, `INSTANCE_ID`, `DATABASE_URL`, `JOB`) last only in their terminal. Each step sets the ones it uses.
-- **One-time order:** steps 1–7 in order. Later deploys: step 8. The end: step 9.
-- **Nothing here has run against AWS yet.** Step 5's data path was rehearsed on the laptop (see "Local rehearsal"); the rest is checked against the code only (see "Not verified").
+- **One-time order:** steps 1–7 in order. **The data (step 5) comes before `make deploy` (step 6):** step 6 says why. Later deploys: step 8. Showing the system: [demo hours](#demo-hours-4-cores-s18). The end: step 9.
+- **Run against AWS twice:** S15-T6 (2026-10-27/28, steps 1–7 and 9) and S16-T6 (2026-11-01, steps 2, 3, 5, 6, 8 and 9 with `make deploy`). Their outputs are in [`deployment-evidence.md`](deployment-evidence.md); what is still unchecked is under "Not verified".
+- **Tip:** step 4's `make image` and step 5's dump and archive need no AWS. Doing them before step 2's `apply` shortens the paid window.
+  - With the build cached, `make deploy`'s audit, build and image check took 9.5 s (S16-T4).
 
 **AWS words used below:**
 
@@ -43,11 +47,12 @@ Written in S15-T5 from the `Makefile`, the `Dockerfile`, `infra/` and the names 
 | 1 | Account set-up (once) | Console, laptop | No |
 | 2 | Create | Laptop | AWS hours start |
 | 3 | Secrets | Laptop | — |
-| 4 | Image | Laptop | — |
+| 4 | Image (pushed by step 6's `make deploy`) | Laptop | — |
 | 5 | Data | Laptop, then server | — |
-| 6 | Start | Server | — |
+| 6 | Start: `make deploy` | Laptop (fallback: server) | — |
 | 7 | Check (7.6 is T6's measurements) | Laptop, server | One ask: ~US$0.03 |
-| 8 | Update | Laptop, server | — |
+| 8 | Update: `make deploy` | Laptop (roll back: server) | — |
+| — | Demo hours: 4 cores, then back | Laptop, server | ~US$0.23 an hour, not ~US$0.04 |
 | 9 | Teardown | Laptop | AWS hours stop |
 
 ## 1. Account set-up (once)
@@ -57,12 +62,13 @@ The account has only the root login today. This step adds MFA to it and an admin
 **Console** (as root; region **US East (N. Virginia)**, `us-east-1`, top right). Button names are AWS's docs' names.
 
 1. **MFA on root:** your account name (top right) → **Security credentials** → **Multi-factor authentication (MFA)** → **Assign MFA device** → **Authenticator app**.
-2. **Enable Identity Center:** open the IAM Identity Center console → **Enable**. It creates an AWS Organization with this account as its management account (free).
+2. **Enable Identity Center:** first check the region (top right) says **N. Virginia**: the instance's region can't be changed later. Open the IAM Identity Center console → **Enable**. It creates an AWS Organization with this account as its management account (free).
+   - Choose **Single-Region instance**. The default, Multi-Region, creates a customer-managed KMS key (about US$1/month) that Terraform doesn't manage, so it outlives every teardown. Its settings should show an AWS owned key.
 3. **Add your user:** **Users** → **Add user** (your name and email). Accept the invitation email: set a password and register an MFA device.
 4. **Admin rights:** **Permission sets** → **Create permission set** → predefined **AdministratorAccess**.
    - Why admin: Terraform creates an IAM role and policy (`infra/compute.tf`); AWS's suggested `PowerUserAccess` can't.
 5. **Assign:** **AWS accounts** → this account → **Assign users or groups** → your user, with AdministratorAccess.
-6. **Note the AWS access portal URL** (the Identity Center dashboard). It is the "SSO start URL" below.
+6. **Note the AWS access portal URL** (the Identity Center dashboard). It is the "SSO start URL" below. Of the endpoints listed, use the **IPv4-only** one (`https://d-….awsapps.com/start`).
 7. From now on, use root only for account and billing settings.
 
 Source: [root MFA](https://docs.aws.amazon.com/IAM/latest/UserGuide/enable-virt-mfa-for-root.html); [enable Identity Center](https://docs.aws.amazon.com/singlesignon/latest/userguide/get-set-up-for-idc.html); [Identity Center getting started](https://docs.aws.amazon.com/singlesignon/latest/userguide/getting-started.html).
@@ -130,10 +136,24 @@ aws sts get-caller-identity
 
 - Expected: your account ID and a role ARN with `AdministratorAccess` in it.
 - Run `export AWS_PROFILE=orgknow` in **every new laptop terminal**; when a command says the token expired, run `aws sso login` again.
+- **Every MFA code rejected:** check the phone's clock. The codes are made from the time, so a phone set by hand fails them all. Turn on its network-provided time and time zone (S16-T6: a phone set an hour back, to match Windows, after Alberta stayed on UTC−6 on 2026-11-01).
 
 Source: [configure SSO for the CLI](https://docs.aws.amazon.com/cli/latest/userguide/sso-configure-profile-token.html). Terraform's AWS provider reads the same profile from `AWS_PROFILE`.
 
 ## 2. Create
+
+**Laptop:** first, audit the locked Python packages for known vulnerabilities (ADR-015 D4). Free (~7 s), no AWS: a new advisory is fixed in a PR before the window, not during it.
+
+```bash
+make audit
+```
+
+- Expected: `No known vulnerabilities found`, then a `Skip Reason` table with 1 row: `torch Dependency not found on PyPI and could not be audited: torch (2.14.1+cpu)`.
+  - `torch` comes from PyTorch's CPU index, so it isn't audited; that is not a failure.
+  - 2 `WARNING:pip_audit._cli:` lines about `--no-deps` come first; they are expected.
+- **Red** (`Found … known vulnerabilities …`): don't run `apply`. `make deploy` runs the same audit first and stops on it. Fix it in a PR, then pull `main`:
+  - a fixed version exists: bump the package, `uv lock --upgrade-package <name>`;
+  - no fix: accept it with `--ignore-vuln <ID>` and a one-line reason on the `Makefile`'s `audit` line.
 
 **Laptop:** set the 2 variables with no default, the alert email (`alert_email`) and the Langfuse host (`langfuse_base_url`), and this window's budget (`budget_usd`).
 
@@ -195,6 +215,7 @@ aws ssm describe-instance-information --query 'InstanceInformationList[].[Instan
 
 Source:
 
+- `Makefile` (`audit`); ADR-015 D4; S16 c7 (an advisory with no fix), c9 (the bump).
 - `infra/terraform.tfvars.example`, `infra/variables.tf` (`alert_email`, `langfuse_base_url`); `infra/outputs.tf`.
 - `infra/observability.tf` (`aws_sns_topic.alerts`, `aws_sns_topic_subscription.email`); the names table's SNS topic `orgknow-alerts`.
 - `infra/compute.tf` (`AmazonSSMManagedInstanceCore`: what lets Session Manager reach the server).
@@ -204,16 +225,29 @@ Source:
 
 Terraform created the 4 API-key parameters with the placeholder `set-me` and never changes their values after (plan c4). Set the real values now, after step 2 (before it, the names don't exist yet).
 
-**Laptop:** each key is read without echo, so it never appears on screen or in shell history. Paste it, then Enter.
+**Laptop** (in the repo root): each key is copied from `.env`, so nothing is pasted or printed. A hidden paste went wrong twice in S15-T6 (4 empty values, then one key pasted twice); reading the file can't. The cloud gets the laptop's keys.
 
 ```bash
 for NAME in ANTHROPIC_API_KEY VOYAGE_API_KEY LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
-  read -rsp "$NAME: " VALUE; echo
-  aws ssm put-parameter --name "/orgknow/$NAME" --type SecureString --overwrite --value "$VALUE"
+  VALUE=$(grep -E "^$NAME=" .env | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+  aws ssm put-parameter --name "/orgknow/$NAME" --type SecureString --overwrite --value "$VALUE" --query Version --output text
 done; unset VALUE
 ```
 
-- Expected: 4 small JSON replies, each with `"Version": 2` (version 1 was Terraform's placeholder).
+- Expected: 4 lines, each `2` (version 1 was Terraform's placeholder; re-running the loop in the same window prints `3`). An empty value fails with a `ValidationException` that names no key.
+- The `sed` drops double quotes around a value, if `.env` has them (a quoted Langfuse key, for example).
+
+**Laptop:** check each stored key against `.env`. It prints lengths and yes/no, never a value.
+
+```bash
+for NAME in ANTHROPIC_API_KEY VOYAGE_API_KEY LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY; do
+  S=$(aws ssm get-parameter --name "/orgknow/$NAME" --with-decryption --query Parameter.Value --output text)
+  E=$(grep -E "^$NAME=" .env | cut -d= -f2- | sed -E 's/^"(.*)"$/\1/')
+  echo "$NAME: length ${#S}, equal to .env: $([ "$S" = "$E" ] && echo yes || echo NO)"
+done; unset S E
+```
+
+- Expected: 4 lines ending `equal to .env: yes`, none with length 0.
 
 ```bash
 aws ssm get-parameters-by-path --path /orgknow --with-decryption --query "Parameters[?Value=='set-me'].Name" --output text
@@ -225,6 +259,13 @@ aws ssm get-parameters-by-path --path /orgknow --with-decryption --query "Parame
 Source: the names table's SSM parameters; `infra/ssm.tf` (`aws_ssm_parameter.api_key`, `aws_ssm_parameter.database_url`); ADR-014 D6; `docs/security-review.md` 2.2.
 
 ## 4. Image
+
+**`make deploy` (step 6) builds, checks and pushes the image**, tagged with the commit's short SHA. The manual commands below are the fallback.
+
+- **Don't run `make deploy` yet:** it also migrates the database, so it runs in step 6, after step 5's data (step 6 says why).
+- No AWS needed: `make image` now (or before step 2) fills the build cache that `make deploy` reuses.
+
+**Fallback (manual).**
 
 **Laptop:** build and check the one image, then push it to ECR with the git short SHA as its tag. Commit first, so the tag names what is built: `git status --short` should list no ` M` (changed) file.
 
@@ -256,7 +297,7 @@ docker tag orgknow:dev "$REPO:$TAG"
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "${REPO%%/*}"
 ```
 
-- Expected: `Login Succeeded`. `${REPO%%/*}` is the registry (the URL before its first `/`), as in the deploy script.
+- Expected: `Login Succeeded`. `${REPO%%/*}` is the registry (the URL before its first `/`), as in `scripts/deploy.sh`.
 
 ```bash
 docker push "$REPO:$TAG"
@@ -268,13 +309,14 @@ docker push "$REPO:$TAG"
 aws ecr describe-images --repository-name orgknow --query 'imageDetails[].imageTags' --output text
 ```
 
-- Expected: your tag. **Note it:** step 6 needs it.
+- Expected: your tag. **Note it:** step 6's fallback needs it.
+- The fallback has no ECR scan gate (`make deploy` stops on a CRITICAL finding): use it only when `make deploy` can't run.
 
 Source:
 
-- `Makefile` (`image`, `image-check`); the `ecr_repository_url` output (`infra/outputs.tf`).
+- `Makefile` (`deploy`, `image`, `image-check`); the `ecr_repository_url` output (`infra/outputs.tf`).
 - The names table: local image `orgknow:dev`; ECR repository `orgknow`, tags the git short SHA.
-- `infra/boot.sh.tftpl` step 3 (the same ECR login).
+- `scripts/deploy.sh` steps 1 and 4 (its clean-tree check; the same tag, login and push); ADR-015 D2.
 
 ## 5. Data
 
@@ -385,13 +427,19 @@ DATABASE_URL=$(aws ssm get-parameter --region us-east-1 --name /orgknow/DATABASE
 - The value holds the host, port 5432 and the password: never `echo` it. (The `rds_endpoint` output is the host alone; `DATABASE_URL` already holds both.)
 
 ```bash
+sudo docker pull -q pgvector/pgvector:0.8.1-pg18
+```
+
+- Pulled first, so the timed restore below measures only the restore.
+
+```bash
 time sudo docker run --rm -v "$HOME/orgknow.dump:/orgknow.dump:ro" pgvector/pgvector:0.8.1-pg18 pg_restore --no-owner --no-privileges --single-transaction -d "$DATABASE_URL" /orgknow.dump; echo "exit $?"
 ```
 
 - The image is `compose.yaml`'s, so `pg_restore` is the same version (18) as the laptop's `pg_dump`.
 - `--no-owner --no-privileges`: every object belongs to the user that restores it (`orgknow`); RDS's master user isn't a full superuser.
 - `--single-transaction`: all or nothing. A failed restore leaves the database empty, so the same command can run again.
-- Expected: no output, `exit 0`. Rehearsal: 40 s on the laptop; on RDS, unmeasured (the slice's risk: the vector index rebuild on 1 GiB). Record the time.
+- Expected: no output, `exit 0`. Rehearsal: 40 s on the laptop; on RDS, 1 min 30 s (S15-T6). Record the time.
 - A `NOTICE` line is information; an `error:` line means it failed.
 - If the session drops mid-restore, the container keeps running: `sudo docker ps` shows it until it ends. Don't start a second restore while it runs.
 
@@ -405,7 +453,7 @@ sudo docker run --rm pgvector/pgvector:0.8.1-pg18 psql "$DATABASE_URL" -c "SELEC
 rm orgknow.dump
 ```
 
-Stay in this shell for step 6.
+Keep this shell open: step 6's fallback, 7.4 and 7.6 use it.
 
 Source:
 
@@ -418,28 +466,96 @@ Source:
 
 ## 6. Start
 
-**Server** (same shell). `<tag>` is step 4's tag, e.g. `dbe2093`.
+One laptop command does step 4's push, this step's start and the free checks of 7.3–7.4 (ADR-015 D2).
+
+**Step 5 first.** `make deploy` migrates the database before it starts the app.
+
+- Before step 5, the database is empty: the migration would create every table, and step 5's restore (`--single-transaction`) would then fail, as the tables would already exist.
+- After step 5, the restored database is at the laptop's newest migration (`0009` today), so the migration has nothing to do.
+
+**Laptop, terminal A (new):** step 5's terminal is now the server shell. `make deploy` needs:
+
+- the AWS login: the `export` below and a live `aws sso login` (step 1);
+- Docker running; the window's stack, read from Terraform's outputs in `infra/terraform.tfstate` (step 2);
+- the boot script finished on the server, as step 5's `cloud-init status` showed: it writes `orgknow-deploy`;
+- every change committed: it refuses changed tracked files.
+- **Commit new files too:** untracked files don't stop it, but one under `src/` or `config/` would still be built into the image, under a tag that doesn't contain it.
+
+```bash
+export AWS_PROFILE=orgknow
+```
+
+```bash
+make deploy
+```
+
+Expected, in order (`scripts/deploy.sh`):
+
+1. `deploy: audit`, then step 2's audit output.
+2. `deploy: image <tag>` (the commit's short SHA), the build, then `image-check: ok (uid 10001, GIT_ALLOW_PROTOCOL=file, safe.directory *)`.
+3. `Login Succeeded`, the push, then `deploy: pushed <repo>:<tag>`. The first push uploads the whole image (2.61 GB on disk).
+4. `deploy: ECR scan: ` and the scan's counts by severity, as JSON. HIGH and lower are printed only.
+5. `deploy: server: command <id> sent; polling every 10 s, up to 20 min`, then, when the server is done, `deploy: server: Success`.
+6. The server's output, ending with `docker ps` (`orgknow-api` and `orgknow-worker`, both `Up`), `/ready: 200` and `Fingerprint: sha256:…`.
+7. Then the server's stderr: alembic's `INFO` lines. On a window's first deploy there is no `Running upgrade` line.
+8. `deploy: done: <repo>:<tag>. Compare the fingerprint with the laptop's (make ingest-report).`
+
+**If it stops**, nothing after that point ran. A fix mid-window is a commit and a rerun (ADR-015).
+
+| It stops with | Meaning | Then |
+|---|---|---|
+| The changed files, then `deploy: uncommitted changes to tracked files: commit them first, so the tag names what is built` | A tracked file is changed | Commit, then rerun |
+| pip-audit's `Found … known vulnerabilities …` | A new advisory | Step 2's fix, in a PR |
+| An `image-check:` line other than `ok` | The image breaks 1 of its 4 rules | Fix it in a PR |
+| `deploy: no ecr_repository_url or instance_id in Terraform's outputs: is a window open?` | No stack in `infra/terraform.tfstate` | Step 2 |
+| An AWS CLI error, alone or after `deploy: ` (e.g. an expired login) | The laptop's AWS login | `aws sso login` (step 1), then rerun |
+| `deploy: ECR's scan of <tag> did not complete` | ECR's scan failed or is still running (the script first waits up to 60 s for the scan to exist, then for it to finish: S16-T6), or an AWS error above it | Rerun; if it repeats, read the tag's scan status in the ECR console (repository `orgknow`) |
+| Each finding's name and link, then `deploy: ECR found N CRITICAL findings in <repo>:<tag>: not deploying` | A critical finding in the image's OS packages | Nothing was deployed. If Debian has a fix (`docker run --rm --user root orgknow:dev sh -c 'apt-get update -qq && apt-cache policy <package>'` shows a newer `Candidate`), upgrade that package in the `Dockerfile`'s late layer, pinned, as S16-T6 did for `libbrotli1`; or use a newer base-image digest. Commit, then rerun. No fix: take it to the next design review |
+| The server's output, then `deploy: the server's deploy ended with Failed` (or `TimedOut`, `Cancelled`) | A server step failed: its output shows which | A failed migration: step 8. `/ready: ` not `200`: 7.1's logs |
+| `deploy: the server's deploy is still InProgress after 20 min (command <id>)` | The laptop stopped waiting; the server may still be working | Server: `sudo docker ps`, then 7.3–7.4 |
+
+**Laptop** (terminal A): compare the server's fingerprint with the laptop's database (it needs `make up`, as in step 5).
+
+```bash
+make ingest-report | grep Fingerprint
+```
+
+- Expected: the server's line exactly: `Fingerprint: sha256:0f0ee07847e8b05fcde7f1491c628618cfb42a555ec5b098f1c2effd52ee4165`.
+- Different: stop, and compare the full reports (7.4's command without `| grep Fingerprint`, and `make ingest-report`).
+
+**What it runs on the server**, as root, through SSM Run Command (`scripts/deploy.sh` step 6):
+
+1. `orgknow-deploy <tag>` (`infra/boot.sh.tftpl`):
+   1. writes every `/orgknow/*` parameter into `/etc/orgknow/env` (root only, mode 0600);
+   2. on the first deploy only: downloads and unpacks `corpus_cache.tar.gz` (396 MB);
+   3. pulls the tag; the ECR credential helper gets the registry token, so there's no `docker login` and no token on disk (ADR-015 D3);
+   4. removes the old containers, then runs `alembic upgrade head` in a one-off container from the new image; a failure stops it here and starts nothing (step 8);
+   5. starts both containers, each with `--restart unless-stopped`: `orgknow-api` on `127.0.0.1:8000` and `orgknow-worker`.
+2. `/ready`, retried on the server for up to 120 s (the reranker loads in 14.4 s on the laptop): 7.3's check, without the tunnel.
+3. 7.4's fingerprint command.
+
+**Fallback (manual).**
+
+**Server** (step 5's shell). `<tag>` is step 4's fallback tag, e.g. `dbe2093`.
 
 ```bash
 sudo /usr/local/bin/orgknow-deploy <tag>
 ```
 
 - **Use the full path.** Amazon Linux's `sudo` likely searches a short `PATH` (`secure_path`) without `/usr/local/bin`, so `sudo orgknow-deploy` could say "command not found" (not verified).
-- What it does (`infra/boot.sh.tftpl`):
-  1. writes every `/orgknow/*` parameter into `/etc/orgknow/env` (root only, mode 0600);
-  2. on the first deploy only: downloads and unpacks `corpus_cache.tar.gz` (396 MB);
-  3. logs in to ECR and pulls the tag;
-  4. replaces both containers, each with `--restart unless-stopped`: `orgknow-api` on `127.0.0.1:8000` and `orgknow-worker`.
 - Expected at the end: `docker ps` with `orgknow-api` and `orgknow-worker`, both `Up`.
-- The API loads the reranker before it answers (14.4 s on the laptop). Give it a minute before step 7.
+- The API loads the reranker before it answers (14.4 s on the laptop). Give it a minute, then 7.3 and 7.4.
 
-Source: the names table (deploy script `/usr/local/bin/orgknow-deploy <image-tag>`, container names, env file, API port); `infra/boot.sh.tftpl`; ADR-014 D4; plan c1 (the boot script starts nothing).
+Source:
+
+- `Makefile` (`deploy`); `scripts/deploy.sh` (its steps and messages); ADR-015 D2, D3; S16 c1–c5.
+- The names table (deploy script `/usr/local/bin/orgknow-deploy <image-tag>`, container names, env file, API port); `infra/boot.sh.tftpl`; ADR-014 D4; plan c1 (the boot script starts nothing).
 
 ## 7. Check
 
 ### 7.1 Logs
 
-**Laptop, terminal A (new):** step 5's terminal is now the server shell. Both containers log to CloudWatch, group `/orgknow`, streams `api` and `worker`.
+**Laptop, terminal A** (step 6's). Both containers log to CloudWatch, group `/orgknow`, streams `api` and `worker`.
 
 ```bash
 export AWS_PROFILE=orgknow
@@ -467,10 +583,13 @@ aws ssm start-session --target "$INSTANCE_ID" --document-name AWS-StartPortForwa
 
 - Expected: `Port 8001 opened for sessionId …` and `Waiting for connections...`.
 - Port 8001, not 8000, so a `make serve` on the laptop can never answer in the server's place.
+- Session Manager ends a session after 20 idle minutes (the tunnel and the server shell alike): when `curl` can't connect or the shell stops answering, run the command again.
 
 Source: [port forwarding](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-sessions-start.html#sessions-start-port-forwarding); the names table's API port.
 
 ### 7.3 Health and readiness
+
+`make deploy` already checked `/ready` on the server (`/ready: 200`). These go through the tunnel, as a client's request would; after step 6's fallback, they are the first check.
 
 **Laptop, terminal B.** Set its variables first (7.6 uses them):
 
@@ -494,6 +613,8 @@ curl -s -w ' %{http_code}\n' localhost:8001/ready
 Source: `docs/interfaces.md` (`GET /health`, `GET /ready`).
 
 ### 7.4 The fingerprint on RDS
+
+After `make deploy`, this is done: it printed the fingerprint, and step 6 compared it. After step 6's fallback, run it.
 
 **Server** (the step 5 shell, or a new `aws ssm start-session --target "$INSTANCE_ID"` from a new laptop terminal after 7.3's 2 lines; in a new shell, set `DATABASE_URL` again with step 5's command, for 7.6d):
 
@@ -545,7 +666,7 @@ aws cloudwatch get-metric-statistics --namespace AWS/EC2 --metric-name CPUCredit
   --query 'sort_by(Datapoints, &Timestamp)[-1].Minimum'
 ```
 
-- Start 7.6b at **30 or more**. The eval needs about 14 credits (36 questions × ~11.5 s × 2 CPUs ÷ 60; 1 credit = 1 CPU for 1 minute). Below 30: wait and check again.
+- Start 7.6b at **30 or more**. In S15-T6 the eval kept 1 vCPU busy for ~40 minutes, and the balance fell from ~27 to 9.6 while still earning (1 credit = 1 vCPU for 1 minute). Below 30: wait and check again.
 - Record the balance before and after 7.6b.
 
 Source: [standard mode concepts](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-standard-mode-concepts.html), [the credit table](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-credits-baseline-concepts.html); ADR-014 D2 (standard mode); ADR-014 Context (11.5 s p50 on 2 laptop CPUs).
@@ -558,7 +679,7 @@ sudo docker exec orgknow-api python -m orgknow.eval retrieval
 
 - Expected first 5 metric lines: PR #51's (the slice's "Proof map"), e.g. `Recall@10 0.522  Hit@10 0.972  MRR 0.781  nDCG@10 0.508`.
 - **The number to record:** `Retrieve time: p50 … s, p95 … s`. A p95 above **15 s** goes to the next design review (ADR-014 D2). Laptop rehearsal: p95 6.63 s.
-- Time: about 7 minutes on 2 CPUs (36 questions × 11.5 s).
+- Time: about 40 minutes in S15-T6 (retrieve p50 57.8 s; `deployment-evidence.md`). It prints nothing until the end.
 - Memory: the eval loads a second reranker inside the API container. Laptop rehearsal: 1,618 MiB at peak for both, of the server's 4 GiB.
 
 Source: `Makefile` (`eval-retrieval` runs `python -m orgknow.eval retrieval`); plan m15 (the eval's files are in the image); ADR-014 D2.
@@ -673,19 +794,63 @@ Source: [enable Cost Explorer](https://docs.aws.amazon.com/cost-management/lates
 
 A new version of the code, on the same server and database.
 
-**Laptop** (any terminal, after `export AWS_PROFILE=orgknow`): step 4 again, from the new commit: `make image`, `make image-check`, a new `TAG`, tag, ECR login, push.
+**Laptop** (any terminal, after `export AWS_PROFILE=orgknow`), at the new commit, everything committed:
 
-**Server:**
+```bash
+make deploy
+```
+
+- Expected: step 6's output and its fingerprint check. Then 7.2–7.3 (the tunnel, `/health`).
+- It re-reads the parameters, pulls the tag, migrates and replaces both containers; the corpus is already unpacked.
+- **Fallback:** step 4's fallback from the new commit, then on the server:
 
 ```bash
 sudo /usr/local/bin/orgknow-deploy <new tag>
 ```
 
-- It re-reads the parameters, pulls the tag and replaces both containers; the corpus is already unpacked.
-- Then 7.2–7.3 (the tunnel, `/health`, `/ready`).
-- **A release with a new database migration** isn't covered here: its migration must run before the new containers start, and S16 (CI/CD) designs that step. Until then, don't deploy one.
-- **Roll back:** run the deploy script with the previous tag. ECR keeps the last 3 images (m13).
-- **A change to the boot script** (`infra/boot.sh.tftpl`, which writes the deploy script): it runs only at the first boot, so the change reaches the server only with a new server. A plain `apply` would only stop and restart the old server ([the provider's docs, `user_data`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance#user_data); not verified).
+**A release with a new database migration** deploys the same way: the old containers stop, the new image's `alembic upgrade head` runs, then the new containers start.
+
+- A short outage: the API is down from the stop until the new API is ready (ADR-015 Consequences).
+- **Only after CI:** deploy a migration once its downgrade is written and CI's migration round trip is green (the `integration` job: down to `0001`, then up).
+- **A failed migration starts nothing:** the API stays down until a fixed deploy or a rollback. Alembic's error is in the server's stderr, in `make deploy`'s output.
+- All pending migrations run in one transaction (none of today's 9 opts out of it), so a failed migration changes nothing.
+
+**Roll back** to the previous tag: ECR keeps the last 3 images (m13).
+
+- **The new release had no migration, or its migration failed:** on the server, deploy the previous tag.
+
+```bash
+sudo /usr/local/bin/orgknow-deploy <previous tag>
+```
+
+- **Its migration succeeded:** the previous image doesn't know the new revision. Its `alembic upgrade head` stops with `Can't locate revision identified by '<new revision>'`, and nothing starts.
+- So, on the server: stop the new containers, read the previous revision from the previous image, undo the migration with the **new** image, then deploy the previous tag.
+- **Not verified on a server** ("Not verified"). A laptop drill comes with the first slice that adds a migration (S16 decision p2).
+
+```bash
+sudo docker rm -f orgknow-api orgknow-worker
+```
+
+- First, so no running job or request holds a lock the downgrade needs, and the new code never runs on the old schema.
+
+```bash
+sudo docker run --rm <repo>:<previous tag> alembic heads
+```
+
+- Expected: one line, e.g. `0009 (head)`. That number is `<previous revision>`. It reads only the image's migration files: no database, no env file.
+
+```bash
+sudo docker run --rm --env-file /etc/orgknow/env <repo>:<new tag> alembic downgrade <previous revision>
+```
+
+```bash
+sudo /usr/local/bin/orgknow-deploy <previous tag>
+```
+
+- `<repo>:<new tag>` and `<repo>:<previous tag>`: both images are on the server, as `sudo docker images` lists them.
+- CI proves each downgrade undoes its upgrade, on its own database (`.github/workflows/ci.yml`, "Migration round trip").
+
+**A change to the boot script** (`infra/boot.sh.tftpl`, which writes the deploy script): it runs only at the first boot, so the change reaches the server only with a new server. A plain `apply` would only stop and restart the old server ([the provider's docs, `user_data`](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance#user_data); not verified).
 
 **Laptop** (a terminal with `AWS_PROFILE` set):
 
@@ -693,13 +858,114 @@ sudo /usr/local/bin/orgknow-deploy <new tag>
 terraform -chdir=infra apply -replace=aws_instance.server
 ```
 
-- Then: wait for `Online` (step 2's last check), and run step 6 again. The deploy script downloads and unpacks the corpus again on its own, as on the first deploy. The database is untouched.
-- The `instance_id` output changes: re-read it before 7.2.
+- Then: wait for `Online` (step 2's last check) and for the boot script (step 5's `cloud-init status`, in a new server shell), and run step 6 again. The deploy script downloads and unpacks the corpus again on its own, as on the first deploy. The database is untouched.
+- The `instance_id` output changes: re-read it before 7.2 (`make deploy` reads it itself).
 
 Source:
 
-- `infra/boot.sh.tftpl`; `infra/compute.tf` (`lifecycle { ignore_changes = [ami] }` and its comment on `-replace`).
+- `Makefile` (`deploy`); `scripts/deploy.sh`; ADR-015 D2, D3; S16 c1 (no automatic downgrade).
+- `infra/boot.sh.tftpl` (`orgknow-deploy` step 4, the migration); `src/orgknow/db/migrations/env.py` (one transaction for the whole upgrade); `.github/workflows/ci.yml` (`integration`, "Migration round trip").
+- `infra/compute.tf` (`lifecycle { ignore_changes = [ami] }` and its comment on `-replace`).
 - `infra/storage.tf` (`aws_ecr_lifecycle_policy.app`).
+
+## Demo hours: 4 cores (S18)
+
+For the hours a window shows the system (S18's video, an interview's screen share), the server runs as c7a.xlarge: 4 physical cores, 8 GiB, ~US$0.23 an hour against ~US$0.04 (ADR-014's 2026-11-02 amendment).
+
+- **Why:** on t3a.medium, a question's retrieval took p50 57.83 s and p95 78.04 s (S15-T6), over ADR-014 D2's 15 s line.
+- **Only the server's type changes**, then changes back: same image, same pipeline, same scores.
+
+**a. Before the window (free; laptop, after `export AWS_PROFILE=orgknow`).** Is the type offered in the server's zone (`us-east-1a`: `${var.region}a` in `infra/network.tf`)?
+
+```bash
+aws ec2 describe-instance-type-offerings --location-type availability-zone --filters Name=location,Values=us-east-1a Name=instance-type,Values=c7a.xlarge,c7a.2xlarge --query 'InstanceTypeOfferings[].InstanceType' --output text
+```
+
+- Expected: `c7a.xlarge` (and `c7a.2xlarge`, d's fallback). No `c7a.xlarge`: no demo hours this window; take it to the next design review.
+
+The account's limit on running vCPUs of the standard types (A, C, D, H, I, M, R, T, Z):
+
+```bash
+aws service-quotas get-service-quota --service-code ec2 --quota-code L-1216C47A --query 'Quota.Value' --output text
+```
+
+- c7a.xlarge needs 4; the c7a.2xlarge fallback needs 8. A new account's limit is often 5. Record it.
+
+**b. Resize (laptop).** Add one line to `infra/terraform.tfvars` (`instance_type` is ADR-014 D2's "one Terraform variable"):
+
+```hcl
+instance_type = "c7a.xlarge"
+```
+
+```bash
+terraform -chdir=infra plan
+```
+
+- Expected: `Plan: 0 to add, 1 to change, 0 to destroy.`: `aws_instance.server` updated in-place, `instance_type` from `"t3a.medium"` to `"c7a.xlarge"`.
+- **`must be replaced` or `1 to destroy`: stop.** A new server loses the unpacked corpus and the env file (step 8's boot-script note).
+- The `credit_specification` (D2's standard credits) is for T types only. The provider is expected to skip it on c7a with a warning: the devil's advocate read that in its source, not in the pinned version (6.68.0). This plan is the first check.
+
+```bash
+terraform -chdir=infra apply
+```
+
+- Expected: `Apply complete! Resources: 0 added, 1 changed, 0 destroyed.` The provider stops the server, changes its type and starts it: 52 s in S18-T4.
+- The server shell and the tunnel (7.2) drop with the stop. Wait for `Online` (step 2's last check).
+
+**c. Both containers back (laptop, then server).** Nothing is redeployed:
+
+- Docker starts at boot, and both containers are `--restart unless-stopped` (`infra/boot.sh.tftpl`).
+- The corpus cache (`/srv/orgknow/corpus_cache`) and the env file (`/etc/orgknow/env`) are on the root disk, which a stop keeps.
+
+**Laptop:** open a new shell on the server.
+
+```bash
+INSTANCE_ID=$(terraform -chdir=infra output -raw instance_id)
+```
+
+```bash
+aws ssm start-session --target "$INSTANCE_ID"
+```
+
+**Server:**
+
+```bash
+sudo docker ps --format '{{.Names}} {{.Status}}'
+```
+
+- Expected: `orgknow-api Up …` and `orgknow-worker Up …`. Give the API a minute to load the reranker, then 7.2–7.3 (the tunnel, `/ready`).
+
+**d. Measure first (server), before any demo.** Torch's thread count in the API container:
+
+```bash
+sudo docker exec orgknow-api python -c "import torch; print('torch threads', torch.get_num_threads())"
+```
+
+- Expected: `torch threads 4` (torch's default is one per physical core; each c7a vCPU is a core). Record it.
+
+The retrieve time, with 7.6b's command (what `make eval-retrieval` runs). Free: stored vectors and routes.
+
+```bash
+sudo docker exec orgknow-api python -m orgknow.eval retrieval
+```
+
+- Expected metric line: `Recall@10 0.522  Hit@10 0.972  MRR 0.781  nDCG@10 0.508`.
+- **Record** `Retrieve time: p50 … s, p95 … s`. The laptop's 4 cores gave p95 10.61 s in 4 min 50 s, an optimistic bound (`docs/evaluation.md`, "Reranker timing and S15 sizing"). It prints nothing until the end.
+- **p95 at or under 15 s:** demo on c7a.xlarge.
+- **Over 15 s:** c7a.2xlarge (8 cores, 16 GiB, about twice the hourly price) if a's limit is 8 or more: b–d again with `instance_type = "c7a.2xlarge"`. Under 8: demo on c7a.xlarge and state the measured p95 as a known limit (d2).
+
+**e. Resize back (laptop), when the demo hours end, and before any break over 1 hour** (S18 t3). In S18-T4 it was missed overnight: ~17.6 hours more on c7a.xlarge (~US$0.205 an hour on the bill, against ~US$0.038), ~US$2.95 extra of a US$4.89 window. Delete the `instance_type` line from `infra/terraform.tfvars` (the default is t3a.medium), then:
+
+```bash
+terraform -chdir=infra apply
+```
+
+- Expected: `0 added, 1 changed, 0 destroyed`, in place, `"c7a.xlarge"` to `"t3a.medium"`. Then c's container check again.
+- Then `terraform -chdir=infra plan`: expected `No changes.` A `cpu_credits` change back to `"standard"`: apply it (D2).
+- While the file says c7a, `make tf-check` fails its `instance_and_credits` run: the test pins the default type (offline, with `-var instance_type=c7a.xlarge`: `10 passed, 1 failed`).
+- Step 9 also ends demo hours: it destroys the server whatever its type.
+
+Source: ADR-014 D2 and its 2026-11-02 amendment; the S18 slice doc (d2; the devil's advocate's checks); `infra/variables.tf` (`instance_type`); `infra/compute.tf` (`credit_specification`, `ignore_changes = [ami]`); `infra/network.tf` (the zone); `infra/boot.sh.tftpl` (Docker at boot, the restart policy, the cache path); `infra/tests/rules.tftest.hcl` (`instance_and_credits`).
 
 ## 9. Teardown
 
@@ -732,6 +998,8 @@ aws rds describe-db-instances --query 'DBInstances[].DBInstanceIdentifier' --out
 aws rds describe-db-snapshots --query 'DBSnapshots[].DBSnapshotIdentifier' --output text
 ```
 
+- Right after the delete, it may still list the database's automatic daily snapshots (`rds:orgknow-…`). AWS removes them within a minute (S15-T6): run it again.
+
 ```bash
 aws s3 ls
 ```
@@ -761,6 +1029,7 @@ aws ce get-cost-and-usage --time-period Start=$(date -u -d yesterday +%F),End=$(
 ```
 
 - What stays, free: the Identity Center user, the root MFA and the laptop's `infra/terraform.tfstate` (gitignored).
+- **Then delete the window's `infra/terraform.tfvars`** (step 2 makes a fresh one each window). While it sets `budget_usd` to anything but 50, `make tf-check`'s budget test fails, because `terraform test` reads that file too (S15-T7).
 
 Source: ADR-014 D7; plan c5, m11, m13; `infra/storage.tf`, `infra/database.tf`; `infra/versions.tf` (every resource has the tag `Project = orgknow`); `docs/security-review.md` 6.1, 6.6.
 
@@ -778,12 +1047,23 @@ Step 5's data path, on the laptop's Postgres, with no AWS. Only the target diffe
 
 ## Not verified
 
-Nothing here has run against AWS. In particular:
+S15-T6 ran steps 1–7 and 9 against AWS (`deployment-evidence.md`), before S15-T7's fixes. It confirmed: the console steps, with the fixes above; the restore flags on RDS (as its master user, the dump created `vector` and `btree_gist`); the restore time and RDS's pgvector version; the AWS CLI on the server; `/usr/local/bin/orgknow-deploy` by its full path; the Cost Explorer filters and the budget's `IncludeCredit` field. Still unchecked:
 
-- Every AWS command and console step (no account access when this was written); the console's button names may differ from AWS's docs.
-- `--no-owner --no-privileges --single-transaction` on RDS: the rehearsal ran as a local superuser; RDS's master user is not one. The dump creates the `vector` and `btree_gist` extensions, which RDS allows its master user to create (not checked).
-- The RDS restore time, and the pgvector version RDS installs.
-- That `sudo` on Amazon Linux 2023 lacks `/usr/local/bin` (step 6), that Session Manager's shell starts outside `ssm-user`'s home (step 5), and that the AWS CLI is preinstalled on the server (the deploy script relies on it).
-- That a plain `apply` after a boot-script change only stops and starts the server (step 8).
-- That Budgets and Cost Explorer show a forecast for this new account (7.6e).
-- The Cost Explorer record types `Credit` and `Tax` (7.6e's filters), and the budget's `CostTypes.IncludeCredit` field (step 2).
+- That plain `sudo orgknow-deploy` fails on Amazon Linux 2023 (step 6 uses the full path, which worked), and that Session Manager's shell starts outside `ssm-user`'s home (step 5's `cd ~` ran either way).
+- That a plain `apply` after a boot-script change only stops and starts the server (step 8 hasn't run).
+- That Budgets and Cost Explorer show a forecast for this account (7.6e used 1 day's cost × 30.4 instead).
+- Tax in 7.6e's third command: 0 so far; it may appear only when the month is billed.
+
+S16-T5 rewrote steps 2, 4, 6 and 8 with no AWS:
+
+- `make audit` ran (step 2's output, 2026-11-01).
+- `make deploy` ran only up to its no-stack stop (S16-T4): `image-check: ok`, then the "is a window open?" line; 9.5 s with a warm build cache.
+
+S16-T6 ran steps 2, 3, 5, 6, 8 and 9 against AWS (`deployment-evidence.md`, "Window 2"). It confirmed: `make deploy` against a stack (the login and push, both gates and the scan counts' format, Run Command and the 10 s polling, `/ready: 200` and the fingerprint); step 8's update, replacing running containers; the ECR credential helper (no `docker login` on the server; `/root/.ecr` holds only `log/`); `terraform destroy`'s own last line (`Destroy complete! Resources: 37 destroyed.`); step 3's two `.env` loops and step 9's `terraform.tfvars` delete. It found 2 problems, fixed then: the scan wait (`scripts/deploy.sh`) and a CRITICAL OS finding (`Dockerfile`).
+
+Still unchecked:
+
+- A deploy whose migration changes the database: none yet (the first deploy's is a no-op).
+- Step 8's rollback after a migration that succeeded. The `Can't locate revision` stop was reproduced in a scratch Alembic project; the stop, `alembic heads` in the previous image (run once on the laptop, in today's image: `0009 (head)`), the downgrade with the new image, then the previous tag, have run together nowhere. The drill is a backlog Proposed addition (S16 decision p2).
+
+S18-T4 ran steps 2, 3, 5, 6, [demo hours](#demo-hours-4-cores-s18) and 9 against AWS (`deployment-evidence.md`, "Window 3"). It confirmed: both commands of a; the in-place resize and its plan, with no credit line on c7a (provider 6.68.0); both containers back after each start; the resize back (3 min 1 s) and its `No changes.`; the scan wait for a scan that doesn't exist yet (7 "waiting … to start" lines).

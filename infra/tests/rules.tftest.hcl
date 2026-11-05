@@ -15,6 +15,13 @@ mock_provider "aws" {
       arn = "arn:aws:sns:us-east-1:123456789012:orgknow-alerts"
     }
   }
+  # The boot script gets the registry host from this URL, so it is given ECR's real form.
+  override_resource {
+    target = aws_ecr_repository.app
+    values = {
+      repository_url = "123456789012.dkr.ecr.us-east-1.amazonaws.com/orgknow"
+    }
+  }
   # Data sources would also get made-up values; these two are given realistic ones.
   override_data {
     target = data.aws_ssm_parameter.al2023_ami
@@ -32,9 +39,12 @@ mock_provider "aws" {
 
 mock_provider "random" {}
 
+# `terraform test` also reads a local infra/terraform.tfvars. These values win over it, so the
+# result is the same with or without one (S16-T2: a window's budget_usd = 5 failed the budget run).
 variables {
   alert_email       = "alerts@example.com"
   langfuse_base_url = "https://us.cloud.langfuse.com"
+  budget_usd        = 50
 }
 
 # Decision 3: the database has no public address.
@@ -148,6 +158,17 @@ run "instance_and_credits" {
   }
 }
 
+# S15-T6's parked item: the EC2 console's Name column shows the server.
+run "server_name_tag" {
+  command = plan
+
+  assert {
+    # try: with no tags at all, the lookup is an error that skips the later runs, not a failure.
+    condition     = try(aws_instance.server.tags["Name"], "") == "orgknow-server"
+    error_message = "The server must have the tag Name = \"orgknow-server\" (S15-T6)."
+  }
+}
+
 # m10: US$50 a month; email at 80% actual and 100% forecast.
 run "budget" {
   command = plan
@@ -230,5 +251,63 @@ run "ssm_names" {
   assert {
     condition     = aws_ssm_parameter.langfuse_base_url.type == "String"
     error_message = "The Langfuse host is a plain setting, not a secret (PR review, 2026-10-15)."
+  }
+}
+
+# ADR-015 D3 (S16-T3): orgknow-deploy pulls the new image, removes the old containers, migrates the
+# database from the new image, then starts the API and the worker; a failed migration stops it.
+# Docker reaches ECR through the credential helper: no `docker login`, no token cached on disk.
+# `apply`: the boot script is rendered with the repository's URL, which AWS computes.
+# In the regexes, (?m) makes ^ and $ match at each line's start and end, so a comment line (it
+# starts with "#") never counts as a command; (?s:.*) is any text, across lines.
+run "deploy_migrates_first" {
+  command = apply
+
+  assert {
+    # These command lines, in this order, with anything in between.
+    condition = length(regexall(join("(?s:.*)", [
+      "(?m)^docker pull -q ",
+      "^docker rm -f orgknow-api orgknow-worker ",
+      "^docker run --rm .* alembic upgrade head$",
+      "^docker run -d --name orgknow-api ",
+      "^docker run -d --name orgknow-worker ",
+    ]), aws_instance.server.user_data)) > 0
+    error_message = "orgknow-deploy must pull, remove the old containers, migrate, then start the API and the worker, in that order (ADR-015 D3)."
+  }
+  assert {
+    # `||` after the migration (`|| true`, `|| echo`) would hide its failure from `set -e`.
+    condition = (
+      length(regexall("alembic upgrade head.*\\|\\|", aws_instance.server.user_data)) == 0
+      && length(regexall("(?m)^set -euo pipefail$", aws_instance.server.user_data)) == 2
+    )
+    error_message = "A failed migration must stop orgknow-deploy: nothing may follow it with `||`, and both scripts keep `set -euo pipefail` (ADR-015 D3)."
+  }
+  assert {
+    # ^[^#]*: `docker login` in code, not in a comment.
+    condition = (
+      length(regexall("(?m)^[^#]*docker login", aws_instance.server.user_data)) == 0
+      && length(regexall("(?m)^dnf install -y .*amazon-ecr-credential-helper", aws_instance.server.user_data)) > 0
+    )
+    error_message = "The boot script must install amazon-ecr-credential-helper, and nothing may run `docker login` (ADR-015 D3)."
+  }
+  assert {
+    # Root's Docker config, as the boot script writes it, decoded. try: no such block in the
+    # script makes the condition false (a failure), not an error.
+    condition = try(jsondecode(regex(
+      "/root/\\.docker/config\\.json <<'JSON'\n((?s:.*?))\nJSON\n", aws_instance.server.user_data
+      )[0]), null) == {
+      credHelpers = { "123456789012.dkr.ecr.us-east-1.amazonaws.com" = "ecr-login" }
+    }
+    error_message = "Root's Docker config must map the registry host (not the repository URL) to ecr-login (ADR-015 D3)."
+  }
+  assert {
+    # The helper caches the token in ~/.ecr unless AWS_ECR_DISABLE_CACHE is set; DOCKER_CONFIG
+    # points Docker at the config above even when HOME isn't set. Both before the pull.
+    condition = length(regexall(join("(?s:.*)", [
+      "(?m)^export DOCKER_CONFIG=/root/\\.docker$",
+      "^export AWS_ECR_DISABLE_CACHE=true$",
+      "^docker pull ",
+    ]), aws_instance.server.user_data)) > 0
+    error_message = "orgknow-deploy must export DOCKER_CONFIG=/root/.docker and AWS_ECR_DISABLE_CACHE=true before it pulls (ADR-015 D3)."
   }
 }

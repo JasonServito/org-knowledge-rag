@@ -1,0 +1,120 @@
+{
+  "seed": "kep:3015",
+  "title": "KEP-3015: PreferSameZone and PreferSameNode Traffic Distribution",
+  "built_at": "2026-10-15T16:42:36.520397Z",
+  "steps": [
+    {
+      "step": "problem",
+      "occurred_at": "2021-10-14T13:59:38Z",
+      "chunk_id": 48475,
+      "canonical_id": "gh:enhancements/pull/3010",
+      "heading_path": [
+        "Opening post · @danwinship · 2021-10-14"
+      ],
+      "source_type": "discussion",
+      "source_url": "https://github.com/kubernetes/enhancements/pull/3010",
+      "tier": 7,
+      "found_by": "template_field",
+      "via_chunk_id": 48426,
+      "via_canonical_id": "gh:enhancements/issues/3015",
+      "via_heading_path": [
+        "Opening post · @danwinship · 2021-10-21",
+        "PerferSameNode Traffic Distribution (formerly Node-level topology (formerly PreferLocal traffic policy))"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "discussion",
+      "occurred_at": "2021-10-14T00:00:00Z",
+      "chunk_id": 48476,
+      "canonical_id": "gh:enhancements/pull/3010",
+      "heading_path": [
+        "Comments",
+        "@aojea · 2021-10-14"
+      ],
+      "source_type": "discussion",
+      "source_url": "https://github.com/kubernetes/enhancements/pull/3010",
+      "tier": 7,
+      "found_by": "template_field",
+      "via_chunk_id": 48426,
+      "via_canonical_id": "gh:enhancements/issues/3015",
+      "via_heading_path": [
+        "Opening post · @danwinship · 2021-10-21",
+        "PerferSameNode Traffic Distribution (formerly Node-level topology (formerly PreferLocal traffic policy))"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "proposal",
+      "occurred_at": "2025-01-23T00:00:00Z",
+      "chunk_id": 27541,
+      "canonical_id": "kep:3015",
+      "heading_path": [
+        "KEP-3015 PreferSameZone and PreferSameNode Traffic Distribution",
+        "Summary"
+      ],
+      "source_type": "kep",
+      "source_url": "https://github.com/kubernetes/enhancements/blob/eefb05c986c6eed8e5d63859c42f4003c421792e/keps/sig-network/3015-prefer-same-node/README.md",
+      "tier": 3,
+      "found_by": "seed",
+      "via_chunk_id": null,
+      "via_canonical_id": null,
+      "via_heading_path": null,
+      "missing_reason": null
+    },
+    {
+      "step": "decision",
+      "occurred_at": null,
+      "chunk_id": null,
+      "canonical_id": null,
+      "heading_path": null,
+      "source_type": null,
+      "source_url": null,
+      "tier": null,
+      "found_by": null,
+      "via_chunk_id": null,
+      "via_canonical_id": null,
+      "via_heading_path": null,
+      "missing_reason": "no_link"
+    },
+    {
+      "step": "implementation",
+      "occurred_at": "2025-07-28T14:42:30Z",
+      "chunk_id": 45413,
+      "canonical_id": "web:/blog/2025/07/28/kubernetes-v1-34-sneak-peek/",
+      "heading_path": [
+        "Featured enhancements of Kubernetes v1.34",
+        "`PreferSameZone` and `PreferSameNode` traffic distribution for Services"
+      ],
+      "source_type": "blog_post",
+      "source_url": "https://github.com/kubernetes/website/blob/98724294bd36fd1f7330b95d2efa40575c7dd082/content/en/blog/_posts/2025-07-28-kubernetes-v1.34-sneak-peek.md",
+      "tier": 6,
+      "found_by": "linking_text",
+      "via_chunk_id": 45413,
+      "via_canonical_id": "web:/blog/2025/07/28/kubernetes-v1-34-sneak-peek/",
+      "via_heading_path": [
+        "Featured enhancements of Kubernetes v1.34",
+        "`PreferSameZone` and `PreferSameNode` traffic distribution for Services"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "current_docs",
+      "occurred_at": "2026-08-26T00:00:00Z",
+      "chunk_id": 2453,
+      "canonical_id": "web:/docs/concepts/services-networking/service/",
+      "heading_path": [
+        "Virtual IP addressing mechanism",
+        "Traffic distribution control"
+      ],
+      "source_type": "docs_page",
+      "source_url": "https://github.com/kubernetes/website/blob/256a1f49419171f6c7fbdb1857146da1c63eb533/content/en/docs/concepts/services-networking/service.md",
+      "tier": 1,
+      "found_by": "similarity",
+      "via_chunk_id": null,
+      "via_canonical_id": null,
+      "via_heading_path": null,
+      "missing_reason": null
+    }
+  ]
+}

@@ -42,6 +42,12 @@ ENV HF_HUB_OFFLINE=1
 COPY . .
 RUN uv sync --frozen --no-dev
 
+# Debian's security update for brotli (CVE-2026-111497, CRITICAL in ECR's scan; S16-T6). libcurl
+# loads it, for git's HTTP. Its own late layer, so the dependency and model layers stay cached.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade libbrotli1=1.1.0-2+deb13u1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # The runtime user: not root.
 RUN useradd --uid 10001 --create-home orgknow
 # Git trusts every directory: the mounted corpus cache belongs to another user (ADR-014 D4).

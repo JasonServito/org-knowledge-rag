@@ -1,10 +1,10 @@
 """FastAPI app factory: `/health`, `/ready`, `POST /query` (S12-T2), which answers through the
-same pipeline as `orgknow ask` (`pipeline.answer_question`), and `GET /decisions/{canonical_id}`
-(S13-T5), which reads a stored decision chain as `orgknow chain` does (`load_chain`), and the
-ingestion job routes (S14-T6; ADR-013): `POST /ingestion-jobs` queues a rebuild that `make worker`
-runs, and `GET /ingestion-jobs/{job_id}` shows its progress. `make serve` runs it with uvicorn.
-Every response carries an `X-Request-ID`, and every error one envelope (S14-T2;
-docs/interfaces.md)."""
+same pipeline as `orgknow ask` (`pipeline.answer_question`), `GET /decisions/{canonical_id}`
+(S13-T5), which reads a stored decision chain as `orgknow chain` does (`load_chain`),
+`GET /decisions` (S17-T5), which lists the stored chains, and the ingestion job routes (S14-T6;
+ADR-013): `POST /ingestion-jobs` queues a rebuild that `make worker` runs, and
+`GET /ingestion-jobs/{job_id}` shows its progress. `make serve` runs it with uvicorn. Every
+response carries an `X-Request-ID`, and every error one envelope (S14-T2; docs/interfaces.md)."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -20,9 +20,10 @@ from starlette.exceptions import HTTPException
 from orgknow.api.errors import ApiError, api_error, http_error, invalid_request
 from orgknow.api.middleware import RequestIdMiddleware
 from orgknow.db.connect import api_connection
+from orgknow.db.decisions import list_decisions
 from orgknow.db.health import is_reachable
 from orgknow.db.jobs import active_job, create_job, get_job
-from orgknow.db.models import IngestionJob
+from orgknow.db.models import DecisionSummary, IngestionJob
 from orgknow.embeddings.embedder import Embedder
 from orgknow.embeddings.voyage import VoyageEmbedder
 from orgknow.generation.generator import AnthropicGenerator, Generator
@@ -39,7 +40,7 @@ from orgknow.settings import Settings
 class Query(BaseModel):
     """`POST /query`'s body."""
 
-    # Not empty and not only spaces, as `orgknow ask`.
+    # Not empty and not only whitespace, as `orgknow ask`.
     question: str = Field(min_length=1, pattern=r"\S")
 
 
@@ -155,6 +156,19 @@ def create_app(
             # For the middleware's log line of this request (S14-R1 open call f).
             request.state.trace_id = result.trace_id
         return result
+
+    @app.get("/decisions")
+    def decisions() -> list[DecisionSummary]:
+        """Each stored decision chain's seed, title and build time, by seed (ADR-016 D4): what
+        `GET /decisions/{canonical_id}` can read. Free, read-only; no chain stored: a 200 with an
+        empty list. A database that can't be reached, or a statement past its timeout: a 503, as
+        `/query`."""
+        try:
+            with api_connection(app_settings) as conn:
+                return list_decisions(conn)
+        except psycopg.OperationalError as error:
+            # Never the error's own message: it can name the database URL.
+            raise ApiError("database_unavailable", "database unavailable") from error
 
     @app.get("/decisions/{canonical_id}")
     def decision(canonical_id: str) -> Chain:

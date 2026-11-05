@@ -63,8 +63,8 @@ def build_chain(
     conn: psycopg.Connection[TupleRow], seed: str, settings: Settings
 ) -> tuple[ChainDocument, list[NewEvidence]]:
     """The seed KEP and its 6 steps, in step order, by rules 1-8. Writes nothing. Raises
-    ChainError when the KEP isn't stored, lacks a Summary or Motivation, or no text has a
-    vector."""
+    ChainError when the KEP isn't stored, the seed isn't a numbered KEP, the KEP lacks a Summary
+    or Motivation, or no text has a vector."""
     kep = newest_document(conn, seed)
     if kep is None:
         raise ChainError(f"{seed} is not stored: run `make ingest`")

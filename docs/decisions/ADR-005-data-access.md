@@ -65,3 +65,7 @@ Consequences' "Connection pooling … would be a new dependency then" is decided
 |---|---|
 | `psycopg_pool`, at most 8 connections, a 2 s wait then 503 | A new dependency for a cost that is ~0.1% of a request today. The connection count, its real argument, can only be measured on RDS (the trigger above) |
 | No change (non-autocommit connections) | The idle transaction was confirmed |
+
+## Amendment 2026-10-30 (S15-T6 outcome)
+
+- **The S15 trigger didn't fire; still no pool:** on RDS (db.t4g.micro), `max_connections` is 79 and the peak open connections were 2 (79 ≥ 2 × 2), and a connect from the API container took 34–40 ms, 0.07% of a 54 s ask (the line is 5%) (`docs/deployment-evidence.md`). Rejected: adding `psycopg_pool` anyway; its trigger didn't fire.

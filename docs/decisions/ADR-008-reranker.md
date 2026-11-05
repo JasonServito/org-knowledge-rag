@@ -94,3 +94,11 @@ A devil's advocate argued against D1–D3. Its tests were run in the design revi
 - **S15 sizing:** 2 vCPUs keep rerank alone at 10–15 s per question. A bigger instance, the Voyage fallback, or ONNX quantization are the levers.
 - **The improvement rule's target for this stage is Recall@10** (S08-R1 decision 4). It was chosen after seeing the prototype; `docs/evaluation.md` says so.
 - **Revisit triggers:** golden set v1 (pool size, model); the S15 instance choice (runtime, hosted fallback); a reranker that reads past 512 tokens if truncation shows up in misses.
+
+## Amendment 2026-10-30 (S15-T6 outcome)
+
+- **The S15 instance revisit fired:** in the deployed container on t3a.medium, retrieval took p50 57.83 s and p95 78.04 s per question, about 5× the laptop pinned to 2 CPUs and over ADR-014 D2's 15 s line; the retrieval metrics were unchanged. CPU stayed at ~47%, 1 of 2 vCPUs. Likely cause: the instance has 1 physical core, and torch defaults to one thread per physical core (its thread count wasn't captured). The credit balance never hit 0 (`docs/deployment-evidence.md`). Nothing is changed here: the next design review weighs the levers (the thread count, a bigger instance, the Voyage fallback, ONNX quantization). Rejected: changing the instance or the thread count in S15, unmeasured (D2 sends it to the next design review).
+
+## Amendment 2026-11-02 (S18-R1 design review)
+
+- **The levers weighed:** the S18-R1 design review chose demo hours on a 4-core server (ADR-014, amendment 2026-11-02); the local reranker, its model and its candidate count are unchanged. The hosted fallback was not adopted: authority mode weighs sigmoid(`rerank_score`), fitted on this model's raw scores (S09-T7), and Voyage's scores are 0–1 relevance, so it is a scoring change that needs a fresh golden set to re-check the weights. It stays the future always-on option. Also rejected: torch's thread count as the fix (1.55× on one laptop core; ~37 s p50 projected on the server) and ONNX quantization (a new dependency; ~2× expected, not measured; still over 15 s on t3a.medium).

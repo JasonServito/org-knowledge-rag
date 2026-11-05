@@ -90,6 +90,23 @@ curl -s localhost:8000/ingestion-jobs/1         # the job with the id the POST r
 - **Cost:** the embed step sends only texts with no vector yet (none at the current corpus lock once `make embed` has run), capped by `EMBED_MAX_TOKENS_PER_RUN`: above the cap the step fails before any request, so the first full-corpus embed stays a hand-run `make embed`.
 - **Details:** each field, status and the worker's log lines are in [`docs/interfaces.md`](interfaces.md).
 
+## The UI
+
+A private web page on the laptop (ADR-016): ask a question and see the answer, its citations with their tier and release windows, the conflict panel and a release timeline; and the Decisions pages, each stored chain's 6 dated steps. It talks to a running API, so start `make serve` first.
+
+- **Node, once:** with [nvm](https://github.com/nvm-sh/nvm) inside WSL, run `cd ui && nvm install && npm ci` (`nvm install` reads `ui/.nvmrc`, so it must run in `ui/`). Windows' own npm can't run here: the make targets stop with a message if `node` or `npm` isn't a Linux one.
+- **Chromium, once (for `make ui-e2e` only):** `npx playwright install chromium` in `ui/`. Its Linux libraries need `sudo`: `npx playwright install-deps chromium`.
+
+```bash
+make ui                     # in another terminal: http://127.0.0.1:3000; Ctrl-C stops it
+make ui-check               # ESLint, typecheck, the Vitest tests, next build (free, offline)
+make ui-e2e                 # the Playwright smoke test in Chromium, after make ui-check (free, offline)
+```
+
+- **Cost:** browsing and the Decisions pages are free. Each question is a paid `POST /query` (~US$0.04, the T6 ask's US$0.0388).
+- **Settings,** read when `make ui` starts: `API_BASE_URL` (default `http://127.0.0.1:8000`, `make serve`) and `API_TIMEOUT_S` (default 120: how long the UI waits for an answer; Next's own limit is 30 s). In an AWS window, point it at the tunnel: `API_BASE_URL=http://127.0.0.1:8001 make ui`.
+- **A citation link leaves the page**, and the answer with it (opening links in a new tab is in the backlog).
+
 ## Evaluate
 
 To evaluate the pipeline on the golden set (`EVAL_GOLDEN_PATH`, default `eval/golden_set/v0.yaml`; format in ADR-007):

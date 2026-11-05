@@ -15,7 +15,7 @@ from orgknow.settings import Settings
 
 def api_connection(settings: Settings) -> psycopg.Connection[TupleRow]:
     """A new autocommit connection with the statement timeout, waiting at most
-    DB_CONNECT_TIMEOUT_S to connect. The caller closes it (`with`)."""
+    DB_CONNECT_TIMEOUT_S per address tried to connect. The caller closes it (`with`)."""
     return psycopg.connect(
         settings.database_url,
         connect_timeout=settings.db_connect_timeout_s,

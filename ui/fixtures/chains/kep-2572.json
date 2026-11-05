@@ -1,0 +1,127 @@
+{
+  "seed": "kep:2572",
+  "title": "KEP-2572: Defining the Kubernetes Release Cadence",
+  "built_at": "2026-10-15T16:42:36.426931Z",
+  "steps": [
+    {
+      "step": "problem",
+      "occurred_at": "2020-10-14T20:36:05Z",
+      "chunk_id": 48274,
+      "canonical_id": "gh:sig-release/discussions/1290",
+      "heading_path": [
+        "Opening post · @justaugustus · 2020-10-14",
+        "What would you like to be added:"
+      ],
+      "source_type": "discussion",
+      "source_url": "https://github.com/kubernetes/sig-release/discussions/1290",
+      "tier": 7,
+      "found_by": "template_field",
+      "via_chunk_id": 48369,
+      "via_canonical_id": "gh:enhancements/issues/2572",
+      "via_heading_path": [
+        "Opening post · @justaugustus · 2021-03-15",
+        "Enhancement Description"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "discussion",
+      "occurred_at": "2020-10-14T00:00:00Z",
+      "chunk_id": 48276,
+      "canonical_id": "gh:sig-release/discussions/1290",
+      "heading_path": [
+        "Comments",
+        "@markjacksonfishing · 2020-10-14"
+      ],
+      "source_type": "discussion",
+      "source_url": "https://github.com/kubernetes/sig-release/discussions/1290",
+      "tier": 7,
+      "found_by": "template_field",
+      "via_chunk_id": 48369,
+      "via_canonical_id": "gh:enhancements/issues/2572",
+      "via_heading_path": [
+        "Opening post · @justaugustus · 2021-03-15",
+        "Enhancement Description"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "proposal",
+      "occurred_at": "2021-03-12T14:32:43Z",
+      "chunk_id": 33440,
+      "canonical_id": "kep:2572",
+      "heading_path": [
+        "KEP-2572: Defining the Kubernetes Release Cadence",
+        "Summary"
+      ],
+      "source_type": "kep",
+      "source_url": "https://github.com/kubernetes/enhancements/blob/96fd20c76108d86a94abbbe9929cf862bdf82986/keps/sig-release/2572-release-cadence/README.md",
+      "tier": 5,
+      "found_by": "seed",
+      "via_chunk_id": 48369,
+      "via_canonical_id": "gh:enhancements/issues/2572",
+      "via_heading_path": [
+        "Opening post · @justaugustus · 2021-03-15",
+        "Enhancement Description"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "decision",
+      "occurred_at": "2021-04-23T15:38:03Z",
+      "chunk_id": 48418,
+      "canonical_id": "gh:enhancements/pull/2567",
+      "heading_path": [
+        "Comments",
+        "@dchen1107 · 2021-04-22"
+      ],
+      "source_type": "discussion",
+      "source_url": "https://github.com/kubernetes/enhancements/pull/2567",
+      "tier": 7,
+      "found_by": "merge_event",
+      "via_chunk_id": 48369,
+      "via_canonical_id": "gh:enhancements/issues/2572",
+      "via_heading_path": [
+        "Opening post · @justaugustus · 2021-03-15",
+        "Enhancement Description"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "implementation",
+      "occurred_at": "2021-07-20T00:00:00Z",
+      "chunk_id": 37567,
+      "canonical_id": "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "heading_path": [
+        "Where you can find out more"
+      ],
+      "source_type": "blog_post",
+      "source_url": "https://github.com/kubernetes/website/blob/cd25f73d73b10aaf3922e53152c344917a1d8365/content/en/blog/_posts/2021-07-20-Kubernetes-Release-Cadence/index.md",
+      "tier": 6,
+      "found_by": "linking_text",
+      "via_chunk_id": 37567,
+      "via_canonical_id": "web:/blog/2021/07/20/new-kubernetes-release-cadence/",
+      "via_heading_path": [
+        "Where you can find out more"
+      ],
+      "missing_reason": null
+    },
+    {
+      "step": "current_docs",
+      "occurred_at": "2024-12-11T00:00:00Z",
+      "chunk_id": 7600,
+      "canonical_id": "web:/releases/release/",
+      "heading_path": [
+        "The Release Cycle"
+      ],
+      "source_type": "release_record",
+      "source_url": "https://github.com/kubernetes/website/blob/a6b9d383dfe5cba5d846d3f05475c6cc25f3d2d7/content/en/releases/release.md",
+      "tier": 2,
+      "found_by": "similarity",
+      "via_chunk_id": null,
+      "via_canonical_id": null,
+      "via_heading_path": null,
+      "missing_reason": null
+    }
+  ]
+}

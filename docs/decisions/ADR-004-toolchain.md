@@ -89,3 +89,7 @@ ADR-008 (decided in the S08-R1 design review) picks the reranker and its runtime
 S12-T2 serves `POST /query` over HTTP (product spec must-have 10). Decided in the S12-R1 design review:
 
 - **`uvicorn`** (runtime, 0.54.0, pinned in `uv.lock`): the ASGI server that runs the FastAPI app (`make serve`: `uv run uvicorn --factory orgknow.api.app:create_app --host 127.0.0.1 --port 8000`). FastAPI's own docs use it. It adds 1 package; its dependencies, `click` and `h11`, were already in the lock. Rejected: no server, `TestClient` only, which can't serve a request.
+
+## Amendment 2026-10-30 (S15-T6 outcome)
+
+- **The RDS recheck passed:** on RDS (PostgreSQL 18.3) the restored dump has `vector 0.8.1`, `btree_gist 1.8` and `plpgsql 1.0`, the laptop's versions, and the same ingestion fingerprint (`docs/deployment-evidence.md`). Nothing changes. Rejected: pinning RDS's minor version beyond `18`; another pgvector version would have gone to the next design review (runbook step 5).

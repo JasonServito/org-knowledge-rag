@@ -1,10 +1,11 @@
 """JSON log lines and the current request's ID (S14-T2; docs/interfaces.md, "Logs").
 
-`JsonFormatter` writes each log record as one JSON object on one line. Only `make serve` uses it,
-through uvicorn's log config (config/logging.json): library code never configures logging, so the
-CLI's stderr lines stay plain text. `request_id` holds the ID of the request being served; the
-API's middleware sets it, and every line written meanwhile carries it, from any thread the
-request runs in. S14-R2's worker reuses both.
+`JsonFormatter` writes each log record as one JSON object on one line. Only `make serve` (through
+uvicorn's log config, config/logging.json) and `make worker` (the same file) use it: library code
+never configures logging, so the CLI's stderr lines stay plain text. `request_id` holds the ID of
+the request being served; the API's middleware sets it, and every line written meanwhile carries
+it, from any thread the request runs in. The worker sets it to the job's request ID while it runs
+the job.
 """
 
 import json

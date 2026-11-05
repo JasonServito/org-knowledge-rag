@@ -1,5 +1,6 @@
-"""`POST /query` (S12-T2), `GET /decisions/{canonical_id}` (S13-T5) and the ingestion job routes
-(S14-T6) offline: `TestClient`, fakes for every paid client and for Langfuse, and no database.
+"""`POST /query` (S12-T2), `GET /decisions/{canonical_id}` (S13-T5), `GET /decisions` (S17-T5)
+and the ingestion job routes (S14-T6) offline: `TestClient`, fakes for every paid client and for
+Langfuse, and no database.
 
 The steps that read the database are replaced: the per-request connection is a placeholder,
 `retrieve` returns one hand-built hit (after embedding the question, as the real one does first)
@@ -7,7 +8,8 @@ and `rule_conflicts` returns hand-built conflicts. The rest of the shared pipeli
 the answer, its citations and the trace. Expected outputs are the CLI's pinned output and error
 lines for the same fakes (tests/integration/test_cli.py), written by hand. For a decision chain,
 the data-access functions `load_chain` calls return hand-built rows; `load_chain` runs for real.
-For a job, the job reads and writes (`db/jobs.py`) return a hand-built job.
+For the list of chains, `list_decisions` returns a hand-built row. For a job, the job reads and
+writes (`db/jobs.py`) return a hand-built job.
 """
 
 import json
@@ -35,6 +37,7 @@ from orgknow.api import app as api_app
 from orgknow.api.app import create_app
 from orgknow.db.models import (
     Authority,
+    DecisionSummary,
     Hit,
     IngestionJob,
     JobStep,
@@ -599,7 +602,38 @@ def test_a_chain_that_is_not_stored_is_404_with_the_make_chains_hint(
     assert stored_rows == ["kep:9999"]
 
 
-def test_decisions_is_503_when_the_database_is_unreachable(monkeypatch: pytest.MonkeyPatch) -> None:
+# --- GET /decisions (S17-T5; ADR-016 D4) ----------------------------------------------------------
+
+
+def test_decisions_lists_the_stored_chains_and_a_trailing_slash_redirects_to_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def list_decisions(conn: object) -> list[DecisionSummary]:
+        assert conn is CONNECTION
+        built_at = datetime.fromisoformat("2026-10-15T16:42:36.520397+00:00")
+        return [DecisionSummary(seed="kep:2572", title=KEP_TITLE, built_at=built_at)]
+
+    monkeypatch.setattr(api_app, "api_connection", lambda settings: nullcontext(CONNECTION))
+    monkeypatch.setattr(api_app, "list_decisions", list_decisions)
+    client = TestClient(create_app(_settings()))  # no startup: the route needs no paid client
+
+    response = client.get("/decisions")
+    # A chain's id has at least 1 character, so `/decisions/` names no chain: Starlette
+    # redirects it to the path without the slash, the list.
+    redirect = client.get("/decisions/", follow_redirects=False)
+
+    assert response.status_code == 200
+    # Typed by hand; Pydantic writes UTC as "Z".
+    expected = {"seed": "kep:2572", "title": KEP_TITLE, "built_at": "2026-10-15T16:42:36.520397Z"}
+    assert response.json() == [expected]
+    assert redirect.status_code == 307
+    assert redirect.headers["location"] == "http://testserver/decisions"
+
+
+@pytest.mark.parametrize("path", ["/decisions/kep:2572", "/decisions"], ids=["chain", "list"])
+def test_decisions_is_503_when_the_database_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
     def refuse(settings: Settings) -> None:
         # The message names the URL, password included: the response must not repeat it.
         url = settings.database_url
@@ -608,7 +642,7 @@ def test_decisions_is_503_when_the_database_is_unreachable(monkeypatch: pytest.M
     monkeypatch.setattr(api_app, "api_connection", refuse)
     client = TestClient(create_app(_settings()))
 
-    response = client.get("/decisions/kep:2572")
+    response = client.get(path)
 
     assert response.status_code == 503
     assert response.json() == _envelope(response, "database_unavailable", "database unavailable")
